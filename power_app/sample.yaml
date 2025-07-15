@@ -1,0 +1,7 @@
+sample:
+  description: QCC730 Power app
+    application
+  name: power app 
+common:
+  tags: introduction
+  harness: console

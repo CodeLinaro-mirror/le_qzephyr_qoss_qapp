@@ -1,0 +1,7 @@
+sample:
+  description: QCC730 WiFi app
+    application
+  name: WiFi app 
+common:
+  tags: introduction
+  harness: console
