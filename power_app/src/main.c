@@ -18,8 +18,11 @@
 #include <zephyr/pm/policy.h>
 #include <zephyr/sys_clock.h>
 
+//#define PM_SLEEP_BY_LATENCY
+
 LOG_MODULE_REGISTER(app, CONFIG_APP_LOG_LEVEL);
 
+#ifdef PM_SLEEP_BY_LATENCY
 static void on_latency_changed(int32_t latency)
 {
     if (latency == SYS_FOREVER_US) {
@@ -29,25 +32,36 @@ static void on_latency_changed(int32_t latency)
             latency / USEC_PER_MSEC);
     }
 }
+#endif
 
-static int cmd_set_softoff(const struct shell *shell, size_t argc, char **argv)
+static int cmd_set_softoff(const struct shell *ctx, size_t argc, char **argv)
 {
-    shell_print(shell, "Set state to SOFT_OFF...");
-    int wkup_src = (int)strtol(argv[1], NULL, 10);
-    int slp_time_ms = (int)strtol(argv[2], NULL, 10);
-    config_deepsleep(wkup_src, slp_time_ms);
+    int err = 0;
+    uint32_t slp_time_ms = shell_strtoul(argv[1], 10, &err);
 
+    if (err) {
+        shell_error(ctx, "Unable to parse input slp_time_ms (err %d)", err);
+        return err;
+    }
+
+    shell_print(ctx, "Set state to SOFT_OFF...");
+    qapi_power_set_parameter(__QAPI_POWER_SOFTOFF_DURATION_MS, slp_time_ms);
     pm_state_force(0u, &(struct pm_state_info){ PM_STATE_SOFT_OFF, 0, 0 });
     return 0;
 }
 
-static int cmd_set_s2ram(const struct shell *shell, size_t argc, char **argv)
+static int cmd_set_s2ram(const struct shell *ctx, size_t argc, char **argv)
 {
-    shell_print(shell, "Set state to suspend_to_ram...");
-    int wkup_src = (int)strtol(argv[1], NULL, 10);
-    int slp_time_ms = (int)strtol(argv[2], NULL, 10);
-    config_deepsleep(wkup_src, slp_time_ms);
+    int err = 0;
+    uint32_t slp_time_ms = shell_strtoul(argv[1], 10, &err);
 
+    if (err) {
+        shell_error(ctx, "Unable to parse input slp_time_ms (err %d)", err);
+        return err;
+    }
+
+    shell_print(ctx, "Set state to suspend_to_ram...");
+    qapi_power_set_parameter(__QAPI_POWER_SUSPEND2RAM_DURATION_MS, slp_time_ms);
     pm_state_force(0u, &(struct pm_state_info){ PM_STATE_SUSPEND_TO_RAM, 0, 0 });
     return 0;
 }
@@ -55,21 +69,17 @@ static int cmd_set_s2ram(const struct shell *shell, size_t argc, char **argv)
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
     SHELL_CMD_ARG(softoff, NULL,
         "set pm state to soft_of\n"
-        "Usage: pm softoff <wkup_src:int> <sleep_time_ms:int>\n"
-        "wkup_src: 1:WKUP_AON_TIMER, 2:WKUP_EXT_PIN\n"
-        "sleep_time_ms: sleep duration ms when WKUP_AON_TIMER>\n",
-        cmd_set_softoff, 3, 0),
+        "Usage: qpm softoff <sleep_time_ms:int>\n"
+        "sleep_time_ms: no timeout if 0>\n",
+        cmd_set_softoff, 2, 0),
     SHELL_CMD_ARG(s2ram, NULL,
         "set pm state to suspend2ram \n"
-        "Usage: pm s2ram <wkup_src:int> <sleep_time_ms:int>\n"
-        "wkup_src: 1:WKUP_AON_TIMER, 2:WKUP_EXT_PIN\n"
-        "sleep_time_ms: sleep duration ms when WKUP_AON_TIMER>\n",
-        cmd_set_s2ram, 3, 0),
+        "Usage: qpm s2ram <sleep_time_ms:int>\n"
+        "sleep_time_ms: no timeout if 0>\n",
+        cmd_set_s2ram, 2, 0),
     SHELL_SUBCMD_SET_END);
 
-SHELL_CMD_REGISTER(pm, &sub_pm_cmds, "power management commands", NULL);
-
-//#define PM_SLEEP_BY_LATENCY
+SHELL_CMD_REGISTER(qpm, &sub_pm_cmds, "power management commands", NULL);
 
 int main(void)
 {
@@ -84,8 +94,7 @@ int main(void)
     printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
 
 #ifdef PM_SLEEP_BY_LATENCY
-    //g32_dead_loop_1 = 1;
-    //dead_loop_cond1();
+    dead_loop_cond1();
 
     pm_policy_latency_changed_subscribe(&subs, on_latency_changed);
     LOG_INF("Setting latency constraint: 30ms");
@@ -99,8 +108,7 @@ int main(void)
     k_msleep(sleep_pm_active_ms);
 
     LOG_INF("Sleeping for %d seconds, we should enter softoff or susmpend2ram", sleep_ms/1000);
-    //g32_dead_loop_1 = 1;
-    //dead_loop_cond1();
+    dead_loop_cond1();
     k_msleep(sleep_ms);
 
     LOG_ERR("Should not reach here. Now actually reach here because idle timeout are less than softoff or suspend2ram residence");
@@ -108,3 +116,4 @@ int main(void)
 
 	return 0;
 }
+
