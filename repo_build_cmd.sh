@@ -5,11 +5,14 @@
 #SPDX-License-Identifier: BSD-3-Clause
 #integration entry
 #========================================================================
-pushd ${WS}/zephyr
+ws1="$(pwd)"
+echo $ws1
+cd ../zephyr
+newws="$(pwd)"
+echo $newws
 git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
-popd
-pushd ${WS}
+cd ../
 west init -l qcc730
-west build -b qcc730evbx qapp/power_app/ -d output/powerapp
-west build -b qcc730evbx qapp/wifi_app/ -d output/wifiapp
+west build -b qcc730evbx qapp/power_app/ -d build/powerapp
+west build -b qcc730evbx qapp/wifi_app/ -d build/wifiapp
 
