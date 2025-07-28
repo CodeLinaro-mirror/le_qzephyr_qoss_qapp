@@ -13,6 +13,7 @@ echo $newws
 git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
 cd ../
 west init -l qcc730
-west build -b qcc730evbx qapp/power_app/ -d qapp/output/powerapp
-west build -b qcc730evbx qapp/wifi_app/ -d qapp/output/wifiapp
-
+cd qapp/power_app
+west build -b qcc730evbx
+cd ../wifi_app
+west build -b qcc730evbx
