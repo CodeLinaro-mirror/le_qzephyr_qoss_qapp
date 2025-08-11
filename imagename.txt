@@ -1,2 +1,2 @@
-./power_app/build/zephyr/zephyr.elf
-./wifi_app/build/zephyr/zephyr.elf
+./power_app/build/qcc730mx/zephyr/zephyr.elf
+./wifi_app/build/qcc730mx/zephyr/zephyr.elf

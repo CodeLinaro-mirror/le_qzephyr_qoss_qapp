@@ -14,6 +14,8 @@ git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
 cd ../
 west init -l qcc730
 cd qapp/power_app
-west build -b qcc730evbx
+source ../build_qcc730evbx.sh
+source ../build_qcc730mx.sh
 cd ../wifi_app
-west build -b qcc730evbx
+source ../build_qcc730evbx.sh
+source ../build_qcc730mx.sh
