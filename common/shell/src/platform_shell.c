@@ -45,6 +45,13 @@ static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_version(const struct shell *ctx, size_t argc, char **argv)
+{
+    shell_print(ctx, "CRM Number: %s", CONFIG_QCC730_CRM_NUMBER);
+
+    return 0;
+}
+
 static int cmd_reboot(const struct shell *ctx, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
@@ -95,6 +102,10 @@ static int cmd_setdbg(const struct shell *ctx, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(
     sub_uart_cmds,
+    SHELL_CMD_ARG(version, NULL,
+                  "version\n"
+                  "Usage: version\n",
+                  cmd_version, 1, 0),
     SHELL_CMD_ARG(setloglvl, NULL,
                   "setloglvl\n"
                   "Usage: setloglvl [n], n=0/1/2/3 for info/warn/err/crit for nt_logger\n",
