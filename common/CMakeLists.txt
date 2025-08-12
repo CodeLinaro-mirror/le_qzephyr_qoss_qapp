@@ -1,8 +1,9 @@
+
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# nothing here
-CONFIG_PM=y
-CONFIG_STATS=y
-CONFIG_PM_STATS=y
-CONFIG_PM_S2RAM=y
+if(NOT CONFIG_SOC_FAMILY_QCOM)
+	return()
+endif()
+
+add_subdirectory_ifdef(CONFIG_SHELL shell)

@@ -1,0 +1,4 @@
+name: qapp
+build:
+  cmake: zephyr/../common
+  kconfig: zephyr/../common/Kconfig
