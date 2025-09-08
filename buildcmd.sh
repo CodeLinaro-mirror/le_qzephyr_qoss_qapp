@@ -18,12 +18,11 @@ echo $newws
 git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
 cd ../
 west init -l qcc730
-cd qapp/power_app
-source ../build_qcc730evbx.sh
-source ../build_qcc730mx.sh
-cd ../wifi_app
-source ../build_qcc730evbx.sh
-source ../build_qcc730mx.sh
+cd qapp/qcli_app
+west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
+west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
+west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
+west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
 cd ../../
 ws2="$(pwd)"
 echo $ws2
