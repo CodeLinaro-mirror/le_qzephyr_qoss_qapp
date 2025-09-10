@@ -1,0 +1,206 @@
+2025-08-12 14:07:26,953 - twister - INFO - Using Ninja..
+2025-08-12 14:07:27,262 - twister - INFO - Zephyr version: v4.1.0
+2025-08-12 14:07:27,318 - twister - DEBUG - Running cmake script C:\Projects\Qualcomm\workspace\zephyr\cmake\verify-toolchain.cmake
+2025-08-12 14:07:27,321 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-DFORMAT=json', '-P', 'C:\\Projects\\Qualcomm\\workspace\\zephyr\\cmake\\verify-toolchain.cmake']
+2025-08-12 14:07:28,204 - twister - DEBUG - Finished running C:\Projects\Qualcomm\workspace\zephyr\cmake\verify-toolchain.cmake
+2025-08-12 14:07:28,205 - twister - INFO - Using 'zephyr' toolchain.
+2025-08-12 14:07:30,154 - twister - DEBUG - Reading testsuite configuration files under C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt...
+2025-08-12 14:07:30,155 - twister - DEBUG - Found possible testsuite in C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt
+2025-08-12 14:07:30,157 - twister - DEBUG - No duplicates found.
+2025-08-12 14:07:30,159 - twister - DEBUG - platform filter: ['mqm730i']
+2025-08-12 14:07:30,159 - twister - DEBUG -   vendor filter: []
+2025-08-12 14:07:30,159 - twister - DEBUG -     arch_filter: None
+2025-08-12 14:07:30,159 - twister - DEBUG -      tag_filter: None
+2025-08-12 14:07:30,159 - twister - DEBUG -     exclude_tag: None
+2025-08-12 14:07:30,160 - twister - DEBUG - Checking platform filter: ['mqm730i']
+2025-08-12 14:07:30,160 - twister - INFO - Building initial testsuite list...
+2025-08-12 14:07:30,162 - twister - INFO - Writing JSON report C:\Projects\Qualcomm\workspace\twister-out\testplan.json
+2025-08-12 14:07:30,283 - twister - INFO - Adding tasks to the queue...
+2025-08-12 14:07:30,283 - twister - DEBUG - adding mqm730i/qcc730\zephyr\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt
+2025-08-12 14:07:30,636 - twister - INFO - Added initial list of jobs to queue
+2025-08-12 14:07:32,091 - twister - DEBUG - Running cmake on C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt for mqm730i/qcc730
+2025-08-12 14:07:32,100 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-BC:\\Projects\\Qualcomm\\workspace\\twister-out\\mqm730i_qcc730\\zephyr\\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt', '-DTC_RUNID=4c2593a6f27fb831c6ac9e6bf4a613d2', '-DTC_NAME=samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt', '-DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y', '-DEXTRA_GEN_EDT_ARGS=--edtlib-Werror', '-GNinja', '-DPython3_EXECUTABLE=C:/Projects/Qualcomm/workspace/qcc730zephyrporting/.venv/Scripts/python.exe', '-DZEPHYR_TOOLCHAIN_VARIANT=zephyr', '-SC:\\Projects\\Qualcomm\\workspace\\zephyr\\samples\\drivers\\watchdog\\qcc730_wdt', '-DBOARD=mqm730i/qcc730']
+2025-08-12 14:07:32,767 - twister - DEBUG - Launched 12 jobs
+2025-08-12 14:07:45,434 - twister - DEBUG - Finished running cmake C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt for mqm730i/qcc730 in 13.33 seconds
+2025-08-12 14:07:45,437 - twister - DEBUG - build test: mqm730i/qcc730\zephyr\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt
+2025-08-12 14:07:45,437 - twister - DEBUG - Building C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt for mqm730i/qcc730
+2025-08-12 14:07:45,443 - twister - DEBUG - Running C:\Program Files\CMake\bin\cmake.EXE --build C:\Projects\Qualcomm\workspace\twister-out\mqm730i_qcc730\zephyr\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt
+2025-08-12 14:08:06,601 - twister - DEBUG - Finished building C:\Projects\Qualcomm\workspace\zephyr\samples\drivers\watchdog\qcc730_wdt for mqm730i/qcc730 in 21.16 seconds
+2025-08-12 14:08:06,605 - twister - DEBUG - run test: mqm730i/qcc730\zephyr\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt
+2025-08-12 14:08:06,605 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-08-12 14:08:06,605 - twister - DEBUG - Retain DUT:mqm730i/qcc730, Id:None, counter:1, failures:0
+2025-08-12 14:08:06,606 - twister - DEBUG - Using serial device COM17 @ 115200 baud
+2025-08-12 14:08:06,606 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', 'C:\\Projects\\Qualcomm\\workspace\\twister-out\\mqm730i_qcc730\\zephyr\\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt', '--', '-a', '-m', 'rram']
+2025-08-12 14:08:23,878 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+Module path: C:/Projects/Qualcomm/workspace/zephyr/../modules/hal/hal_qcom/qcc730
+NVM Programmer path: C:/Projects/Qualcomm/SDK/qccsdk/tools/nvm_programmer/scripts
+SecHash path: C:/Projects/Qualcomm/SDK/qccsdk/tools/sechash
+-- runners.nvmprogrammer: Creating hashed image: C:/Projects/Qualcomm/workspace/twister-out/mqm730i_qcc730/zephyr/samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt/zephyr_hashed.elf
+C:\Projects\Qualcomm\workspace\qcc730zephyrporting\.venv\Scripts\python.exe createxbl.py -f C:/Projects/Qualcomm/workspace/twister-out/mqm730i_qcc730/zephyr/samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt/zephyr/zephyr.elf -a32 -o C:/Projects/Qualcomm/workspace/twister-out/mqm730i_qcc730/zephyr/samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: C:\Projects\Qualcomm\SDK\qccsdk\tools\storage\firmware_desc_table\curr_age_fdt\frn_curr_age_with_app_bin.bin
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:58812
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/SDK/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.21678709983825684 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: C:\Projects\Qualcomm\workspace\zephyr\..\modules\hal\hal_qcom\qcc730\..\zephyr\blobs\FERMION_SBL_HASHED.elf
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:62608
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/zephyr/../modules/hal/hal_qcom/qcc730/../zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.484175443649292 seconds.
+
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:51760
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/zephyr/../modules/hal/hal_qcom/qcc730/../zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.49968719482421875 seconds.
+
+-- runners.nvmprogrammer: Flashing file: C:/Projects/Qualcomm/workspace/twister-out/mqm730i_qcc730/zephyr/samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt/zephyr/zephyr.bin
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:59887
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/twister-out/mqm730i_qcc730/zephyr/samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt/zephyr/zephyr.bin
+Programming 23296 bytes to rram 0x0021A400
+.
+Image programmed successfully, time elapsed 0.6155827045440674 seconds.
+
+
+2025-08-12 14:08:23,878 - twister - DEBUG - Attach serial device COM17 @ 115200 baud
+2025-08-12 14:08:24,005 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-08-12 14:08:24,007 - twister - DEBUG - DEVICE: Watchdog sample application
+2025-08-12 14:08:24,007 - twister - DEBUG - HARNESS:Console:EXPECTED(1/4):'Watchdog sample application'
+2025-08-12 14:08:24,008 - twister - DEBUG - DEVICE: [00:00:00.003,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:24,009 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:26,005 - twister - DEBUG - DEVICE: [00:00:01.003,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:26,006 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:26,008 - twister - DEBUG - DEVICE: [00:00:02.003,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:26,009 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:28,007 - twister - DEBUG - DEVICE: [00:00:03.003,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:28,008 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:28,011 - twister - DEBUG - DEVICE: [00:00:04.003,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:28,012 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:30,006 - twister - DEBUG - DEVICE: [00:00:05.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:30,006 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:30,008 - twister - DEBUG - DEVICE: [00:00:06.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:30,008 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:32,005 - twister - DEBUG - DEVICE: [00:00:07.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:32,005 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:32,007 - twister - DEBUG - DEVICE: [00:00:08.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:32,007 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:34,006 - twister - DEBUG - DEVICE: [00:00:09.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:34,006 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:34,009 - twister - DEBUG - DEVICE: [00:00:10.004,000] [0m<inf> main: Press button to enable watchdog
+2025-08-12 14:08:34,009 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:35,736 - twister - DEBUG - DEVICE: [00:00:10.732,000] [0m<inf> main: Enabling watchdog...
+2025-08-12 14:08:35,737 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:35,738 - twister - DEBUG - DEVICE: [00:00:11.006,000] [0m<inf> main: Feeding watchdog 8 times
+2025-08-12 14:08:35,738 - twister - DEBUG - HARNESS:Console:EXPECTED(2/4):'Feeding watchdog...'
+2025-08-12 14:08:35,739 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:35,740 - twister - DEBUG - DEVICE: [00:00:11.506,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:35,740 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:37,011 - twister - DEBUG - DEVICE: [00:00:12.007,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:37,012 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:37,014 - twister - DEBUG - DEVICE: [00:00:12.507,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:37,014 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:37,016 - twister - DEBUG - DEVICE: [00:00:13.008,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:37,016 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:38,515 - twister - DEBUG - DEVICE: [00:00:13.509,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:38,515 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:38,517 - twister - DEBUG - DEVICE: [00:00:14.010,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:38,518 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:38,520 - twister - DEBUG - DEVICE: [00:00:14.511,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:38,520 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:40,026 - twister - DEBUG - DEVICE: [00:00:15.011,000] [0m<inf> main: Feeding watchdog...
+2025-08-12 14:08:40,027 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:40,029 - twister - DEBUG - DEVICE: [00:00:15.012,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:40,029 - twister - DEBUG - HARNESS:Console:EXPECTED(3/4):'No more feeds, waiting for reset'
+2025-08-12 14:08:40,029 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:40,031 - twister - DEBUG - DEVICE: [00:00:15.512,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:40,031 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:40,033 - twister - DEBUG - DEVICE: [00:00:16.012,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:40,033 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:41,523 - twister - DEBUG - DEVICE: [00:00:16.512,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:41,524 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:41,526 - twister - DEBUG - DEVICE: [00:00:17.012,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:41,526 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:41,529 - twister - DEBUG - DEVICE: [00:00:17.512,000] [0m<inf> main: No more feeds, waiting for reset
+2025-08-12 14:08:41,529 - twister - DEBUG - DEVICE: [0m
+2025-08-12 14:08:42,088 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-08-12 14:08:42,089 - twister - DEBUG - DEVICE: Watchdog sample application
+2025-08-12 14:08:42,089 - twister - DEBUG - HARNESS:Console:EXPECTED(4/4):'Watchdog sample application'
+2025-08-12 14:08:42,089 - twister - DEBUG - Release DUT:mqm730i/qcc730, Id:None, counter:1, failures:0
+2025-08-12 14:08:42,090 - twister - DEBUG - run status: mqm730i/qcc730\zephyr\samples/drivers/watchdog/qcc730_wdt/sample.drivers.watchdog.qcc730_wdt passed
+2025-08-12 14:08:42,135 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-08-12 14:08:42,135 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 75.18 seconds.
+2025-08-12 14:08:42,136 - twister - INFO - 1 of 1 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-08-12 14:08:42,136 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-08-12 14:08:42,136 - twister - INFO - Saving reports...
+2025-08-12 14:08:42,136 - twister - INFO - Writing JSON report C:\Projects\Qualcomm\workspace\twister-out\twister.json
+2025-08-12 14:08:42,146 - twister - INFO - Writing xunit report C:\Projects\Qualcomm\workspace\twister-out\twister.xml...
+2025-08-12 14:08:42,148 - twister - INFO - Writing xunit report C:\Projects\Qualcomm\workspace\twister-out\twister_report.xml...
+2025-08-12 14:08:42,149 - twister - INFO - Run completed

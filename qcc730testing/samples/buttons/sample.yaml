@@ -1,0 +1,13 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  name: Buttons Sample
+tests:
+  sample.buttons:
+    tags:
+      - button
+      - gpio
+    filter: dt_enabled_alias_with_parent_compat("sw0", "gpio-keys") and dt_enabled_alias_with_parent_compat("sw1", "gpio-keys")
+    depends_on: gpio
+    harness: button

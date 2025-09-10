@@ -1,0 +1,174 @@
+2025-08-25 14:51:23,495 - twister - INFO - Using Ninja..
+2025-08-25 14:51:23,570 - twister - INFO - Zephyr version: v4.1.0
+2025-08-25 14:51:23,573 - twister - DEBUG - Running cmake script /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-08-25 14:51:23,573 - twister - DEBUG - Calling cmake: /usr/bin/cmake -DFORMAT=json -P /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-08-25 14:51:23,764 - twister - DEBUG - Finished running /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-08-25 14:51:23,765 - twister - INFO - Using 'zephyr' toolchain.
+2025-08-25 14:51:24,848 - twister - DEBUG - Reading testsuite configuration files under /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12...
+2025-08-25 14:51:24,848 - twister - DEBUG - Found possible testsuite in /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12
+2025-08-25 14:51:24,851 - twister - DEBUG - No duplicates found.
+2025-08-25 14:51:24,852 - twister - DEBUG - platform filter: ['mqm730i']
+2025-08-25 14:51:24,852 - twister - DEBUG -   vendor filter: []
+2025-08-25 14:51:24,852 - twister - DEBUG -     arch_filter: None
+2025-08-25 14:51:24,852 - twister - DEBUG -      tag_filter: None
+2025-08-25 14:51:24,852 - twister - DEBUG -     exclude_tag: None
+2025-08-25 14:51:24,852 - twister - DEBUG - Checking platform filter: ['mqm730i']
+2025-08-25 14:51:24,852 - twister - INFO - Building initial testsuite list...
+2025-08-25 14:51:24,852 - twister - INFO - Writing JSON report /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/testplan.json
+2025-08-25 14:51:24,862 - twister - INFO - JOBS: 14
+2025-08-25 14:51:24,863 - twister - INFO - Adding tasks to the queue...
+2025-08-25 14:51:24,863 - twister - DEBUG - adding mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api
+2025-08-25 14:51:24,864 - twister - INFO - Added initial list of jobs to queue
+2025-08-25 14:51:24,869 - twister - DEBUG - Running cmake on /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730
+2025-08-25 14:51:24,870 - twister - DEBUG - Calling cmake: /usr/bin/cmake -B/home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api -DTC_RUNID=d210adeae9709604ec33c3c8f840ebba -DTC_NAME=tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api -DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y -DEXTRA_GEN_EDT_ARGS=--edtlib-Werror -GNinja -DPython3_EXECUTABLE=/home/karol/proj/qccsdk/.venv/bin/python3 -DZEPHYR_TOOLCHAIN_VARIANT=zephyr -S/home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 -DBOARD=mqm730i/qcc730 -DMODULES=dts -P/home/karol/proj/qccsdk/zephyr/cmake/package_helper.cmake
+2025-08-25 14:51:24,882 - twister - DEBUG - Launched 14 jobs
+2025-08-25 14:51:26,826 - twister - DEBUG - Finished running cmake /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730 in 1.95 seconds
+2025-08-25 14:51:26,827 - twister - DEBUG - Running cmake on /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730
+2025-08-25 14:51:26,828 - twister - DEBUG - Calling cmake: /usr/bin/cmake -B/home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api -DTC_RUNID=d210adeae9709604ec33c3c8f840ebba -DTC_NAME=tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api -DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y -DEXTRA_GEN_EDT_ARGS=--edtlib-Werror -GNinja -DPython3_EXECUTABLE=/home/karol/proj/qccsdk/.venv/bin/python3 -DZEPHYR_TOOLCHAIN_VARIANT=zephyr -S/home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 -DBOARD=mqm730i/qcc730
+2025-08-25 14:51:30,275 - twister - DEBUG - Finished running cmake /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730 in 3.44 seconds
+2025-08-25 14:51:30,276 - twister - DEBUG - build test: mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api
+2025-08-25 14:51:30,277 - twister - DEBUG - Building /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730
+2025-08-25 14:51:30,277 - twister - DEBUG - Running /usr/bin/cmake --build /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api
+2025-08-25 14:51:34,450 - twister - DEBUG - Finished building /home/karol/proj/qccsdk/zephyr/tests/drivers/i2c/i2c_lis2dw12 for mqm730i/qcc730 in 4.17 seconds
+2025-08-25 14:51:34,450 - twister - DEBUG - Determine test cases for test instance: mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api
+2025-08-25 14:51:34,451 - twister - DEBUG - Determine test cases for test suite: sensor.lis2dw12.api
+2025-08-25 14:51:34,483 - twister - DEBUG - Test instance mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api already has 5 testcase(s) known: [<TestCase sensor.lis2dw12.api.lis2dw12_sensor_api_test.free_standing with None>, <TestCase sensor.lis2dw12.api.lis2dw12_sensor_api_test.read_accel_values with None>, <TestCase sensor.lis2dw12.api.lis2dw12_sensor_api_test.error_handling with None>, <TestCase sensor.lis2dw12.api.lis2dw12_sensor_api_test.continuous_data_transfer with None>, <TestCase sensor.lis2dw12.api.lis2dw12_sensor_api_test.read_accel_values_fast_mode with None>]
+2025-08-25 14:51:34,483 - twister - DEBUG - Detected 5 Ztest case(s): [sensor.lis2dw12.api.lis2dw12_sensor_api_test.error_handling, sensor.lis2dw12.api.lis2dw12_sensor_api_test.continuous_data_transfer, sensor.lis2dw12.api.lis2dw12_sensor_api_test.free_standing, sensor.lis2dw12.api.lis2dw12_sensor_api_test.read_accel_values_fast_mode, sensor.lis2dw12.api.lis2dw12_sensor_api_test.read_accel_values] in /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr/zephyr.elf
+2025-08-25 14:51:34,485 - twister - DEBUG - run test: mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api
+2025-08-25 14:51:34,485 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-08-25 14:51:34,486 - twister - DEBUG - Retain DUT:mqm730i/qcc730, Id:None, counter:1, failures:0
+2025-08-25 14:51:34,486 - twister - DEBUG - Using serial device /dev/ttyACM1 @ 115200 baud
+2025-08-25 14:51:34,486 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', '/home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api', '--', '-a', '-m', 'rram']
+2025-08-25 14:51:42,278 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+Module path: /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/qcc730
+NVM Programmer path: /home/karol/proj/qccsdk/qccsdk/tools/nvm_programmer/scripts
+SecHash path: /home/karol/proj/qccsdk/qccsdk/tools/sechash
+-- runners.nvmprogrammer: Creating hashed image: /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr_hashed.elf
+/home/karol/proj/qccsdk/.venv/bin/python3 createxbl.py -f /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr/zephyr.elf -a32 -o /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: /home/karol/proj/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:53900
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.20003008842468262 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/qcc730/../zephyr/blobs/FERMION_SBL_HASHED.elf
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:40686
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/qcc730/../zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.4338810443878174 seconds.
+
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:42673
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/qcc730/../zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.4336845874786377 seconds.
+
+-- runners.nvmprogrammer: Flashing file: /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr/zephyr.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:47588
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/mqm730i_qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api/zephyr/zephyr.bin
+Programming 39443 bytes to rram 0x0021A400
+..
+Image programmed successfully, time elapsed 0.8516144752502441 seconds.
+
+
+2025-08-25 14:51:42,279 - twister - DEBUG - Attach serial device /dev/ttyACM1 @ 115200 baud
+2025-08-25 14:51:42,419 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-08-25 14:51:42,420 - twister - DEBUG - DEVICE: Running TESTSUITE lis2dw12_sensor_api_test
+2025-08-25 14:51:42,420 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,421 - twister - DEBUG - DEVICE: START - test_continuous_data_transfer
+2025-08-25 14:51:42,421 - twister - DEBUG - DEVICE: Starting continuous data transfer test (1000 samples)...
+2025-08-25 14:51:42,481 - twister - DEBUG - DEVICE: PASS - test_continuous_data_transfer in 0.025 seconds
+2025-08-25 14:51:42,482 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,482 - twister - DEBUG - DEVICE: START - test_error_handling
+2025-08-25 14:51:42,482 - twister - DEBUG - DEVICE: 10bit addressing is not supported
+2025-08-25 14:51:42,483 - twister - DEBUG - DEVICE: PASS - test_error_handling in 0.004 seconds
+2025-08-25 14:51:42,483 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,483 - twister - DEBUG - DEVICE: START - test_free_standing
+2025-08-25 14:51:42,483 - twister - DEBUG - DEVICE: PASS - test_free_standing in 0.001 seconds
+2025-08-25 14:51:42,484 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,484 - twister - DEBUG - DEVICE: START - test_read_accel_values
+2025-08-25 14:51:42,503 - twister - DEBUG - DEVICE: Acceleration read OK: X=0.153, Y=-0.220, Z=10.021 (m/s^2)
+2025-08-25 14:51:42,503 - twister - DEBUG - DEVICE: PASS - test_read_accel_values in 0.007 seconds
+2025-08-25 14:51:42,503 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,504 - twister - DEBUG - DEVICE: START - test_read_accel_values_fast_mode
+2025-08-25 14:51:42,590 - twister - DEBUG - DEVICE: Acceleration read OK: X=0.153, Y=-0.220, Z=10.021 (m/s^2)
+2025-08-25 14:51:42,591 - twister - DEBUG - DEVICE: PASS - test_read_accel_values_fast_mode in 0.007 seconds
+2025-08-25 14:51:42,591 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,591 - twister - DEBUG - DEVICE: TESTSUITE lis2dw12_sensor_api_test succeeded
+2025-08-25 14:51:42,592 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-08-25 14:51:42,592 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [lis2dw12_sensor_api_test]: pass = 5, fail = 0, skip = 0, total = 5 duration = 0.044 seconds
+2025-08-25 14:51:42,593 - twister - DEBUG - DEVICE: - PASS - [lis2dw12_sensor_api_test.test_continuous_data_transfer] duration = 0.025 seconds
+2025-08-25 14:51:42,596 - twister - DEBUG - DEVICE: - PASS - [lis2dw12_sensor_api_test.test_error_handling] duration = 0.004 seconds
+2025-08-25 14:51:42,596 - twister - DEBUG - DEVICE: - PASS - [lis2dw12_sensor_api_test.test_free_standing] duration = 0.001 seconds
+2025-08-25 14:51:42,597 - twister - DEBUG - DEVICE: - PASS - [lis2dw12_sensor_api_test.test_read_accel_values] duration = 0.007 seconds
+2025-08-25 14:51:42,597 - twister - DEBUG - DEVICE: - PASS - [lis2dw12_sensor_api_test.test_read_accel_values_fast_mode] duration = 0.007 seconds
+2025-08-25 14:51:42,597 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-08-25 14:51:42,598 - twister - DEBUG - DEVICE: ===================================================================
+2025-08-25 14:51:42,598 - twister - DEBUG - DEVICE: RunID: d210adeae9709604ec33c3c8f840ebba
+2025-08-25 14:51:42,598 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-08-25 14:51:42,599 - twister - DEBUG - Release DUT:mqm730i/qcc730, Id:None, counter:1, failures:0
+2025-08-25 14:51:42,600 - twister - DEBUG - run status: mqm730i/qcc730/zephyr/tests/drivers/i2c/i2c_lis2dw12/sensor.lis2dw12.api passed
+2025-08-25 14:51:42,607 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-08-25 14:51:42,607 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 19.11 seconds.
+2025-08-25 14:51:42,607 - twister - INFO - 5 of 5 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-08-25 14:51:42,607 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-08-25 14:51:42,608 - twister - INFO - Saving reports...
+2025-08-25 14:51:42,608 - twister - INFO - Writing JSON report /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/twister.json
+2025-08-25 14:51:42,609 - twister - INFO - Writing xunit report /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/twister.xml...
+2025-08-25 14:51:42,610 - twister - INFO - Writing xunit report /home/karol/proj/qccsdk/test_results/build_output/drivers.i2c.i2c_lis2dw12_mqm730i/twister_report.xml...
+2025-08-25 14:51:42,616 - twister - INFO - Run completed

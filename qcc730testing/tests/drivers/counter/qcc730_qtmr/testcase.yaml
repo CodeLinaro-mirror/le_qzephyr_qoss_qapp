@@ -1,0 +1,9 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+tests:
+  drivers.counter.qcc730_qtmr:
+    harness: ztest
+    platform_allow:
+      - qcc730mi
+    timeout: 180

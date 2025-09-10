@@ -1,0 +1,13 @@
+common:
+  depends_on: i2c
+  tags:
+    - sensor
+    - drivers
+  harness: ztest
+  harness_config:
+    fixture: i2c_lis2dw12
+tests:
+  sensor.lis2dw12.api:
+    filter: dt_compat_enabled("st,lis2dw12")
+    platform_allow:
+      - qcc730mi

@@ -1,0 +1,19 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+sample:
+  description: Temperature and humidity reading sample
+  name: SHTC3 sample
+tests:
+  sample.sensor.shtc3:
+    tags:
+      - LED
+      - gpio
+      - serial
+      - i2c
+    filter: dt_enabled_alias_with_parent_compat("led0", "gpio-leds")
+    depends_on:
+      - gpio
+      - i2c
+      - serial
+    harness: sensor
