@@ -1,0 +1,31 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+/ {
+	buttons {
+		compatible = "gpio-keys";
+		button0: button_0 {
+			gpios = <&gpioa 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Push button switch 0";
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
+
+	aliases {
+		sw0 = &button0;
+		watchdog0 = &watchdog0;
+	};
+};
+
+&watchdog0 {
+	status = "okay";
+};
+
+&gpioa {
+	status = "okay";
+};

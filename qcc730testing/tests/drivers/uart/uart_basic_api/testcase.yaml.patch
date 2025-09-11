@@ -1,0 +1,16 @@
+diff --git a/tests/drivers/uart/uart_basic_api/testcase.yaml b/tests/drivers/uart/uart_basic_api/testcase.yaml
+index bbda79b810a..3d7fe94bf50 100644
+--- a/tests/drivers/uart/uart_basic_api/testcase.yaml
++++ b/tests/drivers/uart/uart_basic_api/testcase.yaml
+@@ -59,3 +59,11 @@ tests:
+     extra_args:
+       - CONF_FILE=prj_shell.conf
+       - DTC_OVERLAY_FILE="boards/frdm_ke17z512_uart.overlay"
++  drivers.uart.basic_api.qcc730_uart:
++    tags:
++      - drivers
++      - uart
++    platform_allow: qcc730mi
++    extra_args:
++      - CONF_FILE=qcc730mi.conf
++      - DTC_OVERLAY_FILE="boards/qcc730mi.overlay"

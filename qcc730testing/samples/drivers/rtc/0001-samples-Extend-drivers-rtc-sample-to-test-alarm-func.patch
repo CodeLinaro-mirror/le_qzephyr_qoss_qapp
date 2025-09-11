@@ -1,0 +1,99 @@
+From a9e2803e2d17baf83cf579e96154f4c0f567e841 Mon Sep 17 00:00:00 2001
+From: Karol Duda <karol.duda@unikie.com>
+Date: Wed, 20 Aug 2025 12:29:22 +0200
+Subject: [PATCH] samples: Extend drivers/rtc sample to test alarm functions
+
+This changes checks basic usage of rtc alarm functions.
+
+Signed-off-by: Karol Duda <karol.duda@unikie.com>
+---
+ samples/drivers/rtc/src/main.c | 43 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 42 insertions(+), 1 deletion(-)
+
+diff --git a/samples/drivers/rtc/src/main.c b/samples/drivers/rtc/src/main.c
+index a7c5a978c51..6c2db0e7bfb 100644
+--- a/samples/drivers/rtc/src/main.c
++++ b/samples/drivers/rtc/src/main.c
+@@ -14,6 +14,8 @@ const struct device *const rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
+ static int set_date_time(const struct device *rtc)
+ {
+ 	int ret = 0;
++	uint16_t mask;
++
+ 	struct rtc_time tm = {
+ 		.tm_year = 2024 - 1900,
+ 		.tm_mon = 11 - 1,
+@@ -23,11 +25,43 @@ static int set_date_time(const struct device *rtc)
+ 		.tm_sec = 0,
+ 	};
+ 
++	struct rtc_time tm_alarm = {
++		.tm_year = 2024 - 1900,
++		.tm_mon = 11 - 1,
++		.tm_mday = 17,
++		.tm_hour = 4,
++		.tm_min = 20,
++		.tm_sec = 0,
++	};
++
++	struct rtc_time tm_alarm_get = {0};
++
+ 	ret = rtc_set_time(rtc, &tm);
+ 	if (ret < 0) {
+ 		printk("Cannot write date time: %d\n", ret);
+ 		return ret;
+ 	}
++
++	ret = rtc_alarm_set_time(rtc, 0, RTC_ALARM_TIME_MASK_MINUTE, &tm_alarm);
++	if (ret < 0) {
++		printk("Cannot set alarm time: %d\n", ret);
++		return ret;
++	}
++
++	ret = rtc_alarm_get_time(rtc, 0, &mask, &tm_alarm_get);
++	if (ret < 0) {
++		printk("Cannot get alarm time: %d\n", ret);
++		return ret;
++	}
++
++	if (tm_alarm_get.tm_min != tm_alarm.tm_min) {
++		printk("Wrong alarm time obtained: %d\n", ret);
++		return -EIO;
++	} else {
++		printk("Correct alarm time obtained\n");
++	}
++
++
+ 	return ret;
+ }
+ 
+@@ -48,6 +82,11 @@ static int get_date_time(const struct device *rtc)
+ 	return ret;
+ }
+ 
++void alarm_callback(const struct device *dev, uint16_t id, void *user_data)
++{
++	printk("RTC callback triggered! \n");
++}
++
+ int main(void)
+ {
+ 	/* Check if the RTC is ready */
+@@ -56,11 +95,13 @@ int main(void)
+ 		return 0;
+ 	}
+ 
++	rtc_alarm_set_callback(rtc, 0, alarm_callback, NULL);
++
+ 	set_date_time(rtc);
+ 
+ 	/* Continuously read the current date and time from the RTC */
+ 	while (get_date_time(rtc) == 0) {
+-		k_sleep(K_MSEC(1000));
++		k_sleep(K_MSEC(2000));
+ 	};
+ 	return 0;
+ }
+-- 
+2.43.0
+

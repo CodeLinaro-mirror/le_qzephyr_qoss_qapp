@@ -1,0 +1,238 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build application (Debug)",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "command": "source .venv/bin/activate && west build -p always -b qcc730mi ${input:appPath} -- -DCONFIG_NO_OPTIMIZATIONS=y -DCONFIG_LOG=y -DCONFIG_LOG_PRINTK=y -DCONFIG_LOG_DEFAULT_LEVEL=4",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && west build -p always -b qcc730mi ${input:appPath} -- -DCONFIG_NO_OPTIMIZATIONS=y -DCONFIG_LOG=y -DCONFIG_LOG_PRINTK=y -DCONFIG_LOG_DEFAULT_LEVEL=4",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Build application (Default)",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "command": "source .venv/bin/activate && west build -p always -b qcc730mi ${input:appPath}",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && west build -p always -b qcc730mi ${input:appPath}",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Flash application",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "command": "source .venv/bin/activate && west flash --skip-rebuild",
+            "windows": {
+                "command": "source .venv/Scripts/activate && west flash --skip-rebuild",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Twister test tool",
+            "type": "shell",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "command": "source .venv/bin/activate && python modules/qcc730testing/scripts/tests/twister/run_tests.py --platform qcc730mi ${input:testCase} --port ${input:linuxFlashPort}",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && python modules/qcc730testing/scripts/tests/twister/run_tests.py --platform qcc730mi ${input:testCase} --port ${input:windowsFlashPort} --no-outdir",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Patch, Build, Flash application",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "Zephyr repository - patch",
+                "Build application (Default)",
+                "Zephyr repository - clean",
+                "Flash application"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Zephyr repository - patch",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "command": "source .venv/bin/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py rm inst",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py rm inst",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Zephyr repository - generate patch",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "command": "source .venv/bin/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py gen",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py gen",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            "label": "Zephyr repository - clean",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "command": "source .venv/bin/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py rm",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "windows": {
+                "command": "source .venv/Scripts/activate && python modules/qcc730testing/scripts/tests/patch_zephyr/patch_zephyr.py rm",
+                "options": {
+                    "cwd": "${workspaceFolder}",
+                    "shell": {
+                        "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+                        "args": [
+                            "-c"
+                        ]
+                    }
+                }
+            }
+        }
+    ],
+    "inputs": [
+        {
+            "id": "terminate",
+            "type": "command",
+            "command": "workbench.action.tasks.terminate",
+            "args": "terminateAll"
+        },
+        {
+            "id": "testCase",
+            "type": "pickString",
+            "description": "Select the test case to run",
+            "options": [
+                "tests.drivers.gpio.gpio_basic_api",
+                "tests.drivers.i2c.i2c_lis2dw12",
+                "tests.drivers.counter.qcc730_qtmr",
+                "tests.drivers.rtc.rtc_api",
+                "tests.sample.drivers.watchdog.qcc730_wdt",
+                "tests.drivers.uart.basic_api.qcc730_uart"
+            ],
+            "default": "tests.drivers.pwm.pwm_api"
+        },
+        {
+            "id": "windowsFlashPort",
+            "type": "promptString",
+            "description": "Enter the serial port for flashing",
+            "default": "COM9"
+        },
+        {
+            "id": "linuxFlashPort",
+            "type": "promptString",
+            "description": "Enter the serial port for flashing",
+            "default": "/dev/ttyACM1"
+        },
+        {
+            "id": "appPath",
+            "type": "promptString",
+            "description": "Enter path to the Zephyr application. If not provided default will be used: `modules/qcc730testing/samples/buttons/`",
+            "default": "modules/qcc730testing/samples/buttons/"
+        }
+    ]
+}

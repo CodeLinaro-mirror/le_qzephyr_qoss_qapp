@@ -1,0 +1,189 @@
+2025-09-09 15:34:37,853 - twister - INFO - Using Ninja..
+2025-09-09 15:34:37,926 - twister - INFO - Zephyr version: v4.1.0
+2025-09-09 15:34:37,929 - twister - DEBUG - Running cmake script /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-09-09 15:34:37,929 - twister - DEBUG - Calling cmake: /usr/bin/cmake -DFORMAT=json -P /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-09-09 15:34:38,084 - twister - DEBUG - Finished running /home/karol/proj/qccsdk/zephyr/cmake/verify-toolchain.cmake
+2025-09-09 15:34:38,084 - twister - INFO - Using 'zephyr' toolchain.
+2025-09-09 15:34:38,963 - twister - DEBUG - Reading testsuite configuration files under /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common...
+2025-09-09 15:34:38,963 - twister - DEBUG - Found possible testsuite in /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common
+2025-09-09 15:34:38,968 - twister - DEBUG - No duplicates found.
+2025-09-09 15:34:38,970 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-09-09 15:34:38,970 - twister - DEBUG -   vendor filter: []
+2025-09-09 15:34:38,970 - twister - DEBUG -     arch_filter: None
+2025-09-09 15:34:38,970 - twister - DEBUG -      tag_filter: None
+2025-09-09 15:34:38,970 - twister - DEBUG -     exclude_tag: None
+2025-09-09 15:34:38,970 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-09-09 15:34:38,970 - twister - INFO - Building initial testsuite list...
+2025-09-09 15:34:38,972 - twister - INFO - Writing JSON report /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/testplan.json
+2025-09-09 15:34:38,982 - twister - INFO - JOBS: 14
+2025-09-09 15:34:38,982 - twister - INFO - Adding tasks to the queue...
+2025-09-09 15:34:38,983 - twister - DEBUG - adding qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default
+2025-09-09 15:34:38,983 - twister - INFO - Added initial list of jobs to queue
+2025-09-09 15:34:38,990 - twister - DEBUG - Running cmake on /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730
+2025-09-09 15:34:38,990 - twister - DEBUG - Calling cmake: /usr/bin/cmake -B/home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default -DTC_RUNID=b7698fbd266d3a96a188498a71fa911d -DTC_NAME=tests/drivers/flash/common/drivers.flash.common.default -DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y -DEXTRA_GEN_EDT_ARGS=--edtlib-Werror -GNinja -DPython3_EXECUTABLE=/home/karol/proj/qccsdk/.venv/bin/python3 -DZEPHYR_TOOLCHAIN_VARIANT=zephyr -S/home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common -DBOARD=qcc730mi/qcc730 -DMODULES=dts,kconfig -P/home/karol/proj/qccsdk/zephyr/cmake/package_helper.cmake
+2025-09-09 15:34:38,996 - twister - DEBUG - Launched 14 jobs
+2025-09-09 15:34:41,462 - twister - DEBUG - Finished running cmake /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730 in 2.46 seconds
+2025-09-09 15:34:41,465 - twister - DEBUG - Running cmake on /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730
+2025-09-09 15:34:41,465 - twister - DEBUG - Calling cmake: /usr/bin/cmake -B/home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default -DTC_RUNID=b7698fbd266d3a96a188498a71fa911d -DTC_NAME=tests/drivers/flash/common/drivers.flash.common.default -DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y -DEXTRA_GEN_EDT_ARGS=--edtlib-Werror -GNinja -DPython3_EXECUTABLE=/home/karol/proj/qccsdk/.venv/bin/python3 -DZEPHYR_TOOLCHAIN_VARIANT=zephyr -S/home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common -DBOARD=qcc730mi/qcc730
+2025-09-09 15:34:44,408 - twister - DEBUG - Finished running cmake /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730 in 2.94 seconds
+2025-09-09 15:34:44,410 - twister - DEBUG - build test: qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default
+2025-09-09 15:34:44,410 - twister - DEBUG - Building /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730
+2025-09-09 15:34:44,411 - twister - DEBUG - Running /usr/bin/cmake --build /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default
+2025-09-09 15:34:48,065 - twister - DEBUG - Finished building /home/karol/proj/qccsdk/zephyr/tests/drivers/flash/common for qcc730mi/qcc730 in 3.65 seconds
+2025-09-09 15:34:48,065 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default
+2025-09-09 15:34:48,065 - twister - DEBUG - Determine test cases for test suite: drivers.flash.common.default
+2025-09-09 15:34:48,095 - twister - DEBUG - Test instance qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default already has 7 testcase(s) known: [<TestCase drivers.flash.common.default.flash_driver.flash_page_layout with None>, <TestCase drivers.flash.common.default.flash_driver.flash_erase with None>, <TestCase drivers.flash.common.default.flash_driver.get_size with None>, <TestCase drivers.flash.common.default.flash_driver.flash_copy with None>, <TestCase drivers.flash.common.default.flash_driver.read_unaligned_address with None>, <TestCase drivers.flash.common.default.flash_driver.flash_flatten with None>, <TestCase drivers.flash.common.default.flash_driver.flash_fill with None>]
+2025-09-09 15:34:48,095 - twister - DEBUG - Detected 7 Ztest case(s): [drivers.flash.common.default.flash_driver.flash_copy, drivers.flash.common.default.flash_driver.flash_page_layout, drivers.flash.common.default.flash_driver.get_size, drivers.flash.common.default.flash_driver.flash_erase, drivers.flash.common.default.flash_driver.flash_flatten, drivers.flash.common.default.flash_driver.flash_fill, drivers.flash.common.default.flash_driver.read_unaligned_address] in /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default/zephyr/zephyr.elf
+2025-09-09 15:34:48,097 - twister - DEBUG - run test: qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default
+2025-09-09 15:34:48,097 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-09-09 15:34:48,097 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-09 15:34:48,097 - twister - DEBUG - Using serial device /dev/ttyACM1 @ 115200 baud
+2025-09-09 15:34:48,098 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', '/home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default', '--', '-a', '-m', 'rram']
+2025-09-09 15:34:55,766 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: /home/karol/proj/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:39632
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.19939804077148438 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:36904
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.43497228622436523 seconds.
+
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:60073
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.4347856044769287 seconds.
+
+-- runners.nvmprogrammer: Flashing file: /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default/zephyr/zephyr.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/karol/proj/qcc74x/qccsdk-qcc74x/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:37337
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/qcc730mi_qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default/zephyr/zephyr.bin
+Programming 34806 bytes to rram 0x0021A400
+..
+Image programmed successfully, time elapsed 0.7602436542510986 seconds.
+
+
+2025-09-09 15:34:55,767 - twister - DEBUG - Attach serial device /dev/ttyACM1 @ 115200 baud
+2025-09-09 15:34:55,889 - twister - DEBUG - DEVICE: flash_qcc730_qspi_nor is initializing
+2025-09-09 15:34:55,889 - twister - DEBUG - DEVICE: do qspi init...
+2025-09-09 15:34:55,913 - twister - DEBUG - DEVICE: found device 1660c4
+2025-09-09 15:34:55,914 - twister - DEBUG - DEVICE: FLASH INIT SUCCESS!!
+2025-09-09 15:34:55,914 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-09-09 15:34:55,915 - twister - DEBUG - DEVICE: Running TESTSUITE flash_driver
+2025-09-09 15:34:55,916 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:55,916 - twister - DEBUG - DEVICE: START - test_flash_copy
+2025-09-09 15:34:55,916 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,018 - twister - DEBUG - DEVICE: PASS - test_flash_copy in 0.092 seconds
+2025-09-09 15:34:56,019 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,019 - twister - DEBUG - DEVICE: START - test_flash_erase
+2025-09-09 15:34:56,019 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,047 - twister - DEBUG - DEVICE: PASS - test_flash_erase in 0.018 seconds
+2025-09-09 15:34:56,048 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,048 - twister - DEBUG - DEVICE: START - test_flash_fill
+2025-09-09 15:34:56,048 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,121 - twister - DEBUG - DEVICE: PASS - test_flash_fill in 0.061 seconds
+2025-09-09 15:34:56,122 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,122 - twister - DEBUG - DEVICE: START - test_flash_flatten
+2025-09-09 15:34:56,123 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,201 - twister - DEBUG - DEVICE: PASS - test_flash_flatten in 0.067 seconds
+2025-09-09 15:34:56,202 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,202 - twister - DEBUG - DEVICE: START - test_flash_page_layout
+2025-09-09 15:34:56,202 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,211 - twister - DEBUG - DEVICE: start_offset=0x0	size=4096	index=0
+2025-09-09 15:34:56,211 - twister - DEBUG - DEVICE: page_count=1024
+2025-09-09 15:34:56,246 - twister - DEBUG - DEVICE: PASS - test_flash_page_layout in 0.015 seconds
+2025-09-09 15:34:56,246 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,247 - twister - DEBUG - DEVICE: START - test_get_size
+2025-09-09 15:34:56,247 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,247 - twister - DEBUG - DEVICE: PASS - test_get_size in 0.004 seconds
+2025-09-09 15:34:56,247 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,247 - twister - DEBUG - DEVICE: START - test_read_unaligned_address
+2025-09-09 15:34:56,248 - twister - DEBUG - DEVICE: Test will run on device gt25q32au@0
+2025-09-09 15:34:56,371 - twister - DEBUG - DEVICE: PASS - test_read_unaligned_address in 0.042 seconds
+2025-09-09 15:34:56,371 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,371 - twister - DEBUG - DEVICE: TESTSUITE flash_driver succeeded
+2025-09-09 15:34:56,372 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-09-09 15:34:56,372 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [flash_driver]: pass = 7, fail = 0, skip = 0, total = 7 duration = 0.299 seconds
+2025-09-09 15:34:56,373 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_flash_copy] duration = 0.092 seconds
+2025-09-09 15:34:56,374 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_flash_erase] duration = 0.018 seconds
+2025-09-09 15:34:56,375 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_flash_fill] duration = 0.061 seconds
+2025-09-09 15:34:56,376 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_flash_flatten] duration = 0.067 seconds
+2025-09-09 15:34:56,376 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_flash_page_layout] duration = 0.015 seconds
+2025-09-09 15:34:56,377 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_get_size] duration = 0.004 seconds
+2025-09-09 15:34:56,377 - twister - DEBUG - DEVICE: - PASS - [flash_driver.test_read_unaligned_address] duration = 0.042 seconds
+2025-09-09 15:34:56,377 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-09-09 15:34:56,378 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-09 15:34:56,378 - twister - DEBUG - DEVICE: RunID: b7698fbd266d3a96a188498a71fa911d
+2025-09-09 15:34:56,378 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-09-09 15:34:56,380 - twister - DEBUG - Expected suite names:['flash_driver']
+2025-09-09 15:34:56,380 - twister - DEBUG - Detected suite names:['flash_driver']
+2025-09-09 15:34:56,380 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-09 15:34:56,380 - twister - DEBUG - run status: qcc730mi/qcc730/zephyr/tests/drivers/flash/common/drivers.flash.common.default passed
+2025-09-09 15:34:56,387 - twister - INFO - 13 test scenarios (15 configurations) selected, 14 configurations filtered (14 by static filter, 0 at runtime).
+2025-09-09 15:34:56,387 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 18.53 seconds.
+2025-09-09 15:34:56,387 - twister - INFO - 7 of 7 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-09-09 15:34:56,387 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-09-09 15:34:56,387 - twister - INFO - Saving reports...
+2025-09-09 15:34:56,387 - twister - INFO - Writing JSON report /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/twister.json
+2025-09-09 15:34:56,388 - twister - INFO - Writing xunit report /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/twister.xml...
+2025-09-09 15:34:56,388 - twister - INFO - Writing xunit report /home/karol/proj/qccsdk/test_results/build_output/drivers.flash.common_qcc730mi/twister_report.xml...
+2025-09-09 15:34:56,389 - twister - INFO - Run completed

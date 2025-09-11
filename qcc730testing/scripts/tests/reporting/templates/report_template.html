@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Results Report</title>
+    <style>
+        {css_style}
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Test Results Report</h1>
+
+        <table class="summary-table">
+            <thead>
+                <tr>
+                    <th colspan="2">Summary</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Total Passed</td>
+                    <td>{total_passed}</td>
+                </tr>
+                <tr>
+                    <td>Total Failed</td>
+                    <td>{total_failed}</td>
+                </tr>
+                <tr>
+                    <td>Total Skipped</td>
+                    <td>{total_skipped}</td>
+                </tr>
+                <tr>
+                    <td>Total Not Run</td>
+                    <td>{total_not_run}</td>
+                </tr>
+                <tr>
+                    <td>Pass Rate</td>
+                    <td>{pass_rate}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <hr class="solid">
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Platform</th>
+                    <th>Report Date</th>
+                    <th>Test Case Name</th>
+                    <th>Execution Time (s)</th>
+                    <th>Result</th>
+                </tr>
+            </thead>
+            <tbody>
+                {table_rows}
+            </tbody>
+        </table>
+    </div>
+    <div class="footer">
+        Report generated on {generation_date}
+    </div>
+</body>
+
+</html>

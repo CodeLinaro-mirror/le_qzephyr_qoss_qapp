@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&frame0 {
+    status = "okay";
+};
+
+&frame1 {
+    status = "okay";
+};
+
+&frame2 {
+    status = "okay";
+};
+
+&frame3 {
+    status = "okay";
+};
+
+&frame4 {
+    status = "okay";
+};
