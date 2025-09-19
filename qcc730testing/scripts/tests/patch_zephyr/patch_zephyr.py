@@ -33,9 +33,7 @@ def usage():
     print("\nExamples:")
     print(f"  {sys.argv[0]} rm         # Clean the zephyr repository")
     print(f"  {sys.argv[0]} inst       # Install patches to zephyr")
-    print(
-        f"  {
-            sys.argv[0]} gen        # Generate new patches from your staged changes")
+    print(f"  {sys.argv[0]} gen        # Generate new patches from your staged changes")
     print(f"  {sys.argv[0]} rm inst    # First clean up and then install")
     sys.exit(1)
 
@@ -43,13 +41,18 @@ def usage():
 def run(cmd, cwd=None, check=True, capture_output=False, text=False):
     """"Run command in a certain directory"""
     print(f"Running: {' '.join(cmd)} (in {cwd or os.getcwd()})")
-    return subprocess.run(
-        cmd,
-        cwd=cwd,
-        check=check,
-        capture_output=capture_output,
-        text=text)
 
+    kwargs = {
+        'cwd': cwd,
+        'check': check,
+        'universal_newlines': text
+    }
+
+    if capture_output:
+        kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.PIPE
+
+    return subprocess.run(cmd, **kwargs)
 
 def remove():
     """Reset all changes and clean untracked files in Zephyr repo"""
@@ -152,6 +155,7 @@ def generate_patches():
 
 def main():
     """Main function"""
+    print(f"Running Zephyr Patch script with Python version: {sys.version}")
     args = sys.argv[1:]
 
     if not args or any(arg in ('help', '-h', '--help') for arg in args):

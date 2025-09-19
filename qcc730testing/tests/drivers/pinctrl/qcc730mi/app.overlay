@@ -1,0 +1,58 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pinctrl/qcom-qcc730-pinctrl.h>
+
+/ {
+	/* Test mock devices for pinctrl testing */
+	test_device0: test_device0 {
+		compatible = "vnd,pinctrl-device";
+		status = "okay";
+		pinctrl-0 = <&test_device0_default>;
+		pinctrl-names = "default";
+	};
+
+	test_device1: test_device1 {
+		compatible = "vnd,pinctrl-device";
+		status = "okay";
+		pinctrl-0 = <&test_device1_default>;
+		pinctrl-names = "default";
+	};
+};
+
+&pinctrl {
+
+	/* Different Random Pin Configurations of testing two fake devices */
+	test_device0_default: test_device0_default {
+		group1 {
+			pinmux = <QCC730_PINMUX_GPIO_INPUT(QCC730_GPIO_0)>;
+			bias-pull-up;
+		};
+		group2 {
+			pinmux = <QCC730_PINMUX_GPIO_INPUT(QCC730_GPIO_1)>;
+			bias-pull-down;
+		};
+		group3 {
+			pinmux = <QCC730_PINMUX_GPIO_INPUT(QCC730_GPIO_2)>;
+			high-drive-strength;
+		};
+	};
+
+	test_device1_default: test_device1_default {
+		group1 {
+		pinmux = <QCC730_PINMUX_GPIO_INPUT(QCC730_GPIO_3)>;
+		};
+		group2 {
+			pinmux = <QCC730_PINMUX_GPIO_OUTPUT(QCC730_GPIO_4)>;
+		};
+		group3 {
+			pinmux = <QCC730_PINMUX_UART_PERIPHERAL(QCC730_GPIO_11, QCC730_UART_OPTION_0)>,
+				<QCC730_PINMUX_UART_PERIPHERAL(QCC730_GPIO_12, QCC730_UART_OPTION_0)>;
+			bias-pull-up;
+			high-drive-strength;
+		};
+	};
+};

@@ -117,15 +117,8 @@ class TestRunner:
 
     def run(self) -> bool:
         """Runs the full process for a single test/sample."""
-        print(
-            f"\n{
-                '=' *
-                20} PROCESSING: {
-                self.item_name} ({
-                self.item_type}) ON {
-                    self.platform} {
-                        '=' *
-                20}")
+        header = f" PROCESSING: {self.item_name} ({self.item_type}) ON {self.platform} "
+        print(f"\n{header:=^80}")
 
         if not self._prepare_configuration():
             return False
@@ -173,11 +166,7 @@ class TestRunner:
         specific_config = all_config_data.get(
             self.item_type, {}).get(self.item_name)
         if not specific_config:
-            print(
-                f"Error: No configuration found for '{
-                    self.item_name}' of type '{
-                    self.item_type}'",
-                file=sys.stderr)
+            print(f"Error: No configuration found for '{self.item_name}' of type '{self.item_type}'", file=sys.stderr)
             return False
 
         merged_config = all_config_data.get(KEY_COMMON_CONFIG, {})
@@ -228,8 +217,6 @@ class TestRunner:
         if not self.no_out_dir:
             self.command.extend(["--outdir", str(self.twister_outdir)])
 
-        self.command.extend(["--disable-warnings-as-errors"])
-
         keys_to_skip = {"pre_test_setup",
                         "post_test_setup", "description", "notes"}
         for key, value in self.config.items():
@@ -267,7 +254,7 @@ class TestRunner:
                 " ".join(self.command),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
-                text=True,
+                universal_newlines=True,
                 bufsize=1,
                 cwd=WORKSPACE_ROOT,
                 shell=True,
@@ -277,18 +264,9 @@ class TestRunner:
                         print(line, end="")
                 process.wait()
                 if process.returncode != 0:
-                    print(
-                        f"\n--- FAILED: Command for '{
-                            self.item_name}' on '{
-                            self.platform}' exited with code {
-                            process.returncode} ---",
-                        file=sys.stderr,
-                    )
+                    print(f"\n--- FAILED: Command for '{self.item_name}' on '{self.platform}' exited with code {process.returncode} ---",file=sys.stderr)
                     return False
-                print(
-                    f"\n--- SUCCESS: Command for '{
-                        self.item_name}' on '{
-                        self.platform}' finished. ---")
+                print(f"\n--- SUCCESS: Command for '{self.item_name}' on '{self.platform}' finished. ---")
                 return True
         except subprocess.SubprocessError as e:
             print(
@@ -334,7 +312,8 @@ class TestRunner:
         def handle_file_operations(src_file: Path, dest_file: Path):
             try:
                 dest_file.parent.mkdir(parents=True, exist_ok=True)
-                dest_file.unlink(missing_ok=True)
+                if dest_file.exists():
+                    dest_file.unlink()
                 shutil.copy(src_file, dest_file)
             except IOError as e:
                 print(f"--- Error archiving {src_file.name}: {e}", file=sys.stderr)
@@ -437,8 +416,7 @@ class TestOrchestrator:
         try:
             command = [sys.executable, str(ZEPHYR_PATCH_SCRIPT_DIR), "rm"]
             print(f"Executing: {' '.join(command)}")
-            subprocess.run(command, check=False,
-                           capture_output=True, text=True, cwd=WORKSPACE_ROOT)
+            subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, cwd=WORKSPACE_ROOT)
             print("--- SUCCESS: Zephyr patches reverted ---")
         except subprocess.SubprocessError as e:
             print(
@@ -460,13 +438,7 @@ class TestOrchestrator:
         if not self._select_items_to_run():
             return 1
 
-        print(
-            f"=== Found {
-                len(
-                    self.items_to_run)} item(s) to process: {
-                ', '.join(
-                    i['name'] for i in self.items_to_run)} ==="
-        )
+        print(f"=== Found {len(self.items_to_run)} item(s) to process: {', '.join(i['name'] for i in self.items_to_run)} ===")
         print(f"=== on platform(s): {', '.join(self.platforms)} ===")
 
         for platform in self.platforms:
@@ -502,8 +474,9 @@ class TestOrchestrator:
             result = subprocess.run(
                 command,
                 check=True,
-                capture_output=True,
-                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                universal_newlines=True,
                 cwd=WORKSPACE_ROOT)
             print(result.stdout)
             if result.stderr:
@@ -572,11 +545,7 @@ class TestOrchestrator:
 
         if self.args.platform:
             if self.args.platform not in all_supported_platforms:
-                print(
-                    f"Error: Platform '{
-                        self.args.platform}' is not in the list of supported platforms in YAML.",
-                    file=sys.stderr,
-                )
+                print(f"Error: Platform '{self.args.platform}' is not in the list of supported platforms in YAML.", file=sys.stderr)
                 return False
             self.platforms = [self.args.platform]
         else:
@@ -597,14 +566,8 @@ class TestOrchestrator:
             test_keys, sample_keys, unmatched = self._filter_items_by_name(
                 self.args.item_names)
             if unmatched:
-                print(
-                    f"Error: No items found for: {
-                        ', '.join(unmatched)}",
-                    file=sys.stderr)
-                print(
-                    "Note: Names must be fully qualified (e.g., 'tests.drivers.pwm').",
-                    file=sys.stderr,
-                )
+                print(f"Error: No items found for: {', '.join(unmatched)}", file=sys.stderr)
+                print("Note: Names must be fully qualified (e.g., 'tests.drivers.pwm').", file=sys.stderr)
                 return False
 
         if not test_keys and not sample_keys:
@@ -635,15 +598,17 @@ class TestOrchestrator:
         # Handle specific prefixes
         for name in local_names:
             matched = False
-            if name.startswith(f"{KEY_TESTS}."):
-                prefix = name.removeprefix(f"{KEY_TESTS}.")
+            key_tests_prefix = f"{KEY_TESTS}."
+            if name.startswith(key_tests_prefix):
+                prefix = name[len(key_tests_prefix):]
                 matches = {k for k in self.all_tests if k ==
                            prefix or k.startswith(f"{prefix}.")}
                 if matches:
                     selected_tests.update(matches)
                     matched = True
-            elif name.startswith(f"{KEY_SAMPLES}."):
-                prefix = name.removeprefix(f"{KEY_SAMPLES}.")
+            key_samples_prefix = f"{KEY_SAMPLES}."
+            if name.startswith(key_samples_prefix):
+                prefix = name[len(key_samples_prefix):]
                 matches = {k for k in self.all_samples if k ==
                            prefix or k.startswith(f"{prefix}.")}
                 if matches:
@@ -690,6 +655,7 @@ class TestOrchestrator:
 
 def main():
     """ Run test tool """
+    print(f"Running Test Tool with Python version: {sys.version}")
     orchestrator = TestOrchestrator()
     exit_code = orchestrator.run()
     sys.exit(exit_code)
