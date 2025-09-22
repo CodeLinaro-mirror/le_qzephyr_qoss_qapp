@@ -1,0 +1,7 @@
+sample:
+  description: QCC730 Bmps app
+    application
+  name: bmps app 
+common:
+  tags: introduction
+  harness: console
