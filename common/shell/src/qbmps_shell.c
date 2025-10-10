@@ -18,7 +18,8 @@ WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
 static void bmps_timer_cb(struct k_timer *timer);
 extern void wmi_ignore_bcmc_in_bmps(void *, uint8_t data);
-extern uint64_t bmps_duration = 0;
+//uint64_t bmps_duration;
+extern uint64_t bmps_duration;
 uint64_t bmps_start = 0;
 
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
@@ -56,7 +57,7 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
         k_timer_init(&bmps_timer, bmps_timer_cb, NULL);
         k_timer_start(&bmps_timer, K_MSEC(time), K_NO_WAIT);
         bmps_start = hres_timer_curr_time_us();
-        bmps_duration = bmps_start + (uint64_t)time*1000;
+        bmps_duration = bmps_start + (uint64_t)time*500;
         shell_print(ctx, "%s duration:%llu ms:%d\r\n", __func__, bmps_duration, time);
     }
 
