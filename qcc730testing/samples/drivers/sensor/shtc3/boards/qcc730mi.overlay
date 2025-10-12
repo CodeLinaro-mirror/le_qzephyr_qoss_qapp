@@ -29,3 +29,7 @@
 		clock-stretching;
 	};
 };
+
+&gpioa {
+	status = "okay";
+};

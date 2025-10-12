@@ -1,0 +1,177 @@
+2025-09-24 11:54:31,494 - twister - INFO - Using Ninja..
+2025-09-24 11:54:31,905 - twister - INFO - Zephyr version: v4.1.0
+2025-09-24 11:54:31,966 - twister - DEBUG - Running cmake script C:\Projects\Qualcomm\workspace\zephyr\cmake\verify-toolchain.cmake
+2025-09-24 11:54:31,973 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-DFORMAT=json', '-P', 'C:\\Projects\\Qualcomm\\workspace\\zephyr\\cmake\\verify-toolchain.cmake']
+2025-09-24 11:54:33,381 - twister - DEBUG - Finished running C:\Projects\Qualcomm\workspace\zephyr\cmake\verify-toolchain.cmake
+2025-09-24 11:54:33,382 - twister - INFO - Using 'zephyr' toolchain.
+2025-09-24 11:54:36,101 - twister - DEBUG - Reading testsuite configuration files under C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset...
+2025-09-24 11:54:36,103 - twister - DEBUG - Found possible testsuite in C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset
+2025-09-24 11:54:36,112 - twister - DEBUG - No duplicates found.
+2025-09-24 11:54:36,114 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-09-24 11:54:36,114 - twister - DEBUG -   vendor filter: []
+2025-09-24 11:54:36,114 - twister - DEBUG -     arch_filter: None
+2025-09-24 11:54:36,114 - twister - DEBUG -      tag_filter: None
+2025-09-24 11:54:36,114 - twister - DEBUG -     exclude_tag: None
+2025-09-24 11:54:36,114 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-09-24 11:54:36,115 - twister - INFO - Building initial testsuite list...
+2025-09-24 11:54:36,118 - twister - INFO - Writing JSON report C:\Projects\Qualcomm\workspace\twister-out\testplan.json
+2025-09-24 11:54:36,268 - twister - INFO - Adding tasks to the queue...
+2025-09-24 11:54:36,268 - twister - DEBUG - adding qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730
+2025-09-24 11:54:36,651 - twister - INFO - Added initial list of jobs to queue
+2025-09-24 11:54:38,329 - twister - DEBUG - Running cmake on C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset for qcc730mi/qcc730
+2025-09-24 11:54:38,339 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-BC:\\Projects\\Qualcomm\\workspace\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730', '-DTC_RUNID=b805b579351153de7eb7f57a211f2d37', '-DTC_NAME=tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730', '-DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y', '-DEXTRA_GEN_EDT_ARGS=--edtlib-Werror', '-GNinja', '-DPython3_EXECUTABLE=C:/Projects/Qualcomm/workspace/qcc730zephyrporting/.venv/Scripts/python.exe', '-DZEPHYR_TOOLCHAIN_VARIANT=zephyr', '-SC:\\Projects\\Qualcomm\\workspace\\zephyr\\tests\\drivers\\reset\\qcc730_reset', '-DBOARD=qcc730mi/qcc730']
+2025-09-24 11:54:39,055 - twister - DEBUG - Launched 12 jobs
+2025-09-24 11:54:54,847 - twister - DEBUG - Finished running cmake C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset for qcc730mi/qcc730 in 16.50 seconds
+2025-09-24 11:54:54,853 - twister - DEBUG - build test: qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730
+2025-09-24 11:54:54,853 - twister - DEBUG - Building C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset for qcc730mi/qcc730
+2025-09-24 11:54:54,862 - twister - DEBUG - Running C:\Program Files\CMake\bin\cmake.EXE --build C:\Projects\Qualcomm\workspace\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730
+2025-09-24 11:55:24,904 - twister - DEBUG - Finished building C:\Projects\Qualcomm\workspace\zephyr\tests\drivers\reset\qcc730_reset for qcc730mi/qcc730 in 30.05 seconds
+2025-09-24 11:55:24,905 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730
+2025-09-24 11:55:24,905 - twister - DEBUG - Determine test cases for test suite: drivers.reset.test_reset_qcc730
+2025-09-24 11:55:24,972 - twister - DEBUG - Test instance qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730 already has 5 testcase(s) known: [<TestCase drivers.reset.test_reset_qcc730.qcc730_reset.i2c0_reset with None>, <TestCase drivers.reset.test_reset_qcc730.qcc730_reset.gpioa_reset with None>, <TestCase drivers.reset.test_reset_qcc730.qcc730_reset.invalid_id with None>, <TestCase drivers.reset.test_reset_qcc730.qcc730_reset.uart0_reset with None>, <TestCase drivers.reset.test_reset_qcc730.qcc730_reset.qtimer_reset with None>]
+2025-09-24 11:55:24,972 - twister - DEBUG - Detected 5 Ztest case(s): [drivers.reset.test_reset_qcc730.qcc730_reset.invalid_id, drivers.reset.test_reset_qcc730.qcc730_reset.qtimer_reset, drivers.reset.test_reset_qcc730.qcc730_reset.uart0_reset, drivers.reset.test_reset_qcc730.qcc730_reset.i2c0_reset, drivers.reset.test_reset_qcc730.qcc730_reset.gpioa_reset] in C:\Projects\Qualcomm\workspace\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730\zephyr\zephyr.elf
+2025-09-24 11:55:24,979 - twister - DEBUG - run test: qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730
+2025-09-24 11:55:24,979 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-09-24 11:55:24,980 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-24 11:55:24,980 - twister - DEBUG - Using serial device COM17 @ 115200 baud
+2025-09-24 11:55:24,981 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', 'C:\\Projects\\Qualcomm\\workspace\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730', '--', '-a', '-m', 'rram']
+2025-09-24 11:55:42,943 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: C:/Projects/Qualcomm/workspace/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: C:\Projects\Qualcomm\SDK\qccsdk\tools\storage\firmware_desc_table\curr_age_fdt\frn_curr_age_with_app_bin.bin
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:60713
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/SDK/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.2210850715637207 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: C:\Projects\Qualcomm\workspace\zephyr\..\modules\hal\hal_qcom\zephyr\blobs\FERMION_SBL_HASHED.elf
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:64411
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.47234153747558594 seconds.
+
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:52403
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.46802353858947754 seconds.
+
+-- runners.nvmprogrammer: Flashing file: C:/Projects/Qualcomm/workspace/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730/zephyr/zephyr.bin
+Python 3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\Projects\Qualcomm\Env\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ../../jtag/openocd/ch347/qcc730.cfg
+********************************************************************************
+Starting GDB Client...
+Starting GDB client from start function!
+GDB client path: C:\Users\User\zephyr-sdk-0.17.0\arm-zephyr-eabi\bin\arm-zephyr-eabi-gdb-py
+Using GDB client: arm-zephyr-eabi-gdb-py
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:59929
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/Projects/Qualcomm/workspace/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730/zephyr/zephyr.bin
+Programming 24432 bytes to rram 0x0021A400
+.
+Image programmed successfully, time elapsed 0.6086902618408203 seconds.
+
+
+2025-09-24 11:55:42,944 - twister - DEBUG - Attach serial device COM17 @ 115200 baud
+2025-09-24 11:55:43,087 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-09-24 11:55:43,088 - twister - DEBUG - DEVICE: Running TESTSUITE qcc730_reset
+2025-09-24 11:55:43,088 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,089 - twister - DEBUG - DEVICE: START - test_gpioa_reset
+2025-09-24 11:55:43,089 - twister - DEBUG - DEVICE: PASS - test_gpioa_reset in 0.001 seconds
+2025-09-24 11:55:43,090 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,090 - twister - DEBUG - DEVICE: START - test_i2c0_reset
+2025-09-24 11:55:43,091 - twister - DEBUG - DEVICE: PASS - test_i2c0_reset in 0.001 seconds
+2025-09-24 11:55:43,091 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,091 - twister - DEBUG - DEVICE: START - test_invalid_id
+2025-09-24 11:55:43,092 - twister - DEBUG - DEVICE: E: Invalid reset ID 64
+2025-09-24 11:55:43,092 - twister - DEBUG - DEVICE: E: Invalid reset ID 64
+2025-09-24 11:55:43,092 - twister - DEBUG - DEVICE: E: Invalid reset ID 64
+2025-09-24 11:55:43,113 - twister - DEBUG - DEVICE: PASS - test_invalid_id in 0.007 seconds
+2025-09-24 11:55:43,114 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,114 - twister - DEBUG - DEVICE: START - test_qtimer_reset
+2025-09-24 11:55:43,114 - twister - DEBUG - DEVICE: PASS - test_qtimer_reset in 0.001 seconds
+2025-09-24 11:55:43,126 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,162 - twister - DEBUG - DEVICE: START - test_uart0_reset
+2025-09-24 11:55:43,162 - twister - DEBUG - DEVICE: PASS - test_uart0_reset in 0.005 seconds
+2025-09-24 11:55:43,163 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,163 - twister - DEBUG - DEVICE: TESTSUITE qcc730_reset succeeded
+2025-09-24 11:55:43,164 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-09-24 11:55:43,164 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [qcc730_reset]: pass = 5, fail = 0, skip = 0, total = 5 duration = 0.015 seconds
+2025-09-24 11:55:43,165 - twister - DEBUG - DEVICE: - PASS - [qcc730_reset.test_gpioa_reset] duration = 0.001 seconds
+2025-09-24 11:55:43,166 - twister - DEBUG - DEVICE: - PASS - [qcc730_reset.test_i2c0_reset] duration = 0.001 seconds
+2025-09-24 11:55:43,166 - twister - DEBUG - DEVICE: - PASS - [qcc730_reset.test_invalid_id] duration = 0.007 seconds
+2025-09-24 11:55:43,192 - twister - DEBUG - DEVICE: - PASS - [qcc730_reset.test_qtimer_reset] duration = 0.001 seconds
+2025-09-24 11:55:43,192 - twister - DEBUG - DEVICE: - PASS - [qcc730_reset.test_uart0_reset] duration = 0.005 seconds
+2025-09-24 11:55:43,192 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-09-24 11:55:43,193 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-24 11:55:43,193 - twister - DEBUG - DEVICE: RunID: b805b579351153de7eb7f57a211f2d37
+2025-09-24 11:55:43,193 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-09-24 11:55:43,224 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-24 11:55:43,224 - twister - DEBUG - run status: qcc730mi/qcc730\zephyr\tests/drivers/reset/qcc730_reset/drivers.reset.test_reset_qcc730 passed
+2025-09-24 11:55:43,285 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-09-24 11:55:43,285 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 71.79 seconds.
+2025-09-24 11:55:43,285 - twister - INFO - 5 of 5 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-09-24 11:55:43,285 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-09-24 11:55:43,286 - twister - INFO - Saving reports...
+2025-09-24 11:55:43,286 - twister - INFO - Writing JSON report C:\Projects\Qualcomm\workspace\twister-out\twister.json
+2025-09-24 11:55:43,289 - twister - INFO - Writing xunit report C:\Projects\Qualcomm\workspace\twister-out\twister.xml...
+2025-09-24 11:55:43,292 - twister - INFO - Writing xunit report C:\Projects\Qualcomm\workspace\twister-out\twister_report.xml...
+2025-09-24 11:55:43,294 - twister - INFO - Run completed

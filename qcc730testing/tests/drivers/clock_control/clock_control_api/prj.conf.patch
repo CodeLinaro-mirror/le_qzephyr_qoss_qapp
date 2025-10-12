@@ -1,0 +1,7 @@
+diff --git a/tests/drivers/clock_control/clock_control_api/prj.conf b/tests/drivers/clock_control/clock_control_api/prj.conf
+index 9467c292689..903dc40185b 100644
+--- a/tests/drivers/clock_control/clock_control_api/prj.conf
++++ b/tests/drivers/clock_control/clock_control_api/prj.conf
+@@ -1 +1,2 @@
+ CONFIG_ZTEST=y
++CONFIG_CLOCK_CONTROL=y

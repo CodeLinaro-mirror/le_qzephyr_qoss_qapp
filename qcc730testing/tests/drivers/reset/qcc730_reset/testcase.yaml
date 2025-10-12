@@ -1,0 +1,8 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
+tests:
+  drivers.reset.test_reset_qcc730:
+    harness: ztest
+    platform_allow:
+      - qcc730mi

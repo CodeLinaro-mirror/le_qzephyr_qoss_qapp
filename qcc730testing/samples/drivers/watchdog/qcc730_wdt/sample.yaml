@@ -1,16 +1,30 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: Apache-2.0
+
 sample:
   name: Watchdog driver sample for QCC730
 common:
+  timeout: 2097 # max QCC730 watchdog timeout is 21-bits (2097151 ms)
   harness: console
   harness_config:
     type: multi_line
     ordered: true
     regex:
       - "Watchdog sample application"
+      - "Watchdog install error that we want to see"
       - "Feeding watchdog..."
       - "No more feeds, waiting for reset"
       - "Watchdog sample application"
 tests:
-  sample.drivers.watchdog.qcc730_wdt:
+  sample.drivers.watchdog.qcc730_wdt_2s:
     platform_allow:
       - qcc730mi
+    extra_configs:
+      - CONFIG_QCC730_WDT_TIMEOUT_MS=2000
+      - CONFIG_QCC730_WDT_FEED_INTERVAL_MS=500
+  sample.drivers.watchdog.qcc730_wdt_60s:
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_QCC730_WDT_TIMEOUT_MS=60000
+      - CONFIG_QCC730_WDT_FEED_INTERVAL_MS=3000

@@ -9,6 +9,7 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/ztest.h>
+#include <zephyr/pm/device.h>
 #include "ferm_i2c.h"
 
 #define CONTINUOUS_TRANSFER_COUNT_TEST 1000U
@@ -135,6 +136,33 @@ ZTEST(lis2dw12_sensor_api_test, test_error_handling)
 	struct i2c_msg msg_with_10bit_addr = {.flags = I2C_MSG_ADDR_10_BITS};
 	ret = i2c_transfer(i2c_dev, &msg_with_10bit_addr, 1, 0);
 	zassert_equal(ret, -ENOTSUP, "10bit addressing wasn't rejected properly");
+}
+
+ZTEST(lis2dw12_sensor_api_test, test_suspend_resume_success)
+{
+	int ret;
+
+	/* First do a normal I2C transfer to ensure device is working
+	 * (WHO_AM_I register) */
+	uint8_t write_buf[1] = { 0x44 };
+	ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), 0x19);
+	zassert_true(ret == 0, "Initial I2C write failed");
+
+	/* Suspend device */
+	ret = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_SUSPEND);
+	zassert_true(ret == 0, "Suspend action failed");
+
+	ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), 0x19);
+	/* -EBUSY error is expected */
+	zassert_true(ret < 0, "I2C write after suspend failed unexpectedly");
+
+	/* Resume device explicitly */
+	ret = pm_device_action_run(i2c_dev, PM_DEVICE_ACTION_RESUME);
+	zassert_true(ret == 0, "Resume action failed");
+
+	/* After resume, transfer must work again */
+	ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), 0x19);
+	zassert_true(ret == 0, "I2C write after resume failed");
 }
 
 static void *lis2dw12_test_setup(void)

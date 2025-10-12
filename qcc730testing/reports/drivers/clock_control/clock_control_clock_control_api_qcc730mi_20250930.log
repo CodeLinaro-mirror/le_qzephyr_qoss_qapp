@@ -1,0 +1,202 @@
+2025-09-30 16:07:47,373 - twister - INFO - Using Ninja..
+2025-09-30 16:07:48,682 - twister - INFO - Zephyr version: v4.1.0
+2025-09-30 16:07:48,933 - twister - DEBUG - Running cmake script C:\zp\zephyr\cmake\verify-toolchain.cmake
+2025-09-30 16:07:48,945 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-DFORMAT=json', '-P', 'C:\\zp\\zephyr\\cmake\\verify-toolchain.cmake']
+2025-09-30 16:07:54,783 - twister - DEBUG - Finished running C:\zp\zephyr\cmake\verify-toolchain.cmake
+2025-09-30 16:07:54,784 - twister - INFO - Using 'zephyr' toolchain.
+2025-09-30 16:08:30,115 - twister - DEBUG - Reading testsuite configuration files under C:\zp\zephyr\tests\drivers\clock_control\clock_control_api...
+2025-09-30 16:08:30,115 - twister - DEBUG - Found possible testsuite in C:\zp\zephyr\tests\drivers\clock_control\clock_control_api
+2025-09-30 16:08:30,134 - twister - DEBUG - No duplicates found.
+2025-09-30 16:08:30,172 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-09-30 16:08:30,172 - twister - DEBUG -   vendor filter: []
+2025-09-30 16:08:30,172 - twister - DEBUG -     arch_filter: None
+2025-09-30 16:08:30,172 - twister - DEBUG -      tag_filter: None
+2025-09-30 16:08:30,173 - twister - DEBUG -     exclude_tag: None
+2025-09-30 16:08:30,173 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-09-30 16:08:30,173 - twister - INFO - Building initial testsuite list...
+2025-09-30 16:08:30,180 - twister - INFO - Writing JSON report C:\zp\twister-out\testplan.json
+2025-09-30 16:08:30,564 - twister - INFO - Adding tasks to the queue...
+2025-09-30 16:08:30,565 - twister - DEBUG - adding qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl
+2025-09-30 16:08:31,530 - twister - INFO - Added initial list of jobs to queue
+2025-09-30 16:08:33,989 - twister - DEBUG - Running cmake on C:\zp\zephyr\tests\drivers\clock_control\clock_control_api for qcc730mi/qcc730
+2025-09-30 16:08:34,001 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-BC:\\zp\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl', '-DTC_RUNID=fae99755761f651a71f17401ab009b49', '-DTC_NAME=tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl', '-DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y', '-DEXTRA_GEN_EDT_ARGS=--edtlib-Werror', '-GNinja', '-DPython3_EXECUTABLE=C:/zp/venv/Scripts/python.exe', '-DZEPHYR_TOOLCHAIN_VARIANT=zephyr', '-SC:\\zp\\zephyr\\tests\\drivers\\clock_control\\clock_control_api', '-DBOARD=qcc730mi/qcc730']
+2025-09-30 16:08:37,454 - twister - DEBUG - Launched 16 jobs
+2025-09-30 16:11:08,064 - twister - DEBUG - Finished running cmake C:\zp\zephyr\tests\drivers\clock_control\clock_control_api for qcc730mi/qcc730 in 154.06 seconds
+2025-09-30 16:11:08,071 - twister - DEBUG - build test: qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl
+2025-09-30 16:11:08,071 - twister - DEBUG - Building C:\zp\zephyr\tests\drivers\clock_control\clock_control_api for qcc730mi/qcc730
+2025-09-30 16:11:08,142 - twister - DEBUG - Running C:\Program Files\CMake\bin\cmake.EXE --build C:\zp\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl
+2025-09-30 16:13:29,079 - twister - DEBUG - Finished building C:\zp\zephyr\tests\drivers\clock_control\clock_control_api for qcc730mi/qcc730 in 141.00 seconds
+2025-09-30 16:13:29,081 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl
+2025-09-30 16:13:29,081 - twister - DEBUG - Determine test cases for test suite: drivers.clock.qcc730_clkctrl
+2025-09-30 16:13:29,337 - twister - DEBUG - Test instance qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl already has 6 testcase(s) known: [<TestCase drivers.clock.qcc730_clkctrl.clock_control.async_on_stopped with None>, <TestCase drivers.clock.qcc730_clkctrl.clock_control.double_stop with None>, <TestCase drivers.clock.qcc730_clkctrl.clock_control.async_on with None>, <TestCase drivers.clock.qcc730_clkctrl.clock_control.on_off_status with None>, <TestCase drivers.clock.qcc730_clkctrl.clock_control.double_start with None>, <TestCase drivers.clock.qcc730_clkctrl.clock_control.uart_gpio_register_writes with None>]
+2025-09-30 16:13:29,338 - twister - DEBUG - Detected 6 Ztest case(s): [drivers.clock.qcc730_clkctrl.clock_control.double_stop, drivers.clock.qcc730_clkctrl.clock_control.uart_gpio_register_writes, drivers.clock.qcc730_clkctrl.clock_control.double_start, drivers.clock.qcc730_clkctrl.clock_control.async_on_stopped, drivers.clock.qcc730_clkctrl.clock_control.async_on, drivers.clock.qcc730_clkctrl.clock_control.on_off_status] in C:\zp\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl\zephyr\zephyr.elf
+2025-09-30 16:13:29,352 - twister - DEBUG - run test: qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl
+2025-09-30 16:13:29,353 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-09-30 16:13:29,354 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-30 16:13:29,354 - twister - DEBUG - Using serial device COM3 @ 115200 baud
+2025-09-30 16:13:29,356 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', 'C:\\zp\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl', '--', '-a', '-m', 'rram']
+2025-09-30 16:13:54,813 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: C:/zp/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: C:\zp\qccsdk\qccsdk\tools\storage\firmware_desc_table\curr_age_fdt\frn_curr_age_with_app_bin.bin
+Python 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\tools\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:54741
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/zp/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.22131085395812988 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: C:\zp\zephyr\..\modules\hal\hal_qcom\zephyr\blobs\FERMION_SBL_HASHED.elf
+Python 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\tools\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:54742
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/zp/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.5038318634033203 seconds.
+
+Python 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\tools\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:54473
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/zp/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.4698314666748047 seconds.
+
+-- runners.nvmprogrammer: Flashing file: C:/zp/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl/zephyr/zephyr.bin
+Python 3.13.5 (tags/v3.13.5:6cb20a2, Jun 11 2025, 16:15:46) [MSC v.1943 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\tools\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:57175
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/zp/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl/zephyr/zephyr.bin
+Programming 27596 bytes to rram 0x0021A400
+.
+Image programmed successfully, time elapsed 0.6422371864318848 seconds.
+
+
+2025-09-30 16:13:54,816 - twister - DEBUG - Attach serial device COM3 @ 115200 baud
+2025-09-30 16:13:54,847 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:54,849 - twister - DEBUG - DEVICE: SKIP - test_async_on_stopped in 0.005 seconds
+2025-09-30 16:13:54,849 - twister - DEBUG - TC_END: Ztest case 'async_on_stopped' is not known in {} running suite(s).
+2025-09-30 16:13:54,849 - twister - DEBUG - Could not find a matching testcase for drivers.clock.qcc730_clkctrl.async_on_stopped
+2025-09-30 16:13:54,850 - twister - WARNING - TC_END: END case 'drivers.clock.qcc730_clkctrl.async_on_stopped' without START detected
+2025-09-30 16:13:54,852 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:54,853 - twister - DEBUG - DEVICE: START - test_double_start
+2025-09-30 16:13:54,853 - twister - DEBUG - TC_START: Ztest case 'double_start' is not known in {} running suite(s).
+2025-09-30 16:13:54,854 - twister - DEBUG - Could not find a matching testcase for drivers.clock.qcc730_clkctrl.double_start
+2025-09-30 16:13:54,855 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:54,953 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,056 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,159 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,262 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,368 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:55,482 - twister - DEBUG - DEVICE: PASS - test_double_start in 0.623 seconds
+2025-09-30 16:13:55,483 - twister - DEBUG - TC_END: Ztest case 'double_start' is not known in {} running suite(s).
+2025-09-30 16:13:55,485 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:55,485 - twister - DEBUG - DEVICE: START - test_double_stop
+2025-09-30 16:13:55,486 - twister - DEBUG - TC_START: Ztest case 'double_stop' is not known in {} running suite(s).
+2025-09-30 16:13:55,486 - twister - DEBUG - Could not find a matching testcase for drivers.clock.qcc730_clkctrl.double_stop
+2025-09-30 16:13:55,487 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:55,588 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,691 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,794 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:55,897 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:56,002 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:56,116 - twister - DEBUG - DEVICE: PASS - test_double_stop in 0.622 seconds
+2025-09-30 16:13:56,117 - twister - DEBUG - TC_END: Ztest case 'double_stop' is not known in {} running suite(s).
+2025-09-30 16:13:56,118 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:56,119 - twister - DEBUG - DEVICE: START - test_on_off_status
+2025-09-30 16:13:56,119 - twister - DEBUG - TC_START: Ztest case 'on_off_status' is not known in {} running suite(s).
+2025-09-30 16:13:56,119 - twister - DEBUG - Could not find a matching testcase for drivers.clock.qcc730_clkctrl.on_off_status
+2025-09-30 16:13:56,120 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:56,223 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:56,326 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:56,429 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:56,534 - twister - DEBUG - DEVICE: I: setup done
+2025-09-30 16:13:56,639 - twister - DEBUG - DEVICE: I: setup done (UART/GPIO skipped)
+2025-09-30 16:13:56,785 - twister - DEBUG - DEVICE: PASS - test_on_off_status in 0.624 seconds
+2025-09-30 16:13:56,785 - twister - DEBUG - TC_END: Ztest case 'on_off_status' is not known in {} running suite(s).
+2025-09-30 16:13:56,786 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:56,788 - twister - DEBUG - DEVICE: START - test_uart_gpio_register_writes
+2025-09-30 16:13:56,788 - twister - DEBUG - TC_START: Ztest case 'uart_gpio_register_writes' is not known in {} running suite(s).
+2025-09-30 16:13:56,788 - twister - DEBUG - Could not find a matching testcase for drivers.clock.qcc730_clkctrl.uart_gpio_register_writes
+2025-09-30 16:13:56,789 - twister - DEBUG - DEVICE: I: === Testing UART and GPIO Register Writes ===
+2025-09-30 16:13:56,790 - twister - DEBUG - DEVICE: I: UART OFF - ROOT_CLK: 0
+2025-09-30 16:13:56,791 - twister - DEBUG - DEVICE: I: UART ON  - ROOT_CLK: 1
+2025-09-30 16:13:56,792 - twister - DEBUG - DEVICE: I: GPIO OFF - ROOT_CLK: 0
+2025-09-30 16:13:56,793 - twister - DEBUG - DEVICE: I: GPIO ON  - ROOT_CLK: 1
+2025-09-30 16:13:56,794 - twister - DEBUG - DEVICE: I: UART and GPIO clock register write test PASSED
+2025-09-30 16:13:56,796 - twister - DEBUG - DEVICE: PASS - test_uart_gpio_register_writes in 0.020 seconds
+2025-09-30 16:13:56,796 - twister - DEBUG - TC_END: Ztest case 'uart_gpio_register_writes' is not known in {} running suite(s).
+2025-09-30 16:13:56,798 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:56,831 - twister - DEBUG - DEVICE: TESTSUITE clock_control succeeded
+2025-09-30 16:13:56,831 - twister - WARNING - TS_END: END suite 'clock_control' without START detected
+2025-09-30 16:13:56,833 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-09-30 16:13:56,835 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [clock_control]: pass = 4, fail = 0, skip = 2, total = 6 duration = 1.899 seconds
+2025-09-30 16:13:56,836 - twister - WARNING - TS_SUM: END suite 'clock_control' without START detected
+2025-09-30 16:13:56,837 - twister - DEBUG - DEVICE: - SKIP - [clock_control.test_async_on] duration = 0.005 seconds
+2025-09-30 16:13:56,839 - twister - DEBUG - DEVICE: - SKIP - [clock_control.test_async_on_stopped] duration = 0.005 seconds
+2025-09-30 16:13:56,840 - twister - DEBUG - DEVICE: - PASS - [clock_control.test_double_start] duration = 0.623 seconds
+2025-09-30 16:13:56,841 - twister - DEBUG - DEVICE: - PASS - [clock_control.test_double_stop] duration = 0.622 seconds
+2025-09-30 16:13:56,842 - twister - DEBUG - DEVICE: - PASS - [clock_control.test_on_off_status] duration = 0.624 seconds
+2025-09-30 16:13:56,857 - twister - DEBUG - DEVICE: - PASS - [clock_control.test_uart_gpio_register_writes] duration = 0.020 seconds
+2025-09-30 16:13:56,859 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-09-30 16:13:56,861 - twister - DEBUG - DEVICE: ===================================================================
+2025-09-30 16:13:56,862 - twister - DEBUG - DEVICE: RunID: fae99755761f651a71f17401ab009b49
+2025-09-30 16:13:56,863 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-09-30 16:13:56,883 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-09-30 16:13:56,883 - twister - DEBUG - run status: qcc730mi/qcc730\zephyr\tests/drivers/clock_control/clock_control_api/drivers.clock.qcc730_clkctrl passed
+2025-09-30 16:13:57,000 - twister - INFO - 4 test scenarios (4 configurations) selected, 3 configurations filtered (3 by static filter, 0 at runtime).
+2025-09-30 16:13:57,111 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 369.74 seconds.
+2025-09-30 16:13:57,112 - twister - INFO - 4 of 10 executed test cases passed (40.00%), 6 blocked on 1 out of total 949 platforms (0.11%).
+2025-09-30 16:13:57,112 - twister - INFO - 1 selected test cases not executed: 1 skipped.
+2025-09-30 16:13:57,112 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-09-30 16:13:57,113 - twister - INFO - Saving reports...
+2025-09-30 16:13:57,114 - twister - INFO - Writing JSON report C:\zp\twister-out\twister.json
+2025-09-30 16:13:57,117 - twister - INFO - Writing xunit report C:\zp\twister-out\twister.xml...
+2025-09-30 16:13:57,142 - twister - INFO - Writing xunit report C:\zp\twister-out\twister_report.xml...
+2025-09-30 16:13:57,148 - twister - INFO - Run completed

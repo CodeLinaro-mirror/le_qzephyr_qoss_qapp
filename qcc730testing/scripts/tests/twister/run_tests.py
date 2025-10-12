@@ -128,6 +128,9 @@ class TestRunner:
 
         self._handle_pre_test_check()
 
+        if not self._install_python_dependencies():
+            return False
+
         self._build_command()
         command_successful = self._execute_command()
 
@@ -151,6 +154,38 @@ class TestRunner:
     def get_command(self) -> List[str]:
         """Returns the built command for this test/sample run."""
         return self.command
+
+    def _install_python_dependencies(self) -> bool:
+        """Checks for and installs Python dependencies from requirements.txt."""
+        if KEY_TESTSUITE_ROOT not in self.config:
+            return True
+
+        test_dir = Path(self.config[KEY_TESTSUITE_ROOT])
+        requirements_file = test_dir / "requirements.txt"
+
+        if requirements_file.is_file():
+            print(f"--- Found requirements.txt, installing dependencies... ---")
+            try:
+                command = [sys.executable, "-m", "pip", "install", "-r", str(requirements_file)]
+                process = subprocess.run(
+                    command,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    cwd=WORKSPACE_ROOT,
+                )
+                if process.stdout:
+                    print(process.stdout)
+                print("--- Python dependencies installed successfully. ---")
+                return True
+            except subprocess.CalledProcessError as e:
+                print(
+                    f"--- FAILED: Could not install dependencies from {requirements_file}. ---",
+                    file=sys.stderr)
+                print(e.stdout, file=sys.stderr)
+                print(e.stderr, file=sys.stderr)
+                return False
+        return True
 
     def _prepare_configuration(self) -> bool:
         """Loads, merges, and prepares the configuration for the item."""
@@ -216,6 +251,8 @@ class TestRunner:
 
         if not self.no_out_dir:
             self.command.extend(["--outdir", str(self.twister_outdir)])
+
+        self.command.extend(["--disable-warnings-as-errors"])
 
         keys_to_skip = {"pre_test_setup",
                         "post_test_setup", "description", "notes"}

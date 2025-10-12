@@ -1,0 +1,409 @@
+diff --git a/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c b/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
+index 2c857d28270..74b59a45a74 100644
+--- a/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
++++ b/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
+@@ -6,35 +6,52 @@
+ #include <zephyr/ztest.h>
+ #include <zephyr/drivers/clock_control.h>
+ #include <zephyr/logging/log.h>
++
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++#include <soc.h>
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++
+ LOG_MODULE_REGISTER(test);
+ 
++/* Direct register access for verification */
++#define PMU_BASE_ADDR DT_REG_ADDR(DT_NODELABEL(pmu))
++
+ #if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_clock)
+ #include "nrf_device_subsys.h"
+ #elif DT_HAS_COMPAT_STATUS_OKAY(espressif_esp32_rtc)
+ #include "esp32_device_subsys.h"
+ #elif DT_HAS_COMPAT_STATUS_OKAY(silabs_series_clock)
+ #include "silabs_device_subsys.h"
++#elif DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++#include "qcc730_device_subsys.h"
+ #else
+ #error "Unsupported board"
+ #endif
+ 
+-typedef void (*test_func_t)(const struct device *dev,
+-			    clock_control_subsys_t subsys,
++typedef void (*test_func_t)(const struct device *dev, clock_control_subsys_t subsys,
+ 			    uint32_t startup_us);
+ 
+-typedef bool (*test_capability_check_t)(const struct device *dev,
+-					clock_control_subsys_t subsys);
++typedef bool (*test_capability_check_t)(const struct device *dev, clock_control_subsys_t subsys);
+ 
+ static void setup_instance(const struct device *dev, clock_control_subsys_t subsys)
+ {
+ 	int err;
+ 	k_busy_wait(1000);
++
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	/* Skip UART/GPIO since setup function turns clock off for subsys and they are used for
++	 * logging */
++	if ((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO) {
++		LOG_INF("setup done (UART/GPIO skipped)");
++		return;
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++
+ 	do {
+ 		err = clock_control_off(dev, subsys);
+ #if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_clock)
+ 		if (err == -EPERM) {
+-			struct onoff_manager *mgr =
+-				z_nrf_clock_control_get_onoff(subsys);
++			struct onoff_manager *mgr = z_nrf_clock_control_get_onoff(subsys);
+ 
+ 			err = onoff_release(mgr);
+ 			if (err >= 0) {
+@@ -42,14 +59,12 @@ static void setup_instance(const struct device *dev, clock_control_subsys_t subs
+ 			}
+ 		}
+ #endif
+-	} while (clock_control_get_status(dev, subsys) !=
+-			CLOCK_CONTROL_STATUS_OFF);
++	} while (clock_control_get_status(dev, subsys) != CLOCK_CONTROL_STATUS_OFF);
+ 
+ 	LOG_INF("setup done");
+ }
+ 
+-static void tear_down_instance(const struct device *dev,
+-				clock_control_subsys_t subsys)
++static void tear_down_instance(const struct device *dev, clock_control_subsys_t subsys)
+ {
+ #if DT_HAS_COMPAT_STATUS_OKAY(nordic_nrf_clock)
+ 	/* Turn on LF clock using onoff service if it is disabled. */
+@@ -61,7 +76,7 @@ static void tear_down_instance(const struct device *dev,
+ 	zassert_true(device_is_ready(clk), "Clock dev is not ready");
+ 
+ 	if (clock_control_get_status(clk, CLOCK_CONTROL_NRF_SUBSYS_LF) !=
+-		CLOCK_CONTROL_STATUS_OFF) {
++	    CLOCK_CONTROL_STATUS_OFF) {
+ 		return;
+ 	}
+ 
+@@ -76,10 +91,8 @@ static void tear_down_instance(const struct device *dev,
+ #endif
+ }
+ 
+-static void test_with_single_instance(const struct device *dev,
+-				      clock_control_subsys_t subsys,
+-				      uint32_t startup_time,
+-				      test_func_t func,
++static void test_with_single_instance(const struct device *dev, clock_control_subsys_t subsys,
++				      uint32_t startup_time, test_func_t func,
+ 				      test_capability_check_t capability_check)
+ {
+ 	setup_instance(dev, subsys);
+@@ -94,17 +107,15 @@ static void test_with_single_instance(const struct device *dev,
+ 	/* Allow logs to be printed. */
+ 	k_sleep(K_MSEC(100));
+ }
+-static void test_all_instances(test_func_t func,
+-				test_capability_check_t capability_check)
++static void test_all_instances(test_func_t func, test_capability_check_t capability_check)
+ {
+ 	for (size_t i = 0; i < ARRAY_SIZE(devices); i++) {
+ 		for (size_t j = 0; j < devices[i].subsys_cnt; j++) {
+-			zassert_true(device_is_ready(devices[i].dev),
+-					"Device %s is not ready", devices[i].dev->name);
+-			test_with_single_instance(devices[i].dev,
+-					devices[i].subsys_data[j].subsys,
+-					devices[i].subsys_data[j].startup_us,
+-					func, capability_check);
++			zassert_true(device_is_ready(devices[i].dev), "Device %s is not ready",
++				     devices[i].dev->name);
++			test_with_single_instance(devices[i].dev, devices[i].subsys_data[j].subsys,
++						  devices[i].subsys_data[j].startup_us, func,
++						  capability_check);
+ 		}
+ 	}
+ }
+@@ -112,30 +123,65 @@ static void test_all_instances(test_func_t func,
+ /*
+  * Basic test for checking correctness of getting clock status.
+  */
+-static void test_on_off_status_instance(const struct device *dev,
+-					clock_control_subsys_t subsys,
++static void test_on_off_status_instance(const struct device *dev, clock_control_subsys_t subsys,
+ 					uint32_t startup_us)
+ {
+ 	enum clock_control_status status;
+ 	int err;
+ 
+ 	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
++
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	/* Skip UART/GPIO double stop test since it's used for logging */
++	if ((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO) {
++		zassert_equal(CLOCK_CONTROL_STATUS_ON, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++	} else {
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++		zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
+ 
+ 	err = clock_control_on(dev, subsys);
+-	zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	if ((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO) {
++		zassert_equal(-EALREADY, err, "%s: Unexpected err (%d)", dev->name, err);
++	} else {
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++		zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
+ 
+ 	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(status, CLOCK_CONTROL_STATUS_ON,
+-			"%s: Unexpected status (%d)", dev->name, status);
++	zassert_equal(status, CLOCK_CONTROL_STATUS_ON, "%s: Unexpected status (%d)", dev->name,
++		      status);
+ 
+-	err = clock_control_off(dev, subsys);
+-	zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	if (!((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO)) {
++		err = clock_control_off(dev, subsys);
++		zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
+ 
+ 	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
++
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	/* Skip UART/GPIO double stop test since it's used for logging */
++	if ((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO) {
++		zassert_equal(CLOCK_CONTROL_STATUS_ON, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++	} else {
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++		zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++
+ }
+ 
+ ZTEST(clock_control, test_on_off_status)
+@@ -143,8 +189,7 @@ ZTEST(clock_control, test_on_off_status)
+ 	test_all_instances(test_on_off_status_instance, NULL);
+ }
+ 
+-static void async_capable_callback(const struct device *dev,
+-				   clock_control_subsys_t subsys,
++static void async_capable_callback(const struct device *dev, clock_control_subsys_t subsys,
+ 				   void *user_data)
+ {
+ 	/* empty */
+@@ -163,8 +208,7 @@ static bool async_capable(const struct device *dev, clock_control_subsys_t subsy
+ 		return false;
+ 	}
+ 
+-	while (clock_control_get_status(dev, subsys) !=
+-		CLOCK_CONTROL_STATUS_ON) {
++	while (clock_control_get_status(dev, subsys) != CLOCK_CONTROL_STATUS_ON) {
+ 		/* pend util clock is started */
+ 	}
+ 
+@@ -180,17 +224,15 @@ static bool async_capable(const struct device *dev, clock_control_subsys_t subsy
+ /*
+  * Test checks that callbacks are called after clock is started.
+  */
+-static void clock_on_callback(const struct device *dev,
+-				clock_control_subsys_t subsys,
+-				void *user_data)
++static void clock_on_callback(const struct device *dev, clock_control_subsys_t subsys,
++			      void *user_data)
+ {
+ 	bool *executed = (bool *)user_data;
+ 
+ 	*executed = true;
+ }
+ 
+-static void test_async_on_instance(const struct device *dev,
+-				   clock_control_subsys_t subsys,
++static void test_async_on_instance(const struct device *dev, clock_control_subsys_t subsys,
+ 				   uint32_t startup_us)
+ {
+ 	enum clock_control_status status;
+@@ -198,8 +240,8 @@ static void test_async_on_instance(const struct device *dev,
+ 	bool executed = false;
+ 
+ 	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
++	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)", dev->name,
++		      status);
+ 
+ 	err = clock_control_async_on(dev, subsys, clock_on_callback, &executed);
+ 	zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
+@@ -208,9 +250,8 @@ static void test_async_on_instance(const struct device *dev,
+ 	k_busy_wait(startup_us);
+ 
+ 	zassert_true(executed, "%s: Expected flag to be true", dev->name);
+-	zassert_equal(CLOCK_CONTROL_STATUS_ON,
+-			clock_control_get_status(dev, subsys),
+-			"Unexpected clock status");
++	zassert_equal(CLOCK_CONTROL_STATUS_ON, clock_control_get_status(dev, subsys),
++		      "Unexpected clock status");
+ }
+ 
+ ZTEST(clock_control, test_async_on)
+@@ -224,8 +265,7 @@ ZTEST(clock_control, test_async_on)
+  * is reported.
+  */
+ static void test_async_on_stopped_on_instance(const struct device *dev,
+-					      clock_control_subsys_t subsys,
+-					      uint32_t startup_us)
++					      clock_control_subsys_t subsys, uint32_t startup_us)
+ {
+ 	enum clock_control_status status;
+ 	int err;
+@@ -233,8 +273,8 @@ static void test_async_on_stopped_on_instance(const struct device *dev,
+ 	bool executed = false;
+ 
+ 	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
++	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)", dev->name,
++		      status);
+ 
+ 	/* lock to prevent clock interrupt for fast starting clocks.*/
+ 	key = irq_lock();
+@@ -260,19 +300,25 @@ ZTEST(clock_control, test_async_on_stopped)
+ /*
+  * Test checks that the second start returns error.
+  */
+-static void test_double_start_on_instance(const struct device *dev,
+-						clock_control_subsys_t subsys,
+-						uint32_t startup_us)
++static void test_double_start_on_instance(const struct device *dev, clock_control_subsys_t subsys,
++					  uint32_t startup_us)
+ {
+ 	enum clock_control_status status;
+ 	int err;
+ 
+-	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
+-
+-	err = clock_control_on(dev, subsys);
+-	zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	/* Skip off state checks  and first clock on for GPIO and UART */
++	if (!((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO)) {
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++
++		status = clock_control_get_status(dev, subsys);
++		zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++		err = clock_control_on(dev, subsys);
++		zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
+ 
+ 	err = clock_control_on(dev, subsys);
+ 	zassert_true(err < 0, "%s: Unexpected return value:%d", dev->name, err);
+@@ -283,23 +329,76 @@ ZTEST(clock_control, test_double_start)
+ 	test_all_instances(test_double_start_on_instance, NULL);
+ }
+ 
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++/* Test UART and GPIO clock register writes */
++ZTEST(clock_control, test_uart_gpio_register_writes)
++{
++	const struct device *clk_dev = DEVICE_DT_GET(DT_NODELABEL(clock_controller));
++	int err;
++	static PMU_BASE_pmu_Type *pmu = (PMU_BASE_pmu_Type *)PMU_BASE_ADDR;
++	/* Variables to store register bit values */
++	uint8_t uart_root_off, gpio_root_off;
++	uint8_t uart_root_on, gpio_root_on;
++
++	LOG_INF("=== Testing UART and GPIO Register Writes ===");
++	zassert_true(device_is_ready(clk_dev), "Clock device not ready");
++
++	/* Turn OFF both clocks first */
++	err = clock_control_off(clk_dev, (clock_control_subsys_t)QCC730_CLOCK_UART);
++	err = clock_control_off(clk_dev, (clock_control_subsys_t)QCC730_CLOCK_GPIO);
++
++	/* Read and store OFF register bit values */
++	uart_root_off = pmu->PMU_ROOT_CLK_ENABLE.bit.UART_ROOT_CLK_ENABLE;
++	gpio_root_off = pmu->PMU_ROOT_CLK_ENABLE.bit.GPIO_ROOT_CLK_ENABLE;
++
++	/* Turn ON both clocks for logging capability */
++	err = clock_control_on(clk_dev, (clock_control_subsys_t)QCC730_CLOCK_UART);
++	err = clock_control_on(clk_dev, (clock_control_subsys_t)QCC730_CLOCK_GPIO);
++
++	/* Read and store ON register bit values */
++	uart_root_on = pmu->PMU_ROOT_CLK_ENABLE.bit.UART_ROOT_CLK_ENABLE;
++	gpio_root_on = pmu->PMU_ROOT_CLK_ENABLE.bit.GPIO_ROOT_CLK_ENABLE;
++
++	/* Log the stored register bit values */
++	LOG_INF("UART OFF - ROOT_CLK: %d", uart_root_off);
++	LOG_INF("UART ON  - ROOT_CLK: %d", uart_root_on);
++	LOG_INF("GPIO OFF - ROOT_CLK: %d", gpio_root_off);
++	LOG_INF("GPIO ON  - ROOT_CLK: %d", gpio_root_on);
++
++	/* Test against stored OFF values */
++	zassert_equal(0, uart_root_off, "UART ROOT bit should be 0 when OFF");
++	zassert_equal(0, gpio_root_off, "GPIO ROOT bit should be 0 when OFF");
++
++	/* Test against stored ON values */
++	zassert_equal(1, uart_root_on, "UART ROOT bit should be 1 when ON");
++	zassert_equal(1, gpio_root_on, "GPIO ROOT bit should be 1 when ON");
++
++	LOG_INF("UART and GPIO clock register write test PASSED");
++}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++
+ /*
+  * Test checks that the second stop returns 0.
+  * Test precondition: clock is stopped.
+  */
+-static void test_double_stop_on_instance(const struct device *dev,
+-						clock_control_subsys_t subsys,
+-						uint32_t startup_us)
++static void test_double_stop_on_instance(const struct device *dev, clock_control_subsys_t subsys,
++					 uint32_t startup_us)
+ {
+ 	enum clock_control_status status;
+ 	int err;
+ 
+-	status = clock_control_get_status(dev, subsys);
+-	zassert_equal(CLOCK_CONTROL_STATUS_OFF, status,
+-			"%s: Unexpected status (%d)", dev->name, status);
+-
+-	err = clock_control_off(dev, subsys);
+-	zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	/* Skip off state checks for GPIO and UART */
++	if (!((uint32_t)subsys == QCC730_CLOCK_UART || (uint32_t)subsys == QCC730_CLOCK_GPIO)) {
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++		status = clock_control_get_status(dev, subsys);
++		zassert_equal(CLOCK_CONTROL_STATUS_OFF, status, "%s: Unexpected status (%d)",
++			      dev->name, status);
++		err = clock_control_off(dev, subsys);
++		zassert_equal(0, err, "%s: Unexpected err (%d)", dev->name, err);
++#if DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
++	}
++#endif // DT_HAS_COMPAT_STATUS_OKAY(qcom_qcc730_clkctrl)
+ }
+ 
+ ZTEST(clock_control, test_double_stop)

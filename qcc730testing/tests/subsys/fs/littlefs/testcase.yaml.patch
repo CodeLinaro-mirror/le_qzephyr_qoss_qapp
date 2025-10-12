@@ -1,0 +1,15 @@
+diff --git a/tests/subsys/fs/littlefs/testcase.yaml b/tests/subsys/fs/littlefs/testcase.yaml
+index 56972d1a260..ba5c9b1446b 100644
+--- a/tests/subsys/fs/littlefs/testcase.yaml
++++ b/tests/subsys/fs/littlefs/testcase.yaml
+@@ -8,8 +8,10 @@ common:
+     - native_sim/native/64
+     - mimxrt1060_evk/mimxrt1062/qspi
+     - mr_canhubk3
++    - qcc730mi
+   integration_platforms:
+     - nrf52840dk/nrf52840
++    - qcc730mi/qcc730
+   modules:
+     - littlefs
+ tests:

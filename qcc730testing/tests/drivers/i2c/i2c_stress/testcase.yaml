@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+common:
+  depends_on: i2c
+  tags:
+    - sensor
+    - drivers
+    - i2c
+  harness: ztest
+  timeout: 180
+tests:
+  drivers.i2c.qcc730.i2c_stress_polling:
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_I2C_QCC730_INTERRUPT_SUPPORT=n
+  drivers.i2c.qcc730.i2c_stress_interrupt:
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_I2C_QCC730_INTERRUPT_SUPPORT=y

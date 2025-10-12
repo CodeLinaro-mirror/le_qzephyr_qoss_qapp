@@ -1,0 +1,14 @@
+diff --git a/tests/drivers/clock_control/clock_control_api/testcase.yaml b/tests/drivers/clock_control/clock_control_api/testcase.yaml
+index 1b10b912b4c..61fc9ad4c3c 100644
+--- a/tests/drivers/clock_control/clock_control_api/testcase.yaml
++++ b/tests/drivers/clock_control/clock_control_api/testcase.yaml
+@@ -38,3 +38,9 @@ tests:
+     integration_platforms:
+       - nrf51dk/nrf51822
+     extra_args: CONF_FILE="nrf_lfclk_rc.conf"
++  drivers.clock.qcc730_clkctrl:
++    platform_allow:
++      - qcc730mi
++    integration_platforms:
++      - qcc730mi
++    harness: ztest

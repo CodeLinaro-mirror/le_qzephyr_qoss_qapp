@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+common:
+  tags:
+    - drivers
+    - uart
+tests:
+  drivers.uart.stress.large_transfer:
+    harness: pytest
+    harness_config:
+      pytest_root:
+        - "pytest/test_uart_transfer.py"
+    integration_platforms:
+      - qcc730mi
+    platform_allow: qcc730mi
+    timeout: 3600

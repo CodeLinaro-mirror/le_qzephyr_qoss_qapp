@@ -37,7 +37,7 @@ void recv_str(const struct device *uart, char *str)
 	char c;
 
 	while (1) {
-		while (-1 == uart_poll_in(uart, &c)) {
+		while (-ENODATA == uart_poll_in(uart, &c)) {
 			k_sleep(K_MSEC(1));
 		}
 

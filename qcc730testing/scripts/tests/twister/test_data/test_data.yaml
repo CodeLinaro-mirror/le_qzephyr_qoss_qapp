@@ -10,11 +10,12 @@ test_common_config:
   integration: true
   inline-logs: true
   log_level: DEBUG
-  device-serial: COM7 #/dev/ttyACM1 for linux
+  device-serial: COM4 #/dev/ttyACM1 for linux
   west-flash:
     - "-a"
     - "-m"
     - "rram"
+    - "--no-reset"
 
 # Individual test case definitions
 tests:
@@ -64,3 +65,26 @@ tests:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/gpio/gpio_stress"
   drivers.pinctrl.qcc730_pinctrl:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/pinctrl/qcc730mi"
+  drivers.i2c.i2c_stress:
+    fixture: i2c_lis2dw12
+    pre_test_setup: |
+      This test requires a physical connection with LIS2DW12 sensor.
+      Please connect the following GPIO pins on your board:
+        - Connect GPIO 9 (QCC730) to the SDA pin (LIS2DW12 sensor).
+        - Connect GPIO 10 (QCC730) to the SCL pin (LIS2DW12 sensor).
+        - Connect VDD_3V3 (PIN nr 16 on QCC730) to the VCC pin (LIS2DW12 sensor).
+        - Connect GND (PIN nr 1 on QCC730) to the GND pin (LIS2DW12 sensor).
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/i2c/i2c_stress"
+  drivers.reset.qcc730_reset:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/reset/qcc730_reset"
+  subsys.fs.littlefs:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/fs/littlefs"
+  drivers.clock.qcc730_clkctrl:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_api"
+  drivers.dma.qcc730_dxe:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/qcc730_dxe"
+  drivers.uart.uart_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress"
+  drivers.uart.uart_stress_pytest:
+    device-serial-baud: 230400
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress_pytest"

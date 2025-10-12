@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+common:
+  tags:
+    - drivers
+    - uart
+  harness: ztest
+  platform_allow: qcc730mi
+  timeout: 180
+tests:
+  drivers.uart.qcc730.uart_stress_polling:
+    platform_allow:
+      - qcc730mi
