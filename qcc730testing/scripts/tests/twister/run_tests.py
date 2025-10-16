@@ -45,6 +45,7 @@ Usage Examples:
     python3 run_tests.py --all --build
 """
 
+import os
 import argparse
 import json
 import shutil
@@ -253,6 +254,9 @@ class TestRunner:
             self.command.extend(["--outdir", str(self.twister_outdir)])
 
         self.command.extend(["--disable-warnings-as-errors"])
+        # avoid too long path to prevent compilation failure in windows.
+        if os.name == 'nt':
+            self.command.extend(["--short-build-path"])
 
         keys_to_skip = {"pre_test_setup",
                         "post_test_setup", "description", "notes"}
