@@ -4,7 +4,7 @@
         "zephyr_version":"v4.1.0",
         "toolchain":"zephyr",
         "commit_date":"2025-03-07T17:36:15+00:00",
-        "run_date":"2025-09-09T13:34:38+00:00",
+        "run_date":"2025-10-10T07:44:04+00:00",
         "options":{
             "help":null,
             "zephyr_base":null,
@@ -32,22 +32,27 @@
             "arch":"arm",
             "platform":"qcc730mi/qcc730",
             "path":"tests/drivers/flash/common",
-            "run_id":"b7698fbd266d3a96a188498a71fa911d",
+            "run_id":"5e1990ad323f111140bbd068c637a592",
             "runnable":true,
             "retries":0,
             "toolchain":"zephyr",
             "status":"passed",
-            "execution_time":"8.28",
-            "build_time":"9.06",
+            "execution_time":"8.99",
+            "build_time":"9.94",
             "testcases":[
                 {
+                    "identifier":"drivers.flash.common.default.flash_driver.suspend_resume",
+                    "execution_time":"0.03",
+                    "status":"passed"
+                },
+                {
                     "identifier":"drivers.flash.common.default.flash_driver.flash_copy",
-                    "execution_time":"0.09",
+                    "execution_time":"0.31",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.flash.common.default.flash_driver.flash_page_layout",
-                    "execution_time":"0.01",
+                    "execution_time":"0.02",
                     "status":"passed"
                 },
                 {
@@ -62,12 +67,12 @@
                 },
                 {
                     "identifier":"drivers.flash.common.default.flash_driver.flash_flatten",
-                    "execution_time":"0.07",
+                    "execution_time":"0.27",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.flash.common.default.flash_driver.flash_fill",
-                    "execution_time":"0.06",
+                    "execution_time":"0.27",
                     "status":"passed"
                 },
                 {

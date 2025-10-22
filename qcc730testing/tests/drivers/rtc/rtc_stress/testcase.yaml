@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+common:
+  tags:
+    - drivers
+    - rtc
+  harness: ztest
+  platform_allow: qcc730mi
+  timeout: 70
+tests:
+  drivers.rtc.qcc730.stress:
+    platform_allow:
+      - qcc730mi

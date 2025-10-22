@@ -1,25 +1,26 @@
 {
     "environment":{
-        "os":"nt",
+        "os":"posix",
         "zephyr_version":"v4.1.0",
         "toolchain":"zephyr",
-        "commit_date":"2025-03-07T17:36:15Z",
-        "run_date":"2025-08-08T10:38:21+00:00",
+        "commit_date":"2025-03-07T17:36:15+00:00",
+        "run_date":"2025-10-15T13:00:31+00:00",
         "options":{
             "help":null,
             "zephyr_base":null,
             "quiet":0,
             "command":"twister",
             "testsuite_root":[
-                "C:/Projects/Qualcomm/workspace/zephyr/tests/drivers/gpio/gpio_basic_api"
+                "/home/karol/proj/qccsdk/zephyr/tests/drivers/gpio/gpio_basic_api"
             ],
             "integration":true,
             "device_testing":true,
-            "device_serial":"COM14",
+            "device_serial":"/dev/ttyACM1",
             "flash_before":true,
             "inline_logs":true,
+            "outdir":"/home/karol/proj/qccsdk/test_results/build_output/drivers.gpio.gpio_basic_api_qcc730mi",
             "platform":[
-                "mqm730i"
+                "qcc730mi"
             ],
             "log_level":"DEBUG",
             "west_flash":"-a,-m,rram",
@@ -32,57 +33,56 @@
         {
             "name":"tests/drivers/gpio/gpio_basic_api/drivers.gpio.2pin",
             "arch":"arm",
-            "platform":"mqm730i/qcc730",
-            "path":"tests\\drivers\\gpio\\gpio_basic_api",
-            "run_id":"88326a46ac17a00d6c163258e7182987",
+            "platform":"qcc730mi/qcc730",
+            "path":"tests/drivers/gpio/gpio_basic_api",
+            "run_id":"5d9f38fc4220b0d45d42a32f1aee87c9",
             "runnable":true,
             "retries":0,
             "toolchain":"zephyr",
             "status":"passed",
-            "execution_time":"38.85",
-            "build_time":"56.87",
+            "execution_time":"26.88",
+            "build_time":"8.85",
             "testcases":[
                 {
+                    "identifier":"drivers.gpio.2pin.gpio_pm_tests.gpio_pm_suspended_resume_check",
+                    "execution_time":"0.03",
+                    "status":"passed"
+                },
+                {
                     "identifier":"drivers.gpio.2pin.gpio_port_cb_mgmt.gpio_callback_enable_disable",
-                    "execution_time":"3.61",
+                    "execution_time":"3.62",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.gpio_port_cb_mgmt.gpio_callback_self_remove",
-                    "execution_time":"2.51",
+                    "execution_time":"2.52",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.gpio_port_cb_mgmt.gpio_callback_add_remove",
-                    "execution_time":"3.61",
+                    "execution_time":"3.62",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.gpio_port_cb_vari.gpio_callback_variants",
-                    "execution_time":"8.88",
+                    "execution_time":"8.89",
                     "status":"passed"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.after_flash_gpio_config_trigger.gpio_config_trigger",
-                    "execution_time":"0.00",
-                    "status":"blocked",
-                    "reason":"passed"
+                    "execution_time":"0.02",
+                    "status":"skipped",
+                    "reason":"ztest skip"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.after_flash_gpio_config_trigger.gpio_config_twice_trigger",
-                    "execution_time":"0.00",
-                    "status":"blocked",
-                    "reason":"passed"
+                    "execution_time":"0.02",
+                    "status":"skipped",
+                    "reason":"ztest skip"
                 },
                 {
                     "identifier":"drivers.gpio.2pin.gpio_port.gpio_port",
-                    "execution_time":"0.00",
-                    "status":"blocked",
-                    "reason":"passed"
-                },
-                {
-                    "identifier":"drivers.gpio.2pin.gpio_port",
-                    "execution_time":"0.06",
+                    "execution_time":"0.08",
                     "status":"passed"
                 }
             ]

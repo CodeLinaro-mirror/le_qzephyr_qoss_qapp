@@ -1,12 +1,12 @@
 /*
  * Copyright (c) 2025 Qualcomm Technologies, Inc.
  * SPDX-License-Identifier: Apache-2.0
- *
  */
 
 &uart0 {
 	pinctrl-0 = <&uart0_option1>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&uart0_option1_sleep>;
+	pinctrl-names = "default", "sleep";
 	status = "okay";
 	current-speed = <230400>;
 	parity = "none"; /* NONE */

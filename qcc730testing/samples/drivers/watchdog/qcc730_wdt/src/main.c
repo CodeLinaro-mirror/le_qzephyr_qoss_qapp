@@ -8,6 +8,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/watchdog.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/pm/device.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/logging/log.h>
 #include <stdbool.h>
@@ -40,42 +41,86 @@ int main(void)
 
 	printk("Watchdog sample application\n");
 
+	if (!device_is_ready(wdt)) {
+		LOG_ERR("%s: device not ready.\n", wdt->name);
+		return -ENODEV;
+	}
+
+	/* PM Suspend/Resume Tests */
+	LOG_INF("=== Starting PM Suspend/Resume Tests ===");
+
+	struct wdt_timeout_cfg wdt_config = {
+		/* Reset SoC when timer expires. */
+		.flags = WDT_FLAG_RESET_SOC,
+		/* Expire watchdog after max window */
+		.window.min = 0,
+		.window.max = CONFIG_QCC730_WDT_TIMEOUT_MS,
+	};
+
+	/* Test 1: Operations should work when device is active */
+	LOG_INF("Test 1: Install timeout while device is active");
+	ret = wdt_install_timeout(wdt, &wdt_config);
+	__ASSERT(ret == 0, "Failed to install timeout while active: %d", ret);
+	LOG_INF("Test 1: PASS - Timeout installed successfully");
+
+	/* Test 2: Suspend the device */
+	LOG_INF("Test 2: Suspending watchdog device");
+	ret = pm_device_action_run(wdt, PM_DEVICE_ACTION_SUSPEND);
+	__ASSERT(ret == 0, "Failed to suspend device: %d", ret);
+	LOG_INF("Test 2: PASS - Device suspended");
+
+	/* Test 3: Operations should fail when device is suspended */
+	LOG_INF("Test 3: Attempting operations while suspended (should fail)");
+	ret = wdt_install_timeout(wdt, &wdt_config);
+	__ASSERT(ret == -EBUSY, "Expected -EBUSY while suspended, got: %d", ret);
+	LOG_INF("Test 3a: PASS - install_timeout returned -EBUSY as expected");
+
+	ret = wdt_setup(wdt, 0);
+	__ASSERT(ret == -EBUSY, "Expected -EBUSY for setup while suspended, got: %d", ret);
+	LOG_INF("Test 3b: PASS - setup returned -EBUSY as expected");
+
+	ret = wdt_feed(wdt, 0);
+	__ASSERT(ret == -EBUSY, "Expected -EBUSY for feed while suspended, got: %d", ret);
+	LOG_INF("Test 3c: PASS - feed returned -EBUSY as expected");
+
+	/* Test 4: Resume the device */
+	LOG_INF("Test 4: Resuming watchdog device");
+	ret = pm_device_action_run(wdt, PM_DEVICE_ACTION_RESUME);
+	__ASSERT(ret == 0, "Failed to resume device: %d", ret);
+	LOG_INF("Test 4: PASS - Device resumed");
+
+	/* Test 5: Operations should work again after resume */
+	LOG_INF("Test 5: Reinstalling timeout after resume");
+	ret = wdt_install_timeout(wdt, &wdt_config);
+	__ASSERT(ret == 0, "Failed to install timeout after resume: %d", ret);
+	LOG_INF("Test 5: PASS - Timeout reinstalled after resume");
+
+	LOG_INF("=== PM Suspend/Resume Tests Complete ===\n");
+
+	/* GPIO Button Setup */
 	if (!gpio_is_ready_dt(&button0)) {
 		LOG_ERR("Error: button0 device %s is not ready\n", button0.port->name);
-		return 0;
+		return -ENODEV;
 	}
 
 	ret = gpio_pin_configure_dt(&button0, GPIO_INPUT);
 	if (ret != 0) {
 		LOG_ERR("Error %d: failed to configure %s pin %d\n", ret, button0.port->name,
 			button0.pin);
-		return 0;
+		return -ENODEV;
 	}
 
 	ret = gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
 	if (ret != 0) {
 		LOG_ERR("Error %d: failed to configure interrupt on %s pin %d\n", ret,
 			button0.port->name, button0.pin);
-		return 0;
+		return -ENODEV;
 	}
 
 	gpio_init_callback(&button0_cb_data, button0_pressed, BIT(button0.pin));
 	gpio_add_callback(button0.port, &button0_cb_data);
 
-	if (!device_is_ready(wdt)) {
-		LOG_ERR("%s: device not ready.\n", wdt->name);
-		return 0;
-	}
-
-	struct wdt_timeout_cfg wdt_config = {
-		/* Reset SoC when timer expires. */
-		.flags = WDT_FLAG_RESET_SOC,
-
-		/* Expire watchdog after max window */
-		.window.min = 0,
-		.window.max = CONFIG_QCC730_WDT_TIMEOUT_MS,
-	};
-
+	/* Watchdog Error Test */
 	struct wdt_timeout_cfg wdt_err_config = {
 		/* Reset SoC when timer expires. */
 		.flags = WDT_FLAG_RESET_SOC,
@@ -86,15 +131,14 @@ int main(void)
 	};
 
 	ret = wdt_install_timeout(wdt, &wdt_err_config);
-	if (ret < 0) {
-		LOG_ERR("Watchdog install error that we want to see\n");
-	}
+	__ASSERT(ret < 0, "Expected error for invalid timeout config, got: %d", ret);
+	LOG_INF("Invalid timeout test: PASS - Got expected error\n");
+
+	/* Normal Watchdog Operation */
 
 	ret = wdt_install_timeout(wdt, &wdt_config);
-	if (ret < 0) {
-		LOG_ERR("Watchdog install error\n");
-		return 0;
-	}
+	__ASSERT(ret == 0, "Watchdog install timeout failed: %d", ret);
+	LOG_INF("Watchdog timeout configured successfully\n");
 
 	while (!is_wdt_on) {
 		LOG_INF("Press button to enable watchdog\n");
@@ -102,17 +146,16 @@ int main(void)
 	}
 
 	err = wdt_setup(wdt, 0);
-	if (err < 0) {
-		LOG_ERR("Watchdog setup error\n");
-		return 0;
-	}
+	__ASSERT(err == 0, "Watchdog setup failed: %d", err);
+	LOG_INF("Watchdog enabled successfully\n");
 
 	/* Feeding watchdog before timer expires. */
 	LOG_INF("Feeding watchdog %d times\n", CONFIG_QCC730_WDT_FEED_TRIES);
 	for (int i = 0; i < CONFIG_QCC730_WDT_FEED_TRIES; ++i) {
 		k_sleep(K_MSEC(CONFIG_QCC730_WDT_FEED_INTERVAL_MS));
 		LOG_INF("Feeding watchdog...\n");
-		wdt_feed(wdt, 0);
+		ret = wdt_feed(wdt, 0);
+		__ASSERT(ret == 0, "Watchdog feed failed: %d", ret);
 	}
 
 	/* Waiting for the SoC reset. */

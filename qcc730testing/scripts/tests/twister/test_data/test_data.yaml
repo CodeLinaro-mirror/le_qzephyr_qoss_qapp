@@ -15,7 +15,6 @@ test_common_config:
     - "-a"
     - "-m"
     - "rram"
-    - "--no-reset"
 
 # Individual test case definitions
 tests:
@@ -88,3 +87,20 @@ tests:
   drivers.uart.uart_stress_pytest:
     device-serial-baud: 230400
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress_pytest"
+  drivers.uart.qcc730.pm_api:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pm_test"
+  drivers.rtc.rtc_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/rtc/rtc_stress"
+  drivers.counter.qcc730_qtmr_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/counter/qcc730_qtmr_stress"
+  drivers.dma.dma_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/dma_stress"
+  drivers.clock.clock_stress:
+    pre_test_setup: |
+      Test generates problem on build running with twister tool. Please build
+      test case via `west build` and then manually flash it on the board. After
+      connecting via serial port and restarting board you will see it executing
+      and passing. Entry was added here as reference only.
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_stress"
+  drivers.flash.flash_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/flash/flash_stress"

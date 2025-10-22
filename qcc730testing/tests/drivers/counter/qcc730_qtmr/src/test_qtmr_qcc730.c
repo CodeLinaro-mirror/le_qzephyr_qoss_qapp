@@ -10,6 +10,7 @@
 #include <zephyr/drivers/counter/counter_qcc730_qtmr.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/pm/device.h>
 
 LOG_MODULE_REGISTER(test_qtmr, CONFIG_COUNTER_LOG_LEVEL);
 
@@ -172,6 +173,58 @@ void setup_alarm_sem(void *fixture)
 	k_sem_init(&alarm_sem, 0, 1);
 }
 
+void pm_suspend_resume_check(const struct device *dev)
+{
+	int ret;
+	uint64_t now;
+	struct counter_alarm_cfg alarm_cfg = {
+		.flags = 0,
+		.ticks = SHORT_TIMEOUT_SEC * counter_get_frequency(dev),
+		.callback = alarm_callback,
+		.user_data = NULL,
+	};
+
+	/* Suspend device */
+	ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
+	zassert_ok(ret, "pm suspend failed: %d", ret);
+
+	/* While suspended, counter API calls should return an error (negative) */
+	ret = counter_start(dev);
+	zassert_true(ret < 0, "counter_start() expected error when suspended, got %d", ret);
+
+	ret = counter_stop(dev);
+	zassert_true(ret < 0, "counter_stop() expected error when suspended, got %d", ret);
+
+	ret = counter_get_value_64(dev, &now);
+	zassert_true(ret < 0, "counter_get_value_64() expected error when suspended, got %d", ret);
+
+	/* Setting and canceling alarms while suspended should return error */
+	ret = counter_set_channel_alarm(dev, 0, &alarm_cfg);
+	zassert_true(ret < 0, "counter_set_channel_alarm() expected error when suspended, got %d", ret);
+
+	ret = counter_cancel_channel_alarm(dev, 0);
+	zassert_true(ret < 0, "counter_cancel_channel_alarm() expected error when suspended, got %d", ret);
+
+	/* Resume device */
+	ret = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);
+	zassert_ok(ret, "pm resume failed: %d", ret);
+
+	/* After resume device should work again — exercise with a short alarm */
+	k_sem_reset(&alarm_sem);
+	ret = counter_start(dev);
+	zassert_ok(ret, "counter_start() failed after resume: %d", ret);
+
+	ret = counter_set_channel_alarm(dev, 0, &alarm_cfg);
+	zassert_ok(ret, "counter_set_channel_alarm() failed after resume: %d", ret);
+
+	/* wait for the alarm set above */
+	zassert_ok(k_sem_take(&alarm_sem, K_SECONDS(SHORT_TIMEOUT_SEC + 2)),
+		   "Alarm did not fire after resume");
+
+	ret = counter_stop(dev);
+	zassert_ok(ret, "counter_stop() failed after resume: %d", ret);
+}
+
 ZTEST(qtmr_qcc730, test_frame0)
 {
 	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(frame0));
@@ -230,6 +283,13 @@ ZTEST(qtmr_qcc730, test_frame4)
 	test_alarm(dev, MED_TIMEOUT_SEC);
 	test_alarm(dev, LONG_TIMEOUT_SEC);
 	test_error_handling(dev);
+}
+
+ZTEST(qtmr_qcc730, test_pm)
+{
+	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(frame0));
+	zassert_true(device_is_ready(dev), "Device not ready");
+	pm_suspend_resume_check(dev);
 }
 
 ZTEST_SUITE(qtmr_qcc730, NULL, NULL, setup_alarm_sem, NULL, NULL);

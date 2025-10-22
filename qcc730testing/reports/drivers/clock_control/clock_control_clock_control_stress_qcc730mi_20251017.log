@@ -1,0 +1,83 @@
+** Booting Zephyr OS build v4.1.0 ***
+Running TESTSUITE clock_stress
+===================================================================
+START - test_concurrent_operations
+I: Starting clock control concurrent operations test
+0% remaining:9000 ms0% remaining:8000 ms
+Ztress execution report:
+         context 0:
+                 - executed:3000, preempted:0
+                 - ticks initial:0, optimized:4
+         context 1:
+                 - executed:3000, preempted:0
+                 - ticks initial:0, optimized:4
+         context 2:
+                 - executed:3000, preempted:95
+                 - ticks initial:0, optimized:4
+        Average CPU load:36%, measurements:22
+I: Concurrent test completed:
+I:   ON operations (I2C): 3000
+I:   OFF operations (QTIMER): 3000
+I:   STATUS operations (WDOG): 3000
+I:   Total errors: 0
+I: Performance: 9000 ops in 2220 ms (4054 ops/sec)
+ PASS - test_concurrent_operations in 2.245 seconds
+===================================================================
+START - test_endurance
+I: Starting clock control endurance test
+1% remaining:79000 ms2% remaining:78000 ms4% remaining:77000 ms5% remaining:76000 ms6% remaining:75000 ms8% remaining:74000 ms9% remaining:73000 ms11% remaining:72000 ms12% remaining:71000 ms13% remaining:70000 ms15% remaining:69000 ms16% remaining:68000 ms18% remaining:67000 ms19% remaining:66000 ms20% remaining:65000 ms22% remaining:64000 ms23% remaining:63000 ms25% remaining:62000 ms26% remaining:61000 ms27% remaining:60000 ms29% remaining:59000 ms30% remaining:58000 ms32% remaining:57000 ms33% remaining:56000 ms34% remaining:55000 ms36% remaining:54000 ms37% remaining:53000 ms39% remaining:52000 ms40% remaining:51000 ms41% remaining:50000 ms43% remaining:49000 ms44% remaining:48000 ms46% remaining:47000 ms47% remaining:46000 ms48% remaining:45000 ms50% remaining:44000 ms51% remaining:43000 ms53% remaining:42000 ms54% remaining:41000 ms55% remaining:40000 ms57% remaining:39000 ms58% remaining:38000 ms60% remaining:37000 ms61% remaining:36000 ms62% remaining:35000 ms64% remaining:34000 ms65% remaining:33000 ms67% remaining:32000 ms68% remaining:31000 ms69% remaining:30000 ms71% remaining:29000 ms72% remaining:28000 ms74% remaining:27000 ms75% remaining:26000 ms76% remaining:25000 ms78% remaining:24000 ms80% remaining:23000 ms81% remaining:22000 ms83% remaining:21000 ms84% remaining:20000 ms86% remaining:19000 ms87% remaining:18000 ms89% remaining:17000 ms90% remaining:16000 ms92% remaining:15000 ms93% remaining:14000 ms95% remaining:13000 ms96% remaining:12000 ms98% remaining:11000 ms99% remaining:10000 ms
+Ztress execution report:
+         context 0:
+                 - executed:100000, preempted:0
+                 - ticks initial:0, optimized:4
+         context 1:
+                 - executed:100000, preempted:3022
+                 - ticks initial:0, optimized:4
+         context 2:
+                 - executed:100000, preempted:20945
+                 - ticks initial:0, optimized:4
+        Average CPU load:39%, measurements:701
+I: Endurance test completed:
+I:   I2C: 100000 operations
+I:   QTIMER: 100000 operations
+I:   WDOG: 100000 operations
+I:   Total errors: 0
+I:   Duration: 70172 ms
+I: Performance: 300000 ops in 70172 ms (4275 ops/sec)
+ PASS - test_endurance in 70.197 seconds
+===================================================================
+START - test_mixed_subsystems
+I: Starting mixed operations test across multiple subsystems
+12% remaining:9000 ms12% remaining:8000 ms
+Ztress execution report:
+         context 0:
+                 - executed:3000, preempted:0
+                 - ticks initial:0, optimized:4
+         context 1:
+                 - executed:3000, preempted:12
+                 - ticks initial:1, optimized:4
+         context 2:
+                 - executed:3000, preempted:232
+                 - ticks initial:2, optimized:4
+        Average CPU load:40%, measurements:20
+I: Mixed operations test completed:
+I:   I2C: 3000 operations
+I:   QTIMER: 3000 operations
+I:   WDOG: 3000 operations
+I:   Total errors: 0
+I: Performance: 9000 ops in 2056 ms (4377 ops/sec)
+ PASS - test_mixed_subsystems in 2.081 seconds
+===================================================================
+TESTSUITE clock_stress succeeded
+
+------ TESTSUITE SUMMARY START ------
+
+SUITE PASS - 100.00% [clock_stress]: pass = 3, fail = 0, skip = 0, total = 3 duration = 74.523 seconds
+ - PASS - [clock_stress.test_concurrent_operations] duration = 2.245 seconds
+ - PASS - [clock_stress.test_endurance] duration = 70.197 seconds
+ - PASS - [clock_stress.test_mixed_subsystems] duration = 2.081 seconds
+
+------ TESTSUITE SUMMARY END ------
+
+===================================================================
+PROJECT EXECUTION SUCCESSFUL

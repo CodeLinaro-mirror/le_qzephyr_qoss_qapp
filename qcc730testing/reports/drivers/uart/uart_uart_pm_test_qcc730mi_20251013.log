@@ -1,0 +1,164 @@
+2025-10-13 10:18:53,413 - twister - INFO - Using Ninja..
+2025-10-13 10:18:53,459 - twister - INFO - Zephyr version: v4.1.0
+2025-10-13 10:18:53,461 - twister - DEBUG - Running cmake script /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/cmake/verify-toolchain.cmake
+2025-10-13 10:18:53,461 - twister - DEBUG - Calling cmake: /usr/bin/cmake -DFORMAT=json -P /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/cmake/verify-toolchain.cmake
+2025-10-13 10:18:53,602 - twister - DEBUG - Finished running /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/cmake/verify-toolchain.cmake
+2025-10-13 10:18:53,602 - twister - INFO - Using 'zephyr' toolchain.
+2025-10-13 10:18:54,366 - twister - DEBUG - Reading testsuite configuration files under /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test...
+2025-10-13 10:18:54,366 - twister - DEBUG - Found possible testsuite in /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test
+2025-10-13 10:18:54,368 - twister - DEBUG - No duplicates found.
+2025-10-13 10:18:54,368 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-10-13 10:18:54,368 - twister - DEBUG -   vendor filter: []
+2025-10-13 10:18:54,368 - twister - DEBUG -     arch_filter: None
+2025-10-13 10:18:54,369 - twister - DEBUG -      tag_filter: None
+2025-10-13 10:18:54,369 - twister - DEBUG -     exclude_tag: None
+2025-10-13 10:18:54,369 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-10-13 10:18:54,369 - twister - INFO - Building initial testsuite list...
+2025-10-13 10:18:54,369 - twister - INFO - Writing JSON report /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/testplan.json
+2025-10-13 10:18:54,378 - twister - INFO - JOBS: 14
+2025-10-13 10:18:54,379 - twister - INFO - Adding tasks to the queue...
+2025-10-13 10:18:54,379 - twister - DEBUG - adding qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api
+2025-10-13 10:18:54,380 - twister - INFO - Added initial list of jobs to queue
+2025-10-13 10:18:54,388 - twister - DEBUG - Running cmake on /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test for qcc730mi/qcc730
+2025-10-13 10:18:54,389 - twister - DEBUG - Calling cmake: /usr/bin/cmake -B/home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api -DTC_RUNID=def6808f0e3e40edb6d159930b344f13 -DTC_NAME=tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api -DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y -DEXTRA_GEN_EDT_ARGS=--edtlib-Werror -GNinja -DPython3_EXECUTABLE=/home/anurajen/source/qualcomm/zephyr-730-port/venv-730/bin/python3 -DZEPHYR_TOOLCHAIN_VARIANT=zephyr -S/home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test -DCONF_FILE=prj.conf -DBOARD=qcc730mi/qcc730
+2025-10-13 10:18:54,399 - twister - DEBUG - Launched 14 jobs
+2025-10-13 10:18:57,045 - twister - DEBUG - Finished running cmake /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test for qcc730mi/qcc730 in 2.65 seconds
+2025-10-13 10:18:57,047 - twister - DEBUG - build test: qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api
+2025-10-13 10:18:57,048 - twister - DEBUG - Building /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test for qcc730mi/qcc730
+2025-10-13 10:18:57,049 - twister - DEBUG - Running /usr/bin/cmake --build /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api
+2025-10-13 10:19:00,517 - twister - DEBUG - Finished building /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/tests/drivers/uart/uart_pm_test for qcc730mi/qcc730 in 3.47 seconds
+2025-10-13 10:19:00,517 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api
+2025-10-13 10:19:00,517 - twister - DEBUG - Determine test cases for test suite: drivers.uart.qcc730.pm_api
+2025-10-13 10:19:00,539 - twister - DEBUG - Test instance qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api already has 2 testcase(s) known: [<TestCase drivers.uart.qcc730.pm_api.uart_pm_api_test.multiple_suspend_resume_cycles with None>, <TestCase drivers.uart.qcc730.pm_api.uart_pm_api_test.suspend_resume_success with None>]
+2025-10-13 10:19:00,539 - twister - DEBUG - Detected 2 Ztest case(s): [drivers.uart.qcc730.pm_api.uart_pm_api_test.suspend_resume_success, drivers.uart.qcc730.pm_api.uart_pm_api_test.multiple_suspend_resume_cycles] in /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api/zephyr/zephyr.elf
+2025-10-13 10:19:00,541 - twister - DEBUG - run test: qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api
+2025-10-13 10:19:00,541 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-10-13 10:19:00,542 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-13 10:19:00,542 - twister - DEBUG - Using serial device /dev/ttyACM1 @ 115200 baud
+2025-10-13 10:19:00,542 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', '/home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api', '--', '-a', '-m', 'rram']
+2025-10-13 10:19:07,796 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: /home/anurajen/source/qualcomm/zephyr-730-port/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/anurajen/.local/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:50043
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/anurajen/source/qualcomm/zephyr-730-port/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.20134639739990234 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/anurajen/.local/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:33229
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.4247744083404541 seconds.
+
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/anurajen/.local/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:51085
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/anurajen/source/qualcomm/zephyr-730-port/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.4237513542175293 seconds.
+
+-- runners.nvmprogrammer: Flashing file: /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api/zephyr/zephyr.bin
+Python 3.12.3 (main, Aug 14 2025, 17:47:21) [GCC 13.3.0]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+/home/anurajen/.local/tools/openocd/openocd -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:33799
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api/zephyr/zephyr.bin
+Programming 29360 bytes to rram 0x0021A400
+.
+Image programmed successfully, time elapsed 0.5015668869018555 seconds.
+
+
+2025-10-13 10:19:07,797 - twister - DEBUG - Attach serial device /dev/ttyACM1 @ 115200 baud
+2025-10-13 10:19:07,933 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-10-13 10:19:07,933 - twister - DEBUG - DEVICE: Running TESTSUITE uart_pm_api_test
+2025-10-13 10:19:07,934 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-13 10:19:07,934 - twister - DEBUG - DEVICE: I: UART PM test suite setup complete
+2025-10-13 10:19:07,934 - twister - DEBUG - DEVICE: START - test_multiple_suspend_resume_cycles
+2025-10-13 10:19:07,983 - twister - DEBUG - DEVICE: I: Cycle 1 start
+2025-10-13 10:19:07,983 - twister - DEBUG - DEVICE:  I: Cycle 1 complete
+2025-10-13 10:19:08,026 - twister - DEBUG - DEVICE: I: Cycle 2 start
+2025-10-13 10:19:08,026 - twister - DEBUG - DEVICE:  I: Cycle 2 complete
+2025-10-13 10:19:08,045 - twister - DEBUG - DEVICE: I: Cycle 3 start
+2025-10-13 10:19:08,070 - twister - DEBUG - DEVICE: I: Cycle 3 complete
+2025-10-13 10:19:08,087 - twister - DEBUG - DEVICE: I: Cycle 4 start
+2025-10-13 10:19:08,112 - twister - DEBUG - DEVICE: I: Cycle 4 complete
+2025-10-13 10:19:08,131 - twister - DEBUG - DEVICE: I: Cycle 5 start
+2025-10-13 10:19:08,169 - twister - DEBUG - DEVICE: I: Cycle 5 complete
+2025-10-13 10:19:08,169 - twister - DEBUG - DEVICE: PASS - test_multiple_suspend_resume_cycles in 0.221 seconds
+2025-10-13 10:19:08,170 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-13 10:19:08,170 - twister - DEBUG - DEVICE: START - test_suspend_resume_success
+2025-10-13 10:19:08,223 - twister - DEBUG - DEVICE: I: Suspending UART device...
+2025-10-13 10:19:08,328 - twister - DEBUG - DEVICE: I: UART PM test passed
+2025-10-13 10:19:08,329 - twister - DEBUG - DEVICE: PASS - test_suspend_resume_success in 0.098 seconds
+2025-10-13 10:19:08,329 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-13 10:19:08,329 - twister - DEBUG - DEVICE: TESTSUITE uart_pm_api_test succeeded
+2025-10-13 10:19:08,329 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-10-13 10:19:08,329 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [uart_pm_api_test]: pass = 2, fail = 0, skip = 0, total = 2 duration = 0.319 seconds
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: - PASS - [uart_pm_api_test.test_multiple_suspend_resume_cycles] duration = 0.221 seconds
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: - PASS - [uart_pm_api_test.test_suspend_resume_success] duration = 0.098 seconds
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: RunID: def6808f0e3e40edb6d159930b344f13
+2025-10-13 10:19:08,330 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-10-13 10:19:08,332 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-13 10:19:08,332 - twister - DEBUG - run status: qcc730mi/qcc730/zephyr/tests/drivers/uart/uart_pm_test/drivers.uart.qcc730.pm_api passed
+2025-10-13 10:19:08,342 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-10-13 10:19:08,342 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 14.93 seconds.
+2025-10-13 10:19:08,342 - twister - INFO - 2 of 2 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-10-13 10:19:08,342 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-10-13 10:19:08,342 - twister - INFO - Saving reports...
+2025-10-13 10:19:08,342 - twister - INFO - Writing JSON report /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/twister.json
+2025-10-13 10:19:08,343 - twister - INFO - Writing xunit report /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/twister.xml...
+2025-10-13 10:19:08,343 - twister - INFO - Writing xunit report /home/anurajen/source/qualcomm/zephyr-730-port/twister-out/twister_report.xml...
+2025-10-13 10:19:08,344 - twister - INFO - Run completed

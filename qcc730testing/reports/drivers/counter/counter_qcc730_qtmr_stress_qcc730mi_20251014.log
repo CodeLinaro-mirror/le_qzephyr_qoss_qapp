@@ -1,0 +1,270 @@
+2025-10-14 15:11:58,073 - twister - INFO - Using Ninja..
+2025-10-14 15:11:58,475 - twister - INFO - Zephyr version: v4.1.0
+2025-10-14 15:11:58,589 - twister - DEBUG - Running cmake script C:\qualcomm\workspace7\zephyr\cmake\verify-toolchain.cmake
+2025-10-14 15:11:58,598 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-DFORMAT=json', '-P', 'C:\\qualcomm\\workspace7\\zephyr\\cmake\\verify-toolchain.cmake']
+2025-10-14 15:12:00,181 - twister - DEBUG - Finished running C:\qualcomm\workspace7\zephyr\cmake\verify-toolchain.cmake
+2025-10-14 15:12:00,182 - twister - INFO - Using 'zephyr' toolchain.
+2025-10-14 15:12:02,925 - twister - DEBUG - Reading testsuite configuration files under C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress...
+2025-10-14 15:12:02,926 - twister - DEBUG - Found possible testsuite in C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress
+2025-10-14 15:12:02,936 - twister - DEBUG - No duplicates found.
+2025-10-14 15:12:02,938 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-10-14 15:12:02,939 - twister - DEBUG -   vendor filter: []
+2025-10-14 15:12:02,939 - twister - DEBUG -     arch_filter: None
+2025-10-14 15:12:02,939 - twister - DEBUG -      tag_filter: None
+2025-10-14 15:12:02,939 - twister - DEBUG -     exclude_tag: None
+2025-10-14 15:12:02,939 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-10-14 15:12:02,940 - twister - INFO - Building initial testsuite list...
+2025-10-14 15:12:02,944 - twister - INFO - Writing JSON report C:\qualcomm\workspace7\twister-out\testplan.json
+2025-10-14 15:12:03,080 - twister - INFO - Adding tasks to the queue...
+2025-10-14 15:12:03,080 - twister - DEBUG - adding qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress
+2025-10-14 15:12:03,423 - twister - INFO - Added initial list of jobs to queue
+2025-10-14 15:12:04,460 - twister - DEBUG - Running cmake on C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress for qcc730mi/qcc730
+2025-10-14 15:12:04,469 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-BC:\\qualcomm\\workspace7\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress', '-DTC_RUNID=04df7e0cf45e6d955fd3df185fba2bd3', '-DTC_NAME=tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress', '-DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y', '-DEXTRA_GEN_EDT_ARGS=--edtlib-Werror', '-GNinja', '-DPython3_EXECUTABLE=C:/qualcomm/workspace7/.venv/Scripts/python.exe', '-DZEPHYR_TOOLCHAIN_VARIANT=zephyr', '-SC:\\qualcomm\\workspace7\\zephyr\\tests\\drivers\\counter\\qcc730_qtmr_stress', '-DOVERLAY_CONFIG=C:\\qualcomm\\workspace7\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress\\twister\\testsuite_extra.conf', '-DBOARD=qcc730mi/qcc730']
+2025-10-14 15:12:04,868 - twister - DEBUG - Launched 12 jobs
+2025-10-14 15:12:22,340 - twister - DEBUG - Finished running cmake C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress for qcc730mi/qcc730 in 17.87 seconds
+2025-10-14 15:12:22,343 - twister - DEBUG - build test: qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress
+2025-10-14 15:12:22,343 - twister - DEBUG - Building C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress for qcc730mi/qcc730
+2025-10-14 15:12:22,357 - twister - DEBUG - Running C:\Program Files\CMake\bin\cmake.EXE --build C:\qualcomm\workspace7\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress
+2025-10-14 15:12:44,338 - twister - DEBUG - Finished building C:\qualcomm\workspace7\zephyr\tests\drivers\counter\qcc730_qtmr_stress for qcc730mi/qcc730 in 21.99 seconds
+2025-10-14 15:12:44,339 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress
+2025-10-14 15:12:44,339 - twister - DEBUG - Determine test cases for test suite: drivers.counter.qcc730.stress
+2025-10-14 15:12:44,416 - twister - DEBUG - Test instance qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress already has 3 testcase(s) known: [<TestCase drivers.counter.qcc730.stress.counter_stress.alarm_relative_mode with None>, <TestCase drivers.counter.qcc730.stress.counter_stress.endurance with None>, <TestCase drivers.counter.qcc730.stress.counter_stress.concurrent_start_stop with None>]
+2025-10-14 15:12:44,416 - twister - DEBUG - Detected 3 Ztest case(s): [drivers.counter.qcc730.stress.counter_stress.endurance, drivers.counter.qcc730.stress.counter_stress.alarm_relative_mode, drivers.counter.qcc730.stress.counter_stress.concurrent_start_stop] in C:\qualcomm\workspace7\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress\zephyr\zephyr.elf
+2025-10-14 15:12:44,419 - twister - DEBUG - run test: qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress
+2025-10-14 15:12:44,419 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-10-14 15:12:44,420 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-14 15:12:44,420 - twister - DEBUG - Using serial device COM9 @ 115200 baud
+2025-10-14 15:12:44,420 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', 'C:\\qualcomm\\workspace7\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress', '--', '-a', '-m', 'rram']
+2025-10-14 15:13:02,416 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: C:/qualcomm/workspace7/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: C:\qualcomm\workspace5\qccsdk\qccsdk\tools\storage\firmware_desc_table\curr_age_fdt\frn_curr_age_with_app_bin.bin
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:53465
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace5/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.21790409088134766 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: C:\qualcomm\workspace7\zephyr\..\modules\hal\hal_qcom\zephyr\blobs\FERMION_SBL_HASHED.elf
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:53466
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace7/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.45083141326904297 seconds.
+
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:53467
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace7/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.449129581451416 seconds.
+
+-- runners.nvmprogrammer: Flashing file: C:/qualcomm/workspace7/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress/zephyr/zephyr.bin
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:53468
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace7/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress/zephyr/zephyr.bin
+Programming 37732 bytes to rram 0x0021A400
+..
+Image programmed successfully, time elapsed 0.8983604907989502 seconds.
+
+
+2025-10-14 15:13:02,418 - twister - DEBUG - Attach serial device COM9 @ 115200 baud
+2025-10-14 15:13:02,516 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-10-14 15:13:02,517 - twister - DEBUG - DEVICE: Running TESTSUITE counter_stress
+2025-10-14 15:13:02,518 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-14 15:13:02,519 - twister - DEBUG - DEVICE: START - test_alarm_relative_mode
+2025-10-14 15:13:02,520 - twister - DEBUG - DEVICE: I: Starting counter relative alarm stress test
+2025-10-14 15:13:02,586 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,588 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,589 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,589 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,590 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,590 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,591 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,591 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,592 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,592 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,593 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,594 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,594 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,595 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,608 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,609 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,610 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,610 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,616 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,617 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,667 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,667 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,668 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,669 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,670 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,672 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,674 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,674 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,675 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,676 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,676 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,677 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,692 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,693 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,694 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,695 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,695 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,696 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,696 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,697 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,725 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,726 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,726 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,727 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,727 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,728 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,729 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,730 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:02,731 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:04,499 - twister - DEBUG - DEVICE: 46% remaining:9000 ms
+2025-10-14 15:13:04,500 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-14 15:13:04,500 - twister - DEBUG - DEVICE: context 0:
+2025-10-14 15:13:04,501 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-14 15:13:04,501 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:04,501 - twister - DEBUG - DEVICE: context 1:
+2025-10-14 15:13:04,502 - twister - DEBUG - DEVICE: - executed:3000, preempted:4
+2025-10-14 15:13:04,502 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:04,503 - twister - DEBUG - DEVICE: Average CPU load:33%, measurements:19
+2025-10-14 15:13:04,503 - twister - DEBUG - DEVICE: I: Relative alarm test completed:
+2025-10-14 15:13:04,504 - twister - DEBUG - DEVICE: I:   Set alarm operations: 3000
+2025-10-14 15:13:04,504 - twister - DEBUG - DEVICE: I:   Cancel alarm operations: 3000
+2025-10-14 15:13:04,505 - twister - DEBUG - DEVICE: I:   Alarms fired: 2951
+2025-10-14 15:13:04,505 - twister - DEBUG - DEVICE: I:   EBUSY occurrences: 49
+2025-10-14 15:13:04,506 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-14 15:13:04,506 - twister - DEBUG - DEVICE: I: Performance: 6000 ops in 1952 ms (3073 ops/sec)
+2025-10-14 15:13:04,514 - twister - DEBUG - DEVICE: PASS - test_alarm_relative_mode in 1.978 seconds
+2025-10-14 15:13:04,515 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-14 15:13:04,515 - twister - DEBUG - DEVICE: START - test_concurrent_start_stop
+2025-10-14 15:13:04,516 - twister - DEBUG - DEVICE: I: Starting counter start/stop stress test
+2025-10-14 15:13:06,479 - twister - DEBUG - DEVICE: 46% remaining:9000 ms
+2025-10-14 15:13:06,480 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-14 15:13:06,480 - twister - DEBUG - DEVICE: context 0:
+2025-10-14 15:13:06,481 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-14 15:13:06,481 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:06,481 - twister - DEBUG - DEVICE: context 1:
+2025-10-14 15:13:06,482 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-14 15:13:06,482 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:06,482 - twister - DEBUG - DEVICE: context 2:
+2025-10-14 15:13:06,483 - twister - DEBUG - DEVICE: - executed:3000, preempted:1
+2025-10-14 15:13:06,483 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:06,484 - twister - DEBUG - DEVICE: Average CPU load:25%, measurements:19
+2025-10-14 15:13:06,484 - twister - DEBUG - DEVICE: I: Start/Stop test completed:
+2025-10-14 15:13:06,485 - twister - DEBUG - DEVICE: I:   Start operations: 3000
+2025-10-14 15:13:06,485 - twister - DEBUG - DEVICE: I:   Stop operations: 3000
+2025-10-14 15:13:06,486 - twister - DEBUG - DEVICE: I:   Get value operations: 3000
+2025-10-14 15:13:06,486 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-14 15:13:06,487 - twister - DEBUG - DEVICE: I: Performance: 9000 ops in 1942 ms (4634 ops/sec)
+2025-10-14 15:13:06,497 - twister - DEBUG - DEVICE: PASS - test_concurrent_start_stop in 1.964 seconds
+2025-10-14 15:13:06,498 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-14 15:13:06,498 - twister - DEBUG - DEVICE: START - test_endurance
+2025-10-14 15:13:06,499 - twister - DEBUG - DEVICE: I: Starting counter endurance test
+2025-10-14 15:13:12,308 - twister - DEBUG - DEVICE: 14% remaining:59000 ms
+2025-10-14 15:13:12,309 - twister - DEBUG - DEVICE: 30% remaining:58000 ms
+2025-10-14 15:13:12,309 - twister - DEBUG - DEVICE: 46% remaining:57000 ms
+2025-10-14 15:13:12,309 - twister - DEBUG - DEVICE: 62% remaining:56000 ms
+2025-10-14 15:13:12,309 - twister - DEBUG - DEVICE: 78% remaining:55000 msE: Alarm already set for timer frame 0
+2025-10-14 15:13:12,402 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:12,487 - twister - DEBUG - DEVICE: E: Alarm already set for timer frame 0
+2025-10-14 15:13:12,826 - twister - DEBUG - DEVICE: 95% remaining:54000 ms
+2025-10-14 15:13:12,826 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-14 15:13:12,826 - twister - DEBUG - DEVICE: context 0:
+2025-10-14 15:13:12,827 - twister - DEBUG - DEVICE: - executed:10000, preempted:0
+2025-10-14 15:13:12,828 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:12,829 - twister - DEBUG - DEVICE: context 1:
+2025-10-14 15:13:12,829 - twister - DEBUG - DEVICE: - executed:10000, preempted:24
+2025-10-14 15:13:12,830 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:12,830 - twister - DEBUG - DEVICE: context 2:
+2025-10-14 15:13:12,831 - twister - DEBUG - DEVICE: - executed:10000, preempted:141
+2025-10-14 15:13:12,831 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:12,831 - twister - DEBUG - DEVICE: context 3:
+2025-10-14 15:13:12,832 - twister - DEBUG - DEVICE: - executed:10000, preempted:118
+2025-10-14 15:13:12,832 - twister - DEBUG - DEVICE: - ticks initial:0, optimized:4
+2025-10-14 15:13:12,833 - twister - DEBUG - DEVICE: Average CPU load:61%, measurements:62
+2025-10-14 15:13:12,833 - twister - DEBUG - DEVICE: I: Endurance test completed:
+2025-10-14 15:13:12,834 - twister - DEBUG - DEVICE: I:   Start operations: 10000
+2025-10-14 15:13:12,834 - twister - DEBUG - DEVICE: I:   Stop operations: 10000
+2025-10-14 15:13:12,873 - twister - DEBUG - DEVICE: I:   Set alarm operations: 10000
+2025-10-14 15:13:12,873 - twister - DEBUG - DEVICE: I:   Cancel alarm operations: 10000
+2025-10-14 15:13:12,874 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-14 15:13:12,874 - twister - DEBUG - DEVICE: I:   Duration: 6281 ms
+2025-10-14 15:13:12,875 - twister - DEBUG - DEVICE: I: Performance: 40000 ops in 6281 ms (6368 ops/sec)
+2025-10-14 15:13:12,875 - twister - DEBUG - DEVICE: PASS - test_endurance in 6.309 seconds
+2025-10-14 15:13:12,876 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-14 15:13:12,877 - twister - DEBUG - DEVICE: TESTSUITE counter_stress succeeded
+2025-10-14 15:13:12,879 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-10-14 15:13:12,882 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [counter_stress]: pass = 3, fail = 0, skip = 0, total = 3 duration = 10.251 seconds
+2025-10-14 15:13:12,905 - twister - DEBUG - DEVICE: - PASS - [counter_stress.test_alarm_relative_mode] duration = 1.978 seconds
+2025-10-14 15:13:12,906 - twister - DEBUG - DEVICE: - PASS - [counter_stress.test_concurrent_start_stop] duration = 1.964 seconds
+2025-10-14 15:13:12,907 - twister - DEBUG - DEVICE: - PASS - [counter_stress.test_endurance] duration = 6.309 seconds
+2025-10-14 15:13:12,907 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-10-14 15:13:12,908 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-14 15:13:12,909 - twister - DEBUG - DEVICE: RunID: 04df7e0cf45e6d955fd3df185fba2bd3
+2025-10-14 15:13:12,909 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-10-14 15:13:12,933 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-14 15:13:12,933 - twister - DEBUG - run status: qcc730mi/qcc730\zephyr\tests/drivers/counter/qcc730_qtmr_stress/drivers.counter.qcc730.stress passed
+2025-10-14 15:13:13,022 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-10-14 15:13:13,066 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 74.99 seconds.
+2025-10-14 15:13:13,066 - twister - INFO - 3 of 3 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-10-14 15:13:13,067 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-10-14 15:13:13,067 - twister - INFO - Saving reports...
+2025-10-14 15:13:13,067 - twister - INFO - Writing JSON report C:\qualcomm\workspace7\twister-out\twister.json
+2025-10-14 15:13:13,069 - twister - INFO - Writing xunit report C:\qualcomm\workspace7\twister-out\twister.xml...
+2025-10-14 15:13:13,072 - twister - INFO - Writing xunit report C:\qualcomm\workspace7\twister-out\twister_report.xml...
+2025-10-14 15:13:13,074 - twister - INFO - Run completed

@@ -1,0 +1,43 @@
+#include <mem.h>
+
+//&qspi_nor_flash1 {
+//	status = "okay";
+//	partitions {
+//		compatible = "fixed-partitions";
+//		#address-cells = <1>;
+//		#size-cells = <1>;
+//
+//		storage_partition: partition@0 {
+//			label = "storage";
+//			reg = <0x0 0x400000>;
+//		};
+//	};
+//};
+
+//&qspi_nor_flash2 {
+//	status = "okay";
+//	partitions {
+//		compatible = "fixed-partitions";
+//		#address-cells = <1>;
+//		#size-cells = <1>;
+//
+//		storage_partition: partition@0 {
+//			label = "storage";
+//			reg = <0x0 0x400000>;
+//		};
+//	};
+//};
+
+&qspi_nor_flash3 {
+	status = "okay";
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		storage_partition: partition@0 {
+			label = "storage";
+			reg = <0x0 0x400000>;
+		};
+	};
+};

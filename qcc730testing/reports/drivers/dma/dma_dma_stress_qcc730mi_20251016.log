@@ -1,0 +1,259 @@
+2025-10-16 16:30:10,095 - twister - INFO - Using Ninja..
+2025-10-16 16:30:10,420 - twister - INFO - Zephyr version: v4.1.0
+2025-10-16 16:30:10,526 - twister - DEBUG - Running cmake script C:\qualcomm\workspace8\zephyr\cmake\verify-toolchain.cmake
+2025-10-16 16:30:10,536 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-DFORMAT=json', '-P', 'C:\\qualcomm\\workspace8\\zephyr\\cmake\\verify-toolchain.cmake']
+2025-10-16 16:30:11,991 - twister - DEBUG - Finished running C:\qualcomm\workspace8\zephyr\cmake\verify-toolchain.cmake
+2025-10-16 16:30:11,991 - twister - INFO - Using 'zephyr' toolchain.
+2025-10-16 16:30:14,770 - twister - DEBUG - Reading testsuite configuration files under C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress...
+2025-10-16 16:30:14,772 - twister - DEBUG - Found possible testsuite in C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress
+2025-10-16 16:30:14,780 - twister - DEBUG - No duplicates found.
+2025-10-16 16:30:14,782 - twister - DEBUG - platform filter: ['qcc730mi']
+2025-10-16 16:30:14,782 - twister - DEBUG -   vendor filter: []
+2025-10-16 16:30:14,782 - twister - DEBUG -     arch_filter: None
+2025-10-16 16:30:14,782 - twister - DEBUG -      tag_filter: None
+2025-10-16 16:30:14,782 - twister - DEBUG -     exclude_tag: None
+2025-10-16 16:30:14,782 - twister - DEBUG - Checking platform filter: ['qcc730mi']
+2025-10-16 16:30:14,783 - twister - INFO - Building initial testsuite list...
+2025-10-16 16:30:14,786 - twister - INFO - Writing JSON report C:\qualcomm\workspace8\twister-out\testplan.json
+2025-10-16 16:30:14,930 - twister - INFO - Adding tasks to the queue...
+2025-10-16 16:30:14,931 - twister - DEBUG - adding qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress
+2025-10-16 16:30:15,233 - twister - INFO - Added initial list of jobs to queue
+2025-10-16 16:30:16,244 - twister - DEBUG - Running cmake on C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress for qcc730mi/qcc730
+2025-10-16 16:30:16,253 - twister - DEBUG - Calling cmake: ['C:\\Program Files\\CMake\\bin\\cmake.EXE', '-BC:\\qualcomm\\workspace8\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress', '-DTC_RUNID=57a359de76d075bf56df69b2376bfad4', '-DTC_NAME=tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress', '-DCONFIG_COMPILER_WARNINGS_AS_ERRORS=y', '-DEXTRA_GEN_EDT_ARGS=--edtlib-Werror', '-GNinja', '-DPython3_EXECUTABLE=C:/qualcomm/workspace8/.venv/Scripts/python.exe', '-DZEPHYR_TOOLCHAIN_VARIANT=zephyr', '-SC:\\qualcomm\\workspace8\\zephyr\\tests\\drivers\\dma\\dma_stress', '-DBOARD=qcc730mi/qcc730']
+2025-10-16 16:30:16,779 - twister - DEBUG - Launched 12 jobs
+2025-10-16 16:30:30,023 - twister - DEBUG - Finished running cmake C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress for qcc730mi/qcc730 in 13.77 seconds
+2025-10-16 16:30:30,026 - twister - DEBUG - build test: qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress
+2025-10-16 16:30:30,026 - twister - DEBUG - Building C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress for qcc730mi/qcc730
+2025-10-16 16:30:30,037 - twister - DEBUG - Running C:\Program Files\CMake\bin\cmake.EXE --build C:\qualcomm\workspace8\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress
+2025-10-16 16:30:49,975 - twister - DEBUG - Finished building C:\qualcomm\workspace8\zephyr\tests\drivers\dma\dma_stress for qcc730mi/qcc730 in 19.94 seconds
+2025-10-16 16:30:49,976 - twister - DEBUG - Determine test cases for test instance: qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress
+2025-10-16 16:30:49,976 - twister - DEBUG - Determine test cases for test suite: drivers.dma.qcc730.stress
+2025-10-16 16:30:50,057 - twister - DEBUG - Test instance qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress already has 5 testcase(s) known: [<TestCase drivers.dma.qcc730.stress.dma_stress.dma_memory_regions with None>, <TestCase drivers.dma.qcc730.stress.dma_stress.dma_block_sizes with None>, <TestCase drivers.dma.qcc730.stress.dma_stress.dma_priority_stress with None>, <TestCase drivers.dma.qcc730.stress.dma_stress.dma_rapid_reconfig with None>, <TestCase drivers.dma.qcc730.stress.dma_stress.dma_concurrent_channels with None>]
+2025-10-16 16:30:50,057 - twister - DEBUG - Detected 5 Ztest case(s): [drivers.dma.qcc730.stress.dma_stress.dma_priority_stress, drivers.dma.qcc730.stress.dma_stress.dma_block_sizes, drivers.dma.qcc730.stress.dma_stress.dma_memory_regions, drivers.dma.qcc730.stress.dma_stress.dma_rapid_reconfig, drivers.dma.qcc730.stress.dma_stress.dma_concurrent_channels] in C:\qualcomm\workspace8\twister-out\qcc730mi_qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress\zephyr\zephyr.elf
+2025-10-16 16:30:50,060 - twister - DEBUG - run test: qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress
+2025-10-16 16:30:50,060 - twister - DEBUG - Reset instance status from 'passed' to None before run.
+2025-10-16 16:30:50,060 - twister - DEBUG - Retain DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-16 16:30:50,061 - twister - DEBUG - Using serial device COM9 @ 115200 baud
+2025-10-16 16:30:50,061 - twister - DEBUG - Flash command: ['west', 'flash', '--skip-rebuild', '-d', 'C:\\qualcomm\\workspace8\\twister-out\\qcc730mi_qcc730\\zephyr\\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress', '--', '-a', '-m', 'rram']
+2025-10-16 16:31:07,864 - twister - DEBUG - -- west flash: using runner nvmprogrammer
+-- runners.nvmprogrammer: reset after flashing requested
+-- runners.nvmprogrammer: Creating hashed image: C:/qualcomm/workspace8/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress/zephyr_hashed.elf
+-- runners.nvmprogrammer: Flashing firmware description table: C:\qualcomm\workspace5\qccsdk\qccsdk\tools\storage\firmware_desc_table\curr_age_fdt\frn_curr_age_with_app_bin.bin
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:51488
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace5/qccsdk/qccsdk/tools/storage/firmware_desc_table/curr_age_fdt/frn_curr_age_with_app_bin.bin
+Programming 1024 bytes to rram 0x00208000
+.
+Image programmed successfully, time elapsed 0.2162618637084961 seconds.
+
+-- runners.nvmprogrammer: Flashing SBL: C:\qualcomm\workspace8\zephyr\..\modules\hal\hal_qcom\zephyr\blobs\FERMION_SBL_HASHED.elf
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:51489
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace8/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x0020A400
+.
+Image programmed successfully, time elapsed 0.45430660247802734 seconds.
+
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:51492
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace8/zephyr/../modules/hal/hal_qcom/zephyr/blobs/FERMION_SBL_HASHED.elf
+Programming 21248 bytes to rram 0x00212400
+.
+Image programmed successfully, time elapsed 0.45180583000183105 seconds.
+
+-- runners.nvmprogrammer: Flashing file: C:/qualcomm/workspace8/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress/zephyr/zephyr.bin
+Python 3.13.7 (tags/v3.13.7:bcee1c3, Aug 14 2025, 14:15:11) [MSC v.1944 64 bit (AMD64)]
+********************************************************************************
+********************************************************************************
+Starting GDB Server...
+Using OpenOCD GDB server
+C:\OpenOCD_CH347\bin\openocd.exe -c gdb_port 3333 -f ./qcc730_openocd_ch347.cfg
+********************************************************************************
+Starting GDB Client...
+GDB tool port:   127.0.0.1:19383
+GDB client port: 127.0.0.1:49869
+********************************************************************************
+Initializing GDB...
+********************************************************************************
+********************************************************************************
+Programming C:/qualcomm/workspace8/twister-out/qcc730mi_qcc730/zephyr/tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress/zephyr/zephyr.bin
+Programming 40748 bytes to rram 0x0021A400
+..
+Image programmed successfully, time elapsed 0.8021821975708008 seconds.
+
+
+2025-10-16 16:31:07,865 - twister - DEBUG - Attach serial device COM9 @ 115200 baud
+2025-10-16 16:31:07,970 - twister - DEBUG - DEVICE: *** Booting Zephyr OS build v4.1.0 ***
+2025-10-16 16:31:07,971 - twister - DEBUG - DEVICE: Running TESTSUITE dma_stress
+2025-10-16 16:31:07,971 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:07,972 - twister - DEBUG - DEVICE: START - test_dma_block_sizes
+2025-10-16 16:31:07,972 - twister - DEBUG - DEVICE: I: Starting DMA block sizes test
+2025-10-16 16:31:15,671 - twister - DEBUG - DEVICE: 5% remaining:11000 ms
+2025-10-16 16:31:15,671 - twister - DEBUG - DEVICE: 14% remaining:10000 ms
+2025-10-16 16:31:15,671 - twister - DEBUG - DEVICE: 27% remaining:9000 ms
+2025-10-16 16:31:15,671 - twister - DEBUG - DEVICE: 42% remaining:8000 ms
+2025-10-16 16:31:15,672 - twister - DEBUG - DEVICE: 55% remaining:7000 ms
+2025-10-16 16:31:15,672 - twister - DEBUG - DEVICE: 67% remaining:6000 ms
+2025-10-16 16:31:15,672 - twister - DEBUG - DEVICE: 86% remaining:5000 ms
+2025-10-16 16:31:15,672 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-16 16:31:15,673 - twister - DEBUG - DEVICE: context 0:
+2025-10-16 16:31:15,673 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-16 16:31:15,674 - twister - DEBUG - DEVICE: - ticks initial:10, optimized:4
+2025-10-16 16:31:15,674 - twister - DEBUG - DEVICE: context 1:
+2025-10-16 16:31:15,674 - twister - DEBUG - DEVICE: - executed:3000, preempted:625
+2025-10-16 16:31:15,675 - twister - DEBUG - DEVICE: - ticks initial:100, optimized:4
+2025-10-16 16:31:15,675 - twister - DEBUG - DEVICE: context 2:
+2025-10-16 16:31:15,675 - twister - DEBUG - DEVICE: - executed:3000, preempted:1865
+2025-10-16 16:31:15,676 - twister - DEBUG - DEVICE: - ticks initial:60, optimized:4
+2025-10-16 16:31:15,676 - twister - DEBUG - DEVICE: Average CPU load:75%, measurements:76
+2025-10-16 16:31:15,677 - twister - DEBUG - DEVICE: I: Block sizes test completed:
+2025-10-16 16:31:15,678 - twister - DEBUG - DEVICE: I:   Channel 0 operations: 3000
+2025-10-16 16:31:15,679 - twister - DEBUG - DEVICE: I:   Channel 1 operations: 3000
+2025-10-16 16:31:15,679 - twister - DEBUG - DEVICE: I:   Channel 2 operations: 3000
+2025-10-16 16:31:15,679 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-16 16:31:15,691 - twister - DEBUG - DEVICE: I: Performance: 9000 ops in 7666 ms (1174 ops/sec)
+2025-10-16 16:31:15,692 - twister - DEBUG - DEVICE: PASS - test_dma_block_sizes in 7.688 seconds
+2025-10-16 16:31:15,693 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:15,693 - twister - DEBUG - DEVICE: START - test_dma_concurrent_channels
+2025-10-16 16:31:15,694 - twister - DEBUG - DEVICE: I: Starting DMA concurrent channels test
+2025-10-16 16:31:20,902 - twister - DEBUG - DEVICE: 13% remaining:11000 ms
+2025-10-16 16:31:20,902 - twister - DEBUG - DEVICE: 30% remaining:10000 ms
+2025-10-16 16:31:20,902 - twister - DEBUG - DEVICE: 46% remaining:9000 ms
+2025-10-16 16:31:20,902 - twister - DEBUG - DEVICE: 61% remaining:8000 ms
+2025-10-16 16:31:20,902 - twister - DEBUG - DEVICE: 94% remaining:7000 ms
+2025-10-16 16:31:20,903 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-16 16:31:20,903 - twister - DEBUG - DEVICE: context 0:
+2025-10-16 16:31:20,903 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-16 16:31:20,904 - twister - DEBUG - DEVICE: - ticks initial:50, optimized:4
+2025-10-16 16:31:20,904 - twister - DEBUG - DEVICE: context 1:
+2025-10-16 16:31:20,905 - twister - DEBUG - DEVICE: - executed:3000, preempted:247
+2025-10-16 16:31:20,905 - twister - DEBUG - DEVICE: - ticks initial:50, optimized:4
+2025-10-16 16:31:20,905 - twister - DEBUG - DEVICE: context 2:
+2025-10-16 16:31:20,906 - twister - DEBUG - DEVICE: - executed:3000, preempted:1146
+2025-10-16 16:31:20,906 - twister - DEBUG - DEVICE: - ticks initial:50, optimized:4
+2025-10-16 16:31:20,907 - twister - DEBUG - DEVICE: Average CPU load:73%, measurements:51
+2025-10-16 16:31:20,907 - twister - DEBUG - DEVICE: I: Concurrent test completed:
+2025-10-16 16:31:20,907 - twister - DEBUG - DEVICE: I:   Channel 0 operations: 3000
+2025-10-16 16:31:20,908 - twister - DEBUG - DEVICE: I:   Channel 1 operations: 3000
+2025-10-16 16:31:20,908 - twister - DEBUG - DEVICE: I:   Channel 2 operations: 3000
+2025-10-16 16:31:20,909 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-16 16:31:20,921 - twister - DEBUG - DEVICE: I: Performance: 9000 ops in 5177 ms (1738 ops/sec)
+2025-10-16 16:31:20,922 - twister - DEBUG - DEVICE: PASS - test_dma_concurrent_channels in 5.201 seconds
+2025-10-16 16:31:20,923 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:20,923 - twister - DEBUG - DEVICE: START - test_dma_memory_regions
+2025-10-16 16:31:20,924 - twister - DEBUG - DEVICE: I: Starting DMA memory regions test
+2025-10-16 16:31:25,113 - twister - DEBUG - DEVICE: 19% remaining:11000 ms
+2025-10-16 16:31:25,113 - twister - DEBUG - DEVICE: 45% remaining:10000 ms
+2025-10-16 16:31:25,113 - twister - DEBUG - DEVICE: 70% remaining:9000 ms
+2025-10-16 16:31:25,113 - twister - DEBUG - DEVICE: 96% remaining:8000 ms
+2025-10-16 16:31:25,113 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-16 16:31:25,114 - twister - DEBUG - DEVICE: context 0:
+2025-10-16 16:31:25,114 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-16 16:31:25,115 - twister - DEBUG - DEVICE: - ticks initial:40, optimized:4
+2025-10-16 16:31:25,115 - twister - DEBUG - DEVICE: Average CPU load:56%, measurements:41
+2025-10-16 16:31:25,116 - twister - DEBUG - DEVICE: I: Memory regions test completed:
+2025-10-16 16:31:25,116 - twister - DEBUG - DEVICE: I:   Channel 0 operations: 3000
+2025-10-16 16:31:25,116 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-16 16:31:25,117 - twister - DEBUG - DEVICE: I: Performance: 3000 ops in 4155 ms (722 ops/sec)
+2025-10-16 16:31:25,117 - twister - DEBUG - DEVICE: PASS - test_dma_memory_regions in 4.172 seconds
+2025-10-16 16:31:25,118 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:25,119 - twister - DEBUG - DEVICE: START - test_dma_priority_stress
+2025-10-16 16:31:25,119 - twister - DEBUG - DEVICE: I: Starting DMA priority stress test
+2025-10-16 16:31:29,279 - twister - DEBUG - DEVICE: 10% remaining:11000 ms
+2025-10-16 16:31:29,279 - twister - DEBUG - DEVICE: 38% remaining:10000 ms
+2025-10-16 16:31:29,279 - twister - DEBUG - DEVICE: 67% remaining:9000 ms
+2025-10-16 16:31:29,279 - twister - DEBUG - DEVICE: 97% remaining:8000 ms
+2025-10-16 16:31:29,280 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-16 16:31:29,280 - twister - DEBUG - DEVICE: context 0:
+2025-10-16 16:31:29,281 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-16 16:31:29,281 - twister - DEBUG - DEVICE: - ticks initial:100, optimized:4
+2025-10-16 16:31:29,282 - twister - DEBUG - DEVICE: context 1:
+2025-10-16 16:31:29,282 - twister - DEBUG - DEVICE: - executed:3000, preempted:159
+2025-10-16 16:31:29,282 - twister - DEBUG - DEVICE: - ticks initial:10, optimized:4
+2025-10-16 16:31:29,283 - twister - DEBUG - DEVICE: Average CPU load:67%, measurements:41
+2025-10-16 16:31:29,283 - twister - DEBUG - DEVICE: I: Priority stress test completed:
+2025-10-16 16:31:29,284 - twister - DEBUG - DEVICE: I:   Low priority (ch0) operations: 3000
+2025-10-16 16:31:29,284 - twister - DEBUG - DEVICE: I:   High priority (ch1) operations: 3000
+2025-10-16 16:31:29,285 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-16 16:31:29,286 - twister - DEBUG - DEVICE: I: Performance: 6000 ops in 4129 ms (1453 ops/sec)
+2025-10-16 16:31:29,286 - twister - DEBUG - DEVICE: PASS - test_dma_priority_stress in 4.150 seconds
+2025-10-16 16:31:29,290 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:29,291 - twister - DEBUG - DEVICE: START - test_dma_rapid_reconfig
+2025-10-16 16:31:29,291 - twister - DEBUG - DEVICE: I: Starting DMA rapid reconfiguration test
+2025-10-16 16:31:32,904 - twister - DEBUG - DEVICE: 17% remaining:11000 ms
+2025-10-16 16:31:32,904 - twister - DEBUG - DEVICE: 46% remaining:10000 ms
+2025-10-16 16:31:32,904 - twister - DEBUG - DEVICE: 79% remaining:9000 ms
+2025-10-16 16:31:32,904 - twister - DEBUG - DEVICE: Ztress execution report:
+2025-10-16 16:31:32,905 - twister - DEBUG - DEVICE: context 0:
+2025-10-16 16:31:32,905 - twister - DEBUG - DEVICE: - executed:3000, preempted:0
+2025-10-16 16:31:32,905 - twister - DEBUG - DEVICE: - ticks initial:10, optimized:4
+2025-10-16 16:31:32,906 - twister - DEBUG - DEVICE: context 1:
+2025-10-16 16:31:32,906 - twister - DEBUG - DEVICE: - executed:3000, preempted:766
+2025-10-16 16:31:32,907 - twister - DEBUG - DEVICE: - ticks initial:30, optimized:4
+2025-10-16 16:31:32,907 - twister - DEBUG - DEVICE: Average CPU load:57%, measurements:35
+2025-10-16 16:31:32,907 - twister - DEBUG - DEVICE: I: Rapid reconfig test completed:
+2025-10-16 16:31:32,908 - twister - DEBUG - DEVICE: I:   Channel 0 operations: 3000
+2025-10-16 16:31:32,908 - twister - DEBUG - DEVICE: I:   Channel 1 operations: 3000
+2025-10-16 16:31:32,909 - twister - DEBUG - DEVICE: I:   Total errors: 0
+2025-10-16 16:31:32,909 - twister - DEBUG - DEVICE: I: Performance: 6000 ops in 3578 ms (1676 ops/sec)
+2025-10-16 16:31:32,910 - twister - DEBUG - DEVICE: PASS - test_dma_rapid_reconfig in 3.598 seconds
+2025-10-16 16:31:32,951 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:32,952 - twister - DEBUG - DEVICE: TESTSUITE dma_stress succeeded
+2025-10-16 16:31:32,952 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY START ------
+2025-10-16 16:31:32,954 - twister - DEBUG - DEVICE: SUITE PASS - 100.00% [dma_stress]: pass = 5, fail = 0, skip = 0, total = 5 duration = 24.809 seconds
+2025-10-16 16:31:32,955 - twister - DEBUG - DEVICE: - PASS - [dma_stress.test_dma_block_sizes] duration = 7.688 seconds
+2025-10-16 16:31:32,956 - twister - DEBUG - DEVICE: - PASS - [dma_stress.test_dma_concurrent_channels] duration = 5.201 seconds
+2025-10-16 16:31:32,957 - twister - DEBUG - DEVICE: - PASS - [dma_stress.test_dma_memory_regions] duration = 4.172 seconds
+2025-10-16 16:31:32,958 - twister - DEBUG - DEVICE: - PASS - [dma_stress.test_dma_priority_stress] duration = 4.150 seconds
+2025-10-16 16:31:32,973 - twister - DEBUG - DEVICE: - PASS - [dma_stress.test_dma_rapid_reconfig] duration = 3.598 seconds
+2025-10-16 16:31:32,973 - twister - DEBUG - DEVICE: ------ TESTSUITE SUMMARY END ------
+2025-10-16 16:31:32,975 - twister - DEBUG - DEVICE: ===================================================================
+2025-10-16 16:31:32,976 - twister - DEBUG - DEVICE: RunID: 57a359de76d075bf56df69b2376bfad4
+2025-10-16 16:31:32,977 - twister - DEBUG - DEVICE: PROJECT EXECUTION SUCCESSFUL
+2025-10-16 16:31:32,996 - twister - DEBUG - Release DUT:qcc730mi/qcc730, Id:None, counter:1, failures:0
+2025-10-16 16:31:32,996 - twister - DEBUG - run status: qcc730mi/qcc730\zephyr\tests/drivers/dma/dma_stress/drivers.dma.qcc730.stress passed
+2025-10-16 16:31:33,079 - twister - INFO - 1 test scenarios (1 configurations) selected, 0 configurations filtered (0 by static filter, 0 at runtime).
+2025-10-16 16:31:33,116 - twister - INFO - [32m1 of 1[39m executed test configurations passed (100.00%), 0 built (not run), 0 failed, 0 errored, with no warnings in 83.02 seconds.
+2025-10-16 16:31:33,117 - twister - INFO - 5 of 5 executed test cases passed (100.00%) on 1 out of total 949 platforms (0.11%).
+2025-10-16 16:31:33,117 - twister - INFO - [32m1[39m test configurations executed on platforms, [36m0[39m test configurations were only built.
+2025-10-16 16:31:33,118 - twister - INFO - Saving reports...
+2025-10-16 16:31:33,118 - twister - INFO - Writing JSON report C:\qualcomm\workspace8\twister-out\twister.json
+2025-10-16 16:31:33,120 - twister - INFO - Writing xunit report C:\qualcomm\workspace8\twister-out\twister.xml...
+2025-10-16 16:31:33,123 - twister - INFO - Writing xunit report C:\qualcomm\workspace8\twister-out\twister_report.xml...
+2025-10-16 16:31:33,125 - twister - INFO - Run completed
