@@ -13,6 +13,7 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/linker/devicetree_regions.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/pm/device.h>
 #include <zephyr/logging/log.h>
 
 #include <string.h>

@@ -69,9 +69,8 @@ ZTEST(uart_pm_api_test, test_suspend_resume_success)
 	k_msleep(10);
 
 	LOG_INF("Suspending UART device...");
-	pm_state_force(0, &(struct pm_state_into){.state = PM_STATE_SUSPEND_TO_RAM});
-	//ret = pm_device_action_run(uart_dev, PM_DEVICE_ACTION_SUSPEND);
-	//zassert_equal(ret, 0, "Suspend action failed with ret=%d", ret);
+	ret = pm_device_action_run(uart_dev, PM_DEVICE_ACTION_SUSPEND);
+	zassert_equal(ret, 0, "Suspend action failed with ret=%d", ret);
 	k_msleep(10);
 	LOG_INF("Suspending UART device...");
 
