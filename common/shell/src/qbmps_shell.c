@@ -70,7 +70,7 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
 static int cmd_bmps_idle_time(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
-    uint8_t idle_timeout = shell_strtoul(argv[1], 10, &err);
+    uint32_t idle_timeout = shell_strtoul(argv[1], 10, &err);
 
     if (err) {
         shell_error(ctx, "Unable to parse idle time (err %d)", err);
