@@ -254,6 +254,10 @@ class TestRunner:
             self.command.extend(["--outdir", str(self.twister_outdir)])
 
         self.command.extend(["--disable-warnings-as-errors"])
+
+        # avoid concurrency race.
+        self.command.extend(["--jobs 1"])
+
         # avoid too long path to prevent compilation failure in windows.
         if os.name == 'nt':
             self.command.extend(["--short-build-path"])
