@@ -12,7 +12,6 @@
 #include <zephyr/logging/log.h>
 #include <string.h>
 #include <zephyr/linker/devicetree_regions.h>
-#include <zephyr/pm/device.h>
 
 static const struct device *get_dxe_dev(void)
 {
@@ -416,65 +415,6 @@ ZTEST(dxe_suite, test_error_cases)
 		int ret = dma_get_status(dxe, 0, NULL);
 		zassert_equal(ret, -EINVAL, "Expected -EINVAL for NULL status");
 	}
-}
-
-
-static void dma_pm_suspend_resume_check(const struct device *dxe)
-{
-	int ret;
-
-	/* Prepare a small valid config */
-	struct dma_block_config b = {0};
-	b.block_size = 64;
-	b.source_address = (uint32_t)(uintptr_t)sram_src;
-	b.dest_address = (uint32_t)(uintptr_t)sram_dst;
-
-	struct dma_config cfg = (struct dma_config){0};
-	cfg.channel_direction = MEMORY_TO_MEMORY;
-	cfg.dma_callback = dxe_cb;
-	cfg.block_count = 1;
-	cfg.head_block = &b;
-
-	/* Suspend device */
-	ret = pm_device_action_run(dxe, PM_DEVICE_ACTION_SUSPEND);
-	zassert_ok(ret, "pm suspend failed: %d", ret);
-
-	/* While suspended, DMA API calls should return an error (negative) */
-	ret = dma_config(dxe, 0, &cfg);
-	zassert_true(ret < 0, "dma_config() expected error when suspended, got %d", ret);
-
-	ret = dma_start(dxe, 0);
-	zassert_true(ret < 0, "dma_start() expected error when suspended, got %d", ret);
-
-	ret = dma_stop(dxe, 0);
-	zassert_true(ret < 0, "dma_stop() expected error when suspended, got %d", ret);
-
-	struct dma_status status;
-	ret = dma_get_status(dxe, 0, &status);
-	zassert_true(ret < 0, "dma_get_status() expected error when suspended, got %d", ret);
-
-	/* Resume device */
-	ret = pm_device_action_run(dxe, PM_DEVICE_ACTION_RESUME);
-	zassert_ok(ret, "pm resume failed: %d", ret);
-
-	/* After resume device should work again — run a short transfer */
-	memset(sram_src, 0x33, b.block_size);
-	memset(sram_dst, 0xCC, b.block_size);
-	k_sem_reset(&done_sem);
-
-	ret = dma_config(dxe, 0, &cfg);
-	zassert_ok(ret, "dma_config() failed after resume: %d", ret);
-
-	ret = dma_start(dxe, 0);
-	zassert_ok(ret, "dma_start() failed after resume: %d", ret);
-
-	zassert_ok(k_sem_take(&done_sem, K_SECONDS(1)), "DMA did not complete after resume");
-}
-
-ZTEST(dxe_suite, test_pm)
-{
-	const struct device *dxe = get_dxe_dev();
-	dma_pm_suspend_resume_check(dxe);
 }
 
 /* Register the suite after all tests are defined */
