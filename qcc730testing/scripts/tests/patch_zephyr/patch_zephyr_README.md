@@ -1,5 +1,5 @@
 <!-- Copyright (c) 2025 Qualcomm Technologies, Inc. and/or its subsidiaries -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- SPDX-License-Identifier: BSD-3-Clause -->
 
 # Zephyr patching script (patch_zephyr.py)
 Zephyr tests and samples need some patching before they can be build and run on QCC730 boards. This script will copy overlays and patch source code accordingly in the Zephyr working copy.

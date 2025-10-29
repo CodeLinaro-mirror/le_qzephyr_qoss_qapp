@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2025 Qualcomm Technologies, Inc.
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * GPIO Stress Test Suite for QCC730
  * Uses ztress framework for robustness validation
