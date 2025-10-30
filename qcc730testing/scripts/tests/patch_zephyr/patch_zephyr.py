@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Qualcomm Technologies, Inc. and/or its subsidiaries
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: BSD-3-Clause
 
 """
 Script to copy overlays, patch Zephyr tests and samples, and generate patches.

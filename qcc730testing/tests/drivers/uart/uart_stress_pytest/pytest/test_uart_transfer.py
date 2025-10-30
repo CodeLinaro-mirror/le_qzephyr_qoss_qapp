@@ -2,7 +2,7 @@
 
 """
 Copyright (c) 2025 Qualcomm Technologies, Inc.
-SPDX-License-Identifier: Apache-2.0
+SPDX-License-Identifier: BSD-3-Clause
 
 UART RX/TX stress tests using pytest and twister_harness
 Tests both directions without requiring loopback

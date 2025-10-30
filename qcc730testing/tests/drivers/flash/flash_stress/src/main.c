@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2025 Qualcomm Technologies
- * SPDX-License-Identifier: Apache-2.0
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <zephyr/ztest.h>

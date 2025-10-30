@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: BSD-3-Clause
 # Copyright (c) 2025 Qualcomm Technologies, Inc.
 
 cmake_minimum_required(VERSION 3.20.0)
