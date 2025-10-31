@@ -11,6 +11,18 @@ common:
     ordered: true
     regex:
       - "Watchdog sample application"
+      - "=== Starting PM Suspend/Resume Tests ==="
+      - "Test 1: PASS - Timeout installed successfully"
+      - "Test 2: PASS - Device suspended"
+      - "Test 3a: PASS - install_timeout returned -EBUSY as expected"
+      - "Test 3b: PASS - setup returned -EBUSY as expected"
+      - "Test 3c: PASS - feed returned -EBUSY as expected"
+      - "Test 4: PASS - Device resumed"
+      - "Test 5: PASS - Timeout reinstalled after resume"
+      - "=== PM Suspend/Resume Tests Complete ==="
+      - "=== Starting Sequence Stability Test ==="
+      - "Stability Test: PASS"
+      - "=== Sequence Stability Test Complete ==="
       - "Watchdog install error that we want to see"
       - "Feeding watchdog..."
       - "No more feeds, waiting for reset"

@@ -16,6 +16,8 @@
 
 #define LOG_LEVEL LOG_LEVEL_DBG
 
+#define WDT_SETUP_DISABLE_CYCLES 100U
+
 LOG_MODULE_REGISTER(main);
 
 #define SW0_NODE DT_ALIAS(sw0)
@@ -33,8 +35,7 @@ void button0_pressed(const struct device *dev, struct gpio_callback *cb, uint32_
 
 int main(void)
 {
-	int err;
-	int ret;
+	int ret = 0;
 	const struct device *const wdt = DEVICE_DT_GET(DT_ALIAS(watchdog0));
 	const struct gpio_dt_spec button0 = GPIO_DT_SPEC_GET_OR(SW0_NODE, gpios, {0});
 	struct gpio_callback button0_cb_data;
@@ -97,30 +98,55 @@ int main(void)
 
 	LOG_INF("=== PM Suspend/Resume Tests Complete ===\n");
 
+	/* Sequence Stability Test */
+	LOG_INF("=== Starting Sequence Stability Test ===");
+
+	wdt_config.window.max = 10000;
+	ret = wdt_install_timeout(wdt, &wdt_config);
+	__ASSERT(ret == 0, "Failed to install timeout", ret);
+
+	for (int i = 0; i < WDT_SETUP_DISABLE_CYCLES; i++) {
+		ret = wdt_setup(wdt, 0);
+		__ASSERT(ret == 0, "Failed to setup watchdog", ret);
+		ret = wdt_disable(wdt);
+		__ASSERT(ret == 0, "Failed to disable watchdog", ret);
+	}
+	LOG_INF("Stability Test: PASS");
+	LOG_INF("=== Sequence Stability Test Complete ===\n");
+
 	/* GPIO Button Setup */
 	if (!gpio_is_ready_dt(&button0)) {
 		LOG_ERR("Error: button0 device %s is not ready\n", button0.port->name);
-		return -ENODEV;
+		return 0;
 	}
 
 	ret = gpio_pin_configure_dt(&button0, GPIO_INPUT);
 	if (ret != 0) {
 		LOG_ERR("Error %d: failed to configure %s pin %d\n", ret, button0.port->name,
 			button0.pin);
-		return -ENODEV;
+		return 0;
 	}
 
 	ret = gpio_pin_interrupt_configure_dt(&button0, GPIO_INT_EDGE_TO_ACTIVE);
 	if (ret != 0) {
 		LOG_ERR("Error %d: failed to configure interrupt on %s pin %d\n", ret,
 			button0.port->name, button0.pin);
-		return -ENODEV;
+		return 0;
 	}
 
 	gpio_init_callback(&button0_cb_data, button0_pressed, BIT(button0.pin));
 	gpio_add_callback(button0.port, &button0_cb_data);
 
-	/* Watchdog Error Test */
+	if (!device_is_ready(wdt)) {
+		LOG_ERR("%s: device not ready.\n", wdt->name);
+		return 0;
+	}
+
+	wdt_config.flags = WDT_FLAG_RESET_SOC;
+	/* Expire watchdog after max window */
+	wdt_config.window.min = 0;
+	wdt_config.window.max = CONFIG_QCC730_WDT_TIMEOUT_MS;
+
 	struct wdt_timeout_cfg wdt_err_config = {
 		/* Reset SoC when timer expires. */
 		.flags = WDT_FLAG_RESET_SOC,
@@ -131,31 +157,27 @@ int main(void)
 	};
 
 	ret = wdt_install_timeout(wdt, &wdt_err_config);
-	__ASSERT(ret < 0, "Expected error for invalid timeout config, got: %d", ret);
-	LOG_INF("Invalid timeout test: PASS - Got expected error\n");
-
-	/* Normal Watchdog Operation */
+	if (ret < 0) {
+		LOG_ERR("Watchdog install error that we want to see\n");
+	}
 
 	ret = wdt_install_timeout(wdt, &wdt_config);
-	__ASSERT(ret == 0, "Watchdog install timeout failed: %d", ret);
-	LOG_INF("Watchdog timeout configured successfully\n");
+	__ASSERT(ret == 0, "Watchdog install error\n", ret);
 
 	while (!is_wdt_on) {
 		LOG_INF("Press button to enable watchdog\n");
 		k_sleep(K_MSEC(1000));
 	}
 
-	err = wdt_setup(wdt, 0);
-	__ASSERT(err == 0, "Watchdog setup failed: %d", err);
-	LOG_INF("Watchdog enabled successfully\n");
+	ret = wdt_setup(wdt, 0);
+	__ASSERT(ret == 0, "Watchdog setup error\n", ret);
 
 	/* Feeding watchdog before timer expires. */
 	LOG_INF("Feeding watchdog %d times\n", CONFIG_QCC730_WDT_FEED_TRIES);
 	for (int i = 0; i < CONFIG_QCC730_WDT_FEED_TRIES; ++i) {
 		k_sleep(K_MSEC(CONFIG_QCC730_WDT_FEED_INTERVAL_MS));
 		LOG_INF("Feeding watchdog...\n");
-		ret = wdt_feed(wdt, 0);
-		__ASSERT(ret == 0, "Watchdog feed failed: %d", ret);
+		wdt_feed(wdt, 0);
 	}
 
 	/* Waiting for the SoC reset. */

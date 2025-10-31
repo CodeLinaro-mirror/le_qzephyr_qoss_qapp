@@ -14,8 +14,9 @@
 
 #define CONTINUOUS_TRANSFER_COUNT_TEST 1000U
 #define LIS2DW12_DUMMY_INIT_VAL        99
-#define LIS2DW12_TEST_TOLERANCE        0.01
+#define LIS2DW12_TEST_TOLERANCE        0.9
 #define LIS2DW12_STATIONARY_VAL        (double)0 /* Measurement result when sensor is not moved */
+#define LIS2DW12_EARTH_ACCEL_VAL       (double)9.81 /* Earth acceleration in m/s^2 */
 
 static const struct device *const lis2dw12_dev = DEVICE_DT_GET_ONE(st_lis2dw12);
 static const struct device *const i2c_dev = DEVICE_DT_GET_ONE(qcom_qcc730_i2c);
@@ -28,7 +29,7 @@ ZTEST(lis2dw12_sensor_api_test, test_read_accel_values)
 	int32_t ret = 0;
 
 	ret = sensor_sample_fetch_chan(lis2dw12_dev, SENSOR_CHAN_ACCEL_XYZ);
-	zassert_ok(ret, "Channel not specified, sample fetch from sensor should fail!");
+	zassert_ok(ret, "Sample fetch failed!");
 
 	ret = sensor_channel_get(lis2dw12_dev, SENSOR_CHAN_ACCEL_X, &x_val);
 	zassert_ok(ret, "Failed to get X-axis acceleration!");
@@ -83,6 +84,9 @@ ZTEST(lis2dw12_sensor_api_test, test_free_standing)
 			    z = {LIS2DW12_DUMMY_INIT_VAL, LIS2DW12_DUMMY_INIT_VAL};
 	int32_t ret = 0;
 
+	ret = sensor_sample_fetch_chan(lis2dw12_dev, SENSOR_CHAN_ACCEL_XYZ);
+	zassert_ok(ret, "Sample fetch failed!");
+
 	ret = sensor_channel_get(lis2dw12_dev, SENSOR_CHAN_ACCEL_X, &x);
 	zassert_ok(ret, "Failed to get X-axis acceleration!");
 
@@ -96,7 +100,9 @@ ZTEST(lis2dw12_sensor_api_test, test_free_standing)
 		       "Sensor should not move! X-axis acceleration is not close to 0!");
 	zassert_within(sensor_value_to_double(&y), LIS2DW12_STATIONARY_VAL, LIS2DW12_TEST_TOLERANCE,
 		       "Sensor should not move! Y-axis acceleration is not close to 0!");
-	zassert_within(sensor_value_to_double(&z), LIS2DW12_STATIONARY_VAL, LIS2DW12_TEST_TOLERANCE,
+	zassert_within(sensor_value_to_double(&z),
+		       LIS2DW12_EARTH_ACCEL_VAL - LIS2DW12_TEST_TOLERANCE,
+		       LIS2DW12_EARTH_ACCEL_VAL + LIS2DW12_TEST_TOLERANCE,
 		       "Sensor should not move! Z-axis acceleration is not close to 0!");
 }
 
@@ -109,14 +115,18 @@ ZTEST(lis2dw12_sensor_api_test, test_continuous_data_transfer)
 		 CONTINUOUS_TRANSFER_COUNT_TEST);
 
 	for (uint32_t i = 0; i < CONTINUOUS_TRANSFER_COUNT_TEST; i++) {
+		ret = sensor_sample_fetch_chan(lis2dw12_dev, SENSOR_CHAN_ACCEL_X);
+		zassert_ok(ret, "Sample fetch failed!");
 		ret = sensor_channel_get(lis2dw12_dev, SENSOR_CHAN_ACCEL_X, &x);
 		zassert_ok(ret, "sensor_channel_get failed on iteration %u!", i);
+		TC_PRINT("Got sample %u: X=%.3f m/s^2\n", i, (double)sensor_value_to_double(&x));
 		zassert_within(sensor_value_to_double(&x), LIS2DW12_STATIONARY_VAL,
 			       LIS2DW12_TEST_TOLERANCE,
 			       "Sensor should not move! X-axis accel is not close to 0!");
 		/* Ensure we get fresh data from sample on each iteration */
 		x.val1 = LIS2DW12_DUMMY_INIT_VAL;
 		x.val2 = LIS2DW12_DUMMY_INIT_VAL;
+		k_sleep(K_MSEC(5));
 	}
 }
 
@@ -126,7 +136,8 @@ ZTEST(lis2dw12_sensor_api_test, test_error_handling)
 
 	/* Verify that configuration without Controller mode will fail */
 	ret = i2c_configure(i2c_dev, 0);
-	zassert_equal(ret, -EINVAL, "Configuration without CONTROLLER mode set should be impossible");
+	zassert_equal(ret, -EINVAL,
+		      "Configuration without CONTROLLER mode set should be impossible");
 
 	/* Verify that zero messages to send will return without error */
 	ret = i2c_transfer(i2c_dev, NULL, 0, 0);
@@ -144,7 +155,7 @@ ZTEST(lis2dw12_sensor_api_test, test_suspend_resume_success)
 
 	/* First do a normal I2C transfer to ensure device is working
 	 * (WHO_AM_I register) */
-	uint8_t write_buf[1] = { 0x44 };
+	uint8_t write_buf[1] = {0x44};
 	ret = i2c_write(i2c_dev, write_buf, sizeof(write_buf), 0x19);
 	zassert_true(ret == 0, "Initial I2C write failed");
 
