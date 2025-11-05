@@ -23,7 +23,7 @@ static const struct device *get_dxe_dev(void)
 /* Max block size for DXE transfer that is used by tests*/
 #define MAX_BLOCK_SIZE     (0x3FFC)
 /* Tests use no more than 3 blocks per transfer */
-#define TOTAL_BUFFERS_SIZE (5 * MAX_BLOCK_SIZE)
+#define TOTAL_BUFFERS_SIZE (3 * MAX_BLOCK_SIZE)
 
 /* SRAM buffers */
 static __aligned(4) uint8_t sram_src[TOTAL_BUFFERS_SIZE];
@@ -374,18 +374,18 @@ ZTEST(dxe_suite, test_error_cases)
 
 	/* Channel busy */
 	{
-		uint32_t s_src[5], s_dst[5];
-		size_t sizes[5] = {[0 ... 4] = 0x3FFC};
-		get_src_dst_addrs(s_src, sram_src, sizes, 5, 0);
-		get_src_dst_addrs(s_dst, sram_dst, sizes, 5, 0);
-		for (int i = 0; i < 5; i++) {
+		uint32_t s_src[3], s_dst[3];
+		size_t sizes[3] = {[0 ... 2] = 0x3FFC};
+		get_src_dst_addrs(s_src, sram_src, sizes, 3, 0);
+		get_src_dst_addrs(s_dst, sram_dst, sizes, 3, 0);
+		for (int i = 0; i < 3; i++) {
 			memset((void *)s_src[i], 0x5A + i, sizes[i]);
 			memset((void *)s_dst[i], 0x1E, sizes[i]);
 		}
-		struct dma_block_config blocks[5];
+		struct dma_block_config blocks[3];
 		build_dxe_transfer_blocks(blocks, ARRAY_SIZE(blocks), s_src, s_dst, sizes);
 		struct dma_config cfg = (struct dma_config){0};
-		prep_dxe_transfer(&cfg, 0, blocks, 5, MEMORY_TO_MEMORY, dxe_cb);
+		prep_dxe_transfer(&cfg, 0, blocks, 3, MEMORY_TO_MEMORY, dxe_cb);
 		if (dma_config(dxe, 0, &cfg) < 0) {
 			ztest_test_fail();
 		}

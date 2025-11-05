@@ -1,0 +1,16 @@
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
+
+common:
+  tags:
+    - drivers
+    - uart
+    - pinctrl
+  harness: ztest
+  platform_allow: qcc730mi
+  timeout: 60
+
+tests:
+  drivers.uart.qcc730.pinctrl_options:
+    platform_allow:
+      - qcc730mi

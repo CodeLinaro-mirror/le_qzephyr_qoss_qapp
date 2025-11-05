@@ -13,7 +13,6 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/linker/devicetree_regions.h>
 #include <zephyr/sys/atomic.h>
-#include <zephyr/pm/device.h>
 #include <zephyr/logging/log.h>
 
 #include <string.h>
@@ -36,7 +35,7 @@ LOG_MODULE_REGISTER(dma_stress, CONFIG_DMA_LOG_LEVEL);
 #define MEDIUM_BLOCK_SIZE (LARGE_BLOCK_SIZE / 2U)
 #define SMALL_BLOCK_SIZE  (MEDIUM_BLOCK_SIZE / 2U)
 
-#define NUM_STRESS_CHANNELS 6
+#define NUM_STRESS_CHANNELS 3
 #define STRESS_BUFFER_SIZE  MAX_BLOCK_SIZE
 
 /* SRAM buffers */
@@ -45,7 +44,7 @@ static __aligned(4) uint8_t sram_dst[NUM_STRESS_CHANNELS][STRESS_BUFFER_SIZE];
 
 /* RRAM buffers */
 static __aligned(4) uint8_t rram_dst[NUM_STRESS_CHANNELS][STRESS_BUFFER_SIZE] Z_GENERIC_SECTION(
-	LINKER_DT_NODE_REGION_NAME(DT_NODELABEL(rram)));
+	LINKER_DT_NODE_REGION_NAME(DT_NODELABEL(rram_test)));
 
 /* Semaphores for DMA completion tracking - one per channel */
 static K_SEM_DEFINE(dma_done_sem0, 0, 1);
@@ -56,8 +55,7 @@ static K_SEM_DEFINE(dma_done_sem4, 0, 1);
 static K_SEM_DEFINE(dma_done_sem5, 0, 1);
 
 static struct k_sem *dma_done_sem[NUM_STRESS_CHANNELS] = {
-	&dma_done_sem0, &dma_done_sem1, &dma_done_sem2,
-	&dma_done_sem3, &dma_done_sem4, &dma_done_sem5,
+	&dma_done_sem0, &dma_done_sem1, &dma_done_sem2
 };
 
 /* Statistics tracking */

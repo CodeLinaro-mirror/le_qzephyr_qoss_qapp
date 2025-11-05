@@ -1,5 +1,5 @@
 diff --git a/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c b/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
-index 2c857d28270..74b59a45a74 100644
+index 2c857d28270..8559139431d 100644
 --- a/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
 +++ b/tests/drivers/clock_control/clock_control_api/src/test_clock_control.c
 @@ -6,35 +6,52 @@
@@ -407,3 +407,40 @@ index 2c857d28270..74b59a45a74 100644
  }
  
  ZTEST(clock_control, test_double_stop)
+@@ -307,4 +406,36 @@ ZTEST(clock_control, test_double_stop)
+ 	test_all_instances(test_double_stop_on_instance, NULL);
+ }
+ 
++/*
++ * Test checks that passing wrong subsys parameter results in
++ * expected return code
++ */
++static void test_error_params_on_instance(const struct device *dev, clock_control_subsys_t subsys,
++					  uint32_t startup_us)
++{
++	int err;
++	enum clock_control_status status;
++	uint32_t invalid_subsys = 0xFFFFFFFF; /* invalid value */
++
++	/* Test invalid subsystem for clock_control_on() */
++	err = clock_control_on(dev, (clock_control_subsys_t)invalid_subsys);
++	zassert_equal(-EINVAL, err, "Expected -EINVAL for invalid subsys in clock_control_on(), got %d", err);
++
++	/* Test invalid subsystem for clock_control_off() */
++	err = clock_control_off(dev, (clock_control_subsys_t)invalid_subsys);
++	zassert_equal(-EINVAL, err, "Expected -EINVAL for invalid subsys in clock_control_off(), got %d", err);
++
++	/* Test invalid subsystem for clock_control_get_status() */
++	status = clock_control_get_status(dev, (clock_control_subsys_t)invalid_subsys);
++	zassert_equal(CLOCK_CONTROL_STATUS_UNKNOWN, status,
++		      "Expected CLOCK_CONTROL_STATUS_UNKNOWN for invalid subsys, got %d", status);
++
++	LOG_INF("Invalid subsystem handling test PASSED");
++}
++
++ZTEST(clock_control, test_error_params)
++{
++	test_all_instances(test_error_params_on_instance, NULL);
++}
++
+ ZTEST_SUITE(clock_control, NULL, NULL, NULL, NULL, NULL);
