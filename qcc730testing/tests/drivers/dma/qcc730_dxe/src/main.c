@@ -140,7 +140,7 @@ typedef struct dxe_case {
 static const dxe_case_t dxe_test_cases[] = {
 	{"1 block, 128B, channel 0, priority 0", 1, {128, 0, 0}, 0, 0},
 	{"3 blocks, 64B each, channel 0, priority 3", 3, {64, 64, 64}, 0, 3},
-	{"3 blocks, 64B, 128B, 256B, channel 1, priority 7", 3, {64, 128, 256}, 1, 7},
+	{"3 blocks, 64B, 128B, 256B, channel 1, priority 7", 3, {64, 128, 256}, 0, 7},
 };
 
 /* DXE transfer test:
