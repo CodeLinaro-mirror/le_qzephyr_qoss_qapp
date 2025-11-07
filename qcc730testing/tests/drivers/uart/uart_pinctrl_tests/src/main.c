@@ -12,6 +12,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/devicetree.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -22,6 +23,11 @@ LOG_MODULE_REGISTER(uart_pinctrl_test, LOG_LEVEL_INF);
 /* On QCC730, pinctrl_soc_pin_t is a 32-bit encoding */
 
 static const struct device *const uart_dev = DEVICE_DT_GET(DT_NODELABEL(uart0));
+
+/* Pin control config pointer for uart0 device for pinctrl_apply_state() tests */
+#define UART0_NODE DT_NODELABEL(uart0)
+PINCTRL_DT_DEV_CONFIG_DECLARE(UART0_NODE);
+static struct pinctrl_dev_config *const uart_pcfg = PINCTRL_DT_DEV_CONFIG_GET(UART0_NODE);
 
 /**
  * @brief Test UART pinctrl option register changes
@@ -443,6 +449,49 @@ ZTEST(uart_pinctrl, test_uart_sleep_option_register_changes)
 	zassert_equal(sbits3.ds_b, 0U, "sleep3 DS GPIO1 expected 0, got %u", sbits3.ds_b);
 
 	LOG_INF("UART pinctrl sleep test passed");
+}
+
+
+/*
+ * Validate pinctrl_configure_pins() error returns for:
+ * - Invalid pin number (> GPIO14) -> -EINVAL
+ * - Unsupported function (e.g., I2C/SPI/QSPI) -> -ENOTSUP
+ */
+ZTEST(uart_pinctrl, test_pinctrl_configure_pins_error_returns)
+{
+	int ret;
+
+	/* Invalid pin: GPIO15 (out of range 0..14) */
+	const pinctrl_soc_pin_t invalid_pin =
+		QCC730_PINMUX_UART_PERIPHERAL(15U, QCC730_UART_OPTION_0);
+	ret = pinctrl_configure_pins(&invalid_pin, 1, PINCTRL_REG_NONE);
+	zassert_equal(ret, -EINVAL, "Expected -EINVAL for invalid pin, got %d", ret);
+
+	/* Unsupported function on a valid pin: I2C on GPIO1 */
+	const pinctrl_soc_pin_t unsupported_func_i2c =
+		QCC730_PINMUX_PERIPHERAL(QCC730_GPIO_1, QCC730_FUNC_I2C);
+	ret = pinctrl_configure_pins(&unsupported_func_i2c, 1, PINCTRL_REG_NONE);
+	zassert_equal(ret, -ENOTSUP, "Expected -ENOTSUP for unsupported function (I2C), got %d", ret);
+
+	/* Unsupported function on a valid pin: QSPI on GPIO1 */
+	const pinctrl_soc_pin_t unsupported_func_qspi =
+		QCC730_PINMUX_PERIPHERAL(QCC730_GPIO_1, QCC730_FUNC_QSPI);
+	ret = pinctrl_configure_pins(&unsupported_func_qspi, 1, PINCTRL_REG_NONE);
+	zassert_equal(ret, -ENOTSUP, "Expected -ENOTSUP for unsupported function (QSPI), got %d", ret);
+}
+
+/*
+ * Validate pinctrl_apply_state() error return when applying a non-existent state id.
+ * We purposely pass an out-of-range enum value to trigger -ENOENT from lookup.
+ */
+ZTEST(uart_pinctrl, test_pinctrl_apply_state_error_returns)
+{
+	int ret;
+	/* 
+	 * Use an out-of-range id (99) to trigger -ENOENT from lookup.
+	 */
+	ret = pinctrl_apply_state(uart_pcfg, (uint8_t)99);
+	zassert_equal(ret, -ENOENT, "Expected -ENOENT for unknown state, got %d", ret);
 }
 
 static void *uart_pinctrl_test_setup(void)
