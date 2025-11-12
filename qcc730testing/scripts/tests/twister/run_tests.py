@@ -248,7 +248,13 @@ class TestRunner:
         self.command = ["west", "twister"]
 
         if self.twister_outdir.exists():
-            shutil.rmtree(self.twister_outdir)
+            if os.name == 'nt':
+                # Windows: Use long path prefix to handle path length limitations
+                new_path = r'\\?\\' + os.path.abspath(self.twister_outdir)
+                shutil.rmtree(new_path)
+            else:
+                # Unix-like systems: Use standard path
+                shutil.rmtree(self.twister_outdir)
 
         if not self.no_out_dir:
             self.command.extend(["--outdir", str(self.twister_outdir)])
