@@ -18,7 +18,8 @@ WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
 static void bmps_timer_cb(struct k_timer *timer);
 extern void wmi_ignore_bcmc_in_bmps(void *, uint8_t data);
-//uint64_t bmps_duration;
+static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv);
+static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv);
 extern uint64_t bmps_duration;
 uint64_t bmps_start = 0;
 
@@ -33,6 +34,8 @@ static void bmps_timer_cb(struct k_timer *timer)
     pdata->enable = 0;
     wmi_cmd_send(WMI_BMPS_ENABLE_CMDID, pdata, sizeof(*pdata));
     k_timer_stop(&bmps_timer);
+    const struct device *wifi_dev = device_get_binding("qwifi_sta");
+    pm_device_busy_set(wifi_dev);
 }
 
 static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
@@ -54,16 +57,17 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
     }
     if(time!= 0)
     {
-        k_timer_init(&bmps_timer, bmps_timer_cb, NULL);
         k_timer_start(&bmps_timer, K_MSEC(time), K_NO_WAIT);
         bmps_start = hres_timer_curr_time_us();
-        bmps_duration = bmps_start + (uint64_t)time*500;
+        bmps_duration = bmps_start + (uint64_t)time*1000;
         shell_print(ctx, "%s duration:%llu ms:%d\r\n", __func__, bmps_duration, time);
     }
 
     pbmps->enable = enable;
     shell_print(ctx, "Set bmps enable...");
     wmi_cmd_send(WMI_BMPS_ENABLE_CMDID, pbmps, sizeof(*pbmps));
+    if(enable)
+        cmd_clear_busy(ctx, 0, NULL);
     return 0;
 }
 
