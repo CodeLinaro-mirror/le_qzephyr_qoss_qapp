@@ -1,0 +1,28 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+source "Kconfig.zephyr"
+
+config QCC730_WDT_TIMEOUT_MS
+    int "QCC730 WDT timeout in milliseconds"
+    default 2000
+    range 1000 100000
+    help
+      Timeout value for the QCC730 watchdog timer in milliseconds.
+      The default is 2000 ms, minimum is 1000 ms and maximum is 100000 ms.
+
+config QCC730_WDT_FEED_INTERVAL_MS
+    int "QCC730 WDT feed interval in milliseconds"
+    default 500
+    range 500 100000
+    help
+      Feed interval for the QCC730 watchdog timer in milliseconds.
+      The default is 500 ms, minimum is 500 ms and maximum is 100000 ms.
+
+config QCC730_WDT_FEED_TRIES
+    int "QCC730 WDT feed tries"
+    default 5
+    range 1 100
+    help
+      Number of times to feed the QCC730 watchdog timer before allowing it to expire.
+      The default is 5, minimum is 1 and maximum is 100.

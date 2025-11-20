@@ -1,0 +1,13 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+sample:
+  name: Simple echo sample
+tests:
+  sample.drivers.uart.simple_echo:
+    build_only: true
+    platform_allow:
+      - native_posix
+    tags:
+      - serial
+      - uart

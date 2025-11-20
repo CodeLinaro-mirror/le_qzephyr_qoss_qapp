@@ -1,0 +1,35 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/ {
+	leds {
+		compatible = "gpio-leds";
+		led0: led_0 {
+			gpios = <&gpioa 8 GPIO_ACTIVE_LOW>;
+			label = "LED 0";
+		};
+	};
+
+	/* These aliases are provided for compatibility with samples */
+	aliases {
+		led0 = &led0;
+	};
+};
+
+&i2c0 {
+	status = "okay";
+
+	shtc3: sensirion_shtcx@70 {
+		compatible = "sensirion,shtcx";
+		reg = <0x70>;
+		measure-mode = "normal";
+		clock-stretching;
+	};
+};
+
+&gpioa {
+	status = "okay";
+};

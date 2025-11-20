@@ -1,0 +1,14 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+&i2c0 {
+	status = "okay";
+
+	lis2dw12@19 {
+		compatible = "st,lis2dw12";
+		reg = <0x19>;
+	};
+};

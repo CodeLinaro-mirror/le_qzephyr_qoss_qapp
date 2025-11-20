@@ -1,0 +1,23 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+# Test device binding for pinctrl tests
+
+description: Test device for pinctrl API
+
+compatible: "vnd,pinctrl-device"
+
+include: base.yaml
+
+properties:
+  pinctrl-0:
+    type: phandles
+    description: Default pin configuration
+  
+  pinctrl-1:
+    type: phandles
+    description: Alternative pin configuration
+  
+  pinctrl-names:
+    type: string-array
+    description: Pin configuration names

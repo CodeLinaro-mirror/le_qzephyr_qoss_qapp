@@ -18,7 +18,7 @@
 /*! @critical condition priority. */
 #define NT_LOG_LVL_CRIT 3
 #endif
-uint8_t min_loglvl = 1; // warn
+extern uint8_t min_loglvl; // warn
 
 static int cmd_set_logger_lvl(const struct shell *ctx, size_t argc, char **argv)
 {

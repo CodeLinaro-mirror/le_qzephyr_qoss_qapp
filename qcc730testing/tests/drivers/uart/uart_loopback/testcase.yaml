@@ -1,0 +1,13 @@
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
+
+common:
+  tags:
+    - drivers
+    - uart
+  platform_allow: qcc730mi
+  timeout: 50
+tests:
+  drivers.uart.qcc730.loopback_validation:
+    platform_allow:
+      - qcc730mi

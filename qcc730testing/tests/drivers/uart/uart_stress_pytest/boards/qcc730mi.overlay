@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) 2025 Qualcomm Technologies, Inc.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+&uart0 {
+	pinctrl-0 = <&uart0_option1>;
+	pinctrl-1 = <&uart0_option1_sleep>;
+	pinctrl-names = "default", "sleep";
+	status = "okay";
+	current-speed = <230400>;
+	parity = "none"; /* NONE */
+	stop-bits = "1"; /* 1 stop bit */
+	data-bits = <8>; /* 8 data bits */
+	rx-buffer-size = <8192>;
+};

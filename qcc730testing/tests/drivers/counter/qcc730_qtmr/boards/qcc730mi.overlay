@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+&frame0 {
+    status = "okay";
+};
+
+&frame1 {
+    status = "okay";
+};
+
+&frame2 {
+    status = "okay";
+};
+
+&frame3 {
+    status = "okay";
+};
+
+&frame4 {
+    status = "okay";
+};

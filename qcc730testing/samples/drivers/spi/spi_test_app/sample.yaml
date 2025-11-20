@@ -1,0 +1,14 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+sample:
+  name: SPI test app
+tests:
+  sample.drivers.spi.spi_test_app:
+    build_only: true
+    platform_allow:
+      - native_posix
+    tags:
+      - spi
+      - serial
+      - uart

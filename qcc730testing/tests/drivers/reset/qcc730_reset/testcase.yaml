@@ -1,0 +1,8 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+tests:
+  drivers.reset.test_reset_qcc730:
+    harness: ztest
+    platform_allow:
+      - qcc730mi

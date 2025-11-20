@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2025 Qualcomm Technologies, Inc.
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/ {
+	gpio_test {
+		compatible = "test-gpio-basic-api";
+		status = "okay";
+		out-gpios = <&gpioa 0 GPIO_ACTIVE_HIGH>,
+			    <&gpioa 2 GPIO_ACTIVE_HIGH>,
+			    <&gpioa 4 GPIO_ACTIVE_HIGH>,
+			    <&gpioa 6 GPIO_ACTIVE_HIGH>;
+			    
+		in-gpios = <&gpioa 1 GPIO_ACTIVE_HIGH>,
+			   <&gpioa 3 GPIO_ACTIVE_HIGH>,
+			   <&gpioa 5 GPIO_ACTIVE_HIGH>,
+			   <&gpioa 7 GPIO_ACTIVE_HIGH>;
+	};
+
+	aliases {
+		gpio-test = &gpioa;
+	};
+};
+
+&gpioa {
+	status = "okay";
+};

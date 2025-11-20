@@ -1,0 +1,106 @@
+# Shared configuration applied to all:
+common_config:
+  platform:
+    - qcc730mi
+
+# Shared configuration applied to all tests (unless overridden):
+test_common_config:
+  device-testing: true
+  flash-before: true
+  integration: true
+  inline-logs: true
+  log_level: DEBUG
+  device-serial: COM4 #/dev/ttyACM1 for linux
+  west-flash:
+    - "-a"
+    - "-m"
+    - "rram"
+
+# Individual test case definitions
+tests:
+  drivers.flash.common:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/flash/common"
+  drivers.gpio.gpio_basic_api:
+    fixture: gpio_loopback
+    pre_test_setup: |
+      This test requires a physical loopback connection. Please connect the
+      following GPIO pins on your board:
+        - Connect GPIO 5 to GPIO 6
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/gpio/gpio_basic_api"
+  drivers.i2c.i2c_lis2dw12:
+    fixture: i2c_lis2dw12
+    pre_test_setup: |
+      This test requires a physical connection with LIS2DW12 sensor.
+      Please connect the following GPIO pins on your board:
+        - Connect GPIO 9 (QCC730) to the SDA pin (LIS2DW12 sensor).
+        - Connect GPIO 10 (QCC730) to the SCL pin (LIS2DW12 sensor).
+        - Connect VDD_3V3 (PIN nr 16 on QCC730) to the VCC pin (LIS2DW12 sensor).
+        - Connect GND (PIN nr 1 on QCC730) to the GND pin (LIS2DW12 sensor).
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/i2c/i2c_lis2dw12"
+  drivers.counter.qcc730_qtmr:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/counter/qcc730_qtmr"
+  drivers.rtc.rtc_api:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/rtc/rtc_api"
+  sample.drivers.watchdog.qcc730_wdt:
+    pre_test_setup: |
+      This test requires a physical button connected to GPIO 0.
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/samples/drivers/watchdog/qcc730_wdt"
+  drivers.uart.basic_api.qcc730_uart:
+    pre_test_setup: |
+      Test execution via twister will FAIL as `keyboard` harness in not supported
+      by Zephyr 4.1.0. It is not possible to use serial console from twister to send
+      data via serial port to the board. To run this test case please:
+        - please let it run once to and let it timeout
+        - This will flash the board with the testcase
+        - connect serial terminal to the board, i.e. `Putty` or `Minicom` or `Teraterm`
+        - press the reset button twice to reset the board
+        - Follow the instructions printed on serial port. You will be asked for data input. 4 Test case shall pass.
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_basic_api"
+  drivers.gpio.gpio_stress:
+    pre_test_setup: |
+      This test requires a physical loopback connection between GPIO Pins
+      Please connect the following GPIO pins on your QCC730 board:
+        - Connect GPIO 5 (QCC730) to the GPIO 6 (QCC730).
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/gpio/gpio_stress"
+  drivers.pinctrl.qcc730_pinctrl:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/pinctrl/qcc730mi"
+  drivers.i2c.i2c_stress:
+    fixture: i2c_lis2dw12
+    pre_test_setup: |
+      This test requires a physical connection with LIS2DW12 sensor.
+      Please connect the following GPIO pins on your board:
+        - Connect GPIO 9 (QCC730) to the SDA pin (LIS2DW12 sensor).
+        - Connect GPIO 10 (QCC730) to the SCL pin (LIS2DW12 sensor).
+        - Connect VDD_3V3 (PIN nr 16 on QCC730) to the VCC pin (LIS2DW12 sensor).
+        - Connect GND (PIN nr 1 on QCC730) to the GND pin (LIS2DW12 sensor).
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/i2c/i2c_stress"
+  drivers.reset.qcc730_reset:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/reset/qcc730_reset"
+  subsys.fs.littlefs:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/fs/littlefs"
+  drivers.clock.qcc730_clkctrl:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_api"
+  drivers.dma.qcc730_dxe:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/qcc730_dxe"
+  drivers.uart.uart_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress"
+  drivers.uart.uart_stress_pytest:
+    device-serial-baud: 230400
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress_pytest"
+  drivers.uart.qcc730.pm_api:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pm_test"
+  drivers.rtc.rtc_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/rtc/rtc_stress"
+  drivers.counter.qcc730_qtmr_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/counter/qcc730_qtmr_stress"
+  drivers.dma.dma_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/dma_stress"
+  drivers.clock.clock_stress:
+    pre_test_setup: |
+      Test generates problem on build running with twister tool. Please build
+      test case via `west build` and then manually flash it on the board. After
+      connecting via serial port and restarting board you will see it executing
+      and passing. Entry was added here as reference only.
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_stress"
+  drivers.flash.flash_stress:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/flash/flash_stress"

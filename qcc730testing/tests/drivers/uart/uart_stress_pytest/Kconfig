@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+source "Kconfig.zephyr"
+
+config UART_STRESS_TEST_APP
+    bool "UART Stress Test Application"
+    default y
+
+if UART_STRESS_TEST_APP
+
+config RX_TEST_SIZE_KB
+    int "RX test size in KiB"
+    default 10240
+    help
+      The total size of the data transfer for the RX stress test, in kibibyte.
+
+config TX_TEST_SIZE_KB
+    int "TX test size in KiB"
+    default 10240
+    help
+      The total size of the data transfer for the TX stress test, in kibibyte.
+
+config CHUNK_SIZE_KB
+    int "Chunk size for data transfer in KiB"
+    default 4
+    help
+      The size of each chunk used for sending/receiving data.
+
+config PROGRESS_INTERVAL_KB
+    int "Progress reporting interval in KiB"
+    default 16
+    help
+      How often to log progress.
+
+endif # UART_STRESS_TEST_APP

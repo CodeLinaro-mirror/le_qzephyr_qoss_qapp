@@ -1,0 +1,11 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+tests:
+  drivers.pinctrl.qcc730_pinctrl:
+    tags:
+      - drivers
+      - pinctrl
+    platform_allow:
+      - qcc730mi
+    harness: ztest

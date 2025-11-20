@@ -1,0 +1,37 @@
+diff --git a/tests/drivers/rtc/rtc_api/src/test_time.c b/tests/drivers/rtc/rtc_api/src/test_time.c
+index 6d198a266aa..9fdc60d5c3c 100644
+--- a/tests/drivers/rtc/rtc_api/src/test_time.c
++++ b/tests/drivers/rtc/rtc_api/src/test_time.c
+@@ -14,11 +14,12 @@
+ 
+ /* Wed Dec 31 2025 23:59:55 GMT+0000 */
+ #define RTC_TEST_GET_SET_TIME	  (1767225595UL)
++#define RTC_TEST_SET_TO_1990	  (631148400UL)
+ #define RTC_TEST_GET_SET_TIME_TOL (1UL)
+ 
+ static const struct device *rtc = DEVICE_DT_GET(DT_ALIAS(rtc));
+ 
+-ZTEST(rtc_api, test_set_get_time)
++ZTEST(rtc_api_first, test_set_get_time)
+ {
+ 	struct rtc_time datetime_set;
+ 	struct rtc_time datetime_get;
+@@ -32,6 +33,9 @@ ZTEST(rtc_api, test_set_get_time)
+ 
+ 	memset(&datetime_get, 0xFF, sizeof(datetime_get));
+ 
++	zassert_equal(rtc_get_time(rtc, &datetime_get), -ENODATA,
++		      "Calling rtc_time_get() before rtc_set_time() did not return -ENODATA");
++
+ 	zassert_equal(rtc_set_time(rtc, &datetime_set), 0, "Failed to set time");
+ 
+ 	zassert_equal(rtc_get_time(rtc, &datetime_get), 0,
+@@ -68,4 +72,8 @@ ZTEST(rtc_api, test_set_get_time)
+ 	zassert_true((timer_get >= RTC_TEST_GET_SET_TIME) &&
+ 		     (timer_get <= (RTC_TEST_GET_SET_TIME + RTC_TEST_GET_SET_TIME_TOL)),
+ 		     "Got unexpected time");
++
++	timer_set = RTC_TEST_SET_TO_1990;
++	gmtime_r(&timer_set, (struct tm *)(&datetime_set));
++	rtc_set_time(rtc, &datetime_set);
+ }

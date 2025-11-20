@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+common:
+  depends_on: i2c
+  tags:
+    - sensor
+    - drivers
+  harness: ztest
+  harness_config:
+    fixture: i2c_lis2dw12
+tests:
+  sensor.lis2dw12.api_polling:
+    filter: dt_compat_enabled("st,lis2dw12")
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_I2C_QCC730_INTERRUPT_SUPPORT=n
+  sensor.lis2dw12.api_interrupt:
+    filter: dt_compat_enabled("st,lis2dw12")
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_I2C_QCC730_INTERRUPT_SUPPORT=y
+      - CONFIG_LOG=y
+      - CONFIG_I2C_LOG_LEVEL_DBG=y
+      - CONFIG_SENSOR_LOG_LEVEL_DBG=y

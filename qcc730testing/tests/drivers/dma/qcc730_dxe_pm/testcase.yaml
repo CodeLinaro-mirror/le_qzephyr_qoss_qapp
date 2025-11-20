@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+tests:
+  drivers.dma.qcc730_dxe_pm:
+    platform_allow:
+      - qcc730mi
+    tags:
+      - drivers
+      - dma
+      - qcc730
+    harness: ztest

@@ -1,0 +1,42 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+sample:
+  name: Watchdog driver sample for QCC730
+common:
+  timeout: 2097 # max QCC730 watchdog timeout is 21-bits (2097151 ms)
+  harness: console
+  harness_config:
+    type: multi_line
+    ordered: true
+    regex:
+      - "Watchdog sample application"
+      - "=== Starting PM Suspend/Resume Tests ==="
+      - "Test 1: PASS - Timeout installed successfully"
+      - "Test 2: PASS - Device suspended"
+      - "Test 3a: PASS - install_timeout returned -EBUSY as expected"
+      - "Test 3b: PASS - setup returned -EBUSY as expected"
+      - "Test 3c: PASS - feed returned -EBUSY as expected"
+      - "Test 4: PASS - Device resumed"
+      - "Test 5: PASS - Timeout reinstalled after resume"
+      - "=== PM Suspend/Resume Tests Complete ==="
+      - "=== Starting Sequence Stability Test ==="
+      - "Stability Test: PASS"
+      - "=== Sequence Stability Test Complete ==="
+      - "Watchdog install error that we want to see"
+      - "Feeding watchdog..."
+      - "No more feeds, waiting for reset"
+      - "Watchdog sample application"
+tests:
+  sample.drivers.watchdog.qcc730_wdt_2s:
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_QCC730_WDT_TIMEOUT_MS=2000
+      - CONFIG_QCC730_WDT_FEED_INTERVAL_MS=500
+  sample.drivers.watchdog.qcc730_wdt_60s:
+    platform_allow:
+      - qcc730mi
+    extra_configs:
+      - CONFIG_QCC730_WDT_TIMEOUT_MS=60000
+      - CONFIG_QCC730_WDT_FEED_INTERVAL_MS=3000

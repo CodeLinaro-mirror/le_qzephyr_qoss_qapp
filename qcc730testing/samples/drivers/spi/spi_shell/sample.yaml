@@ -1,0 +1,17 @@
+sample:
+  name: SPI Shell Example
+tests:
+  sample.drivers.spi.spi_shell:
+    build_only: true
+    platform_allow:
+      - native_posix
+      - nucleo_h533re
+    tags:
+      - spi
+      - serial
+      - shell
+      - console
+    filter: dt_compat_enabled("st,stm32-spi")
+    depends_on:
+      - spi
+      - serial

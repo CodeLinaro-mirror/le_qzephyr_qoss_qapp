@@ -1,0 +1,22 @@
+/*
+ * Copyright (c) 2025 Qualcomm Technologies, Inc. and/or its subsidiaries
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+
+/* Expose alternative UART pin groups for the test via zephyr,user
+ * so we can pull the pin arrays using PINCTRL_DT_STATE_PINS_DEFINE.
+ */
+/ {
+	zephyr,user {
+		uart0_option0 = <&uart0_option0>;
+		uart0_option1 = <&uart0_option1>;
+		uart0_option2 = <&uart0_option2>;
+		uart0_option3 = <&uart0_option3>;
+		uart0_option0_sleep = <&uart0_option0_sleep>;
+		uart0_option1_sleep = <&uart0_option1_sleep>;
+		uart0_option2_sleep = <&uart0_option2_sleep>;
+		uart0_option3_sleep = <&uart0_option3_sleep>;
+	};
+};

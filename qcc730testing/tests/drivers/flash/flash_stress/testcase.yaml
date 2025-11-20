@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2025 Qualcomm Technologies, Inc.
+
+tests:
+  drivers.flash.qcc730.flash_stress:
+    tags: flash
+    platform_allow: qcc730mi
+    harness: ztest
+    timeout: 180

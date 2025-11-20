@@ -1,0 +1,16 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+&spi1 {
+    status = "okay";
+    spi_slave: spi-slave@0 {
+        compatible = "zephyr,spi-device";
+        status = "okay";
+        reg = <0>;
+        spi-max-frequency = <20000000>;
+        cs-gpios = <&gpiod 14 GPIO_ACTIVE_LOW>;
+    };
+};

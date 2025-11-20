@@ -1,0 +1,104 @@
+﻿diff --git a/tests/drivers/flash/common/src/main.c b/tests/drivers/flash/common/src/main.c
+index e7552aaf177..4f4184ee858 100644
+--- a/tests/drivers/flash/common/src/main.c
++++ b/tests/drivers/flash/common/src/main.c
+@@ -9,6 +9,7 @@
+ #include <zephyr/drivers/flash.h>
+ #include <zephyr/devicetree.h>
+ #include <zephyr/storage/flash_map.h>
++#include <zephyr/pm/device.h>
+ 
+ #if defined(CONFIG_NORDIC_QSPI_NOR)
+ #define TEST_AREA_DEV_NODE	DT_INST(0, nordic_qspi_nor)
+@@ -464,4 +465,91 @@ ZTEST(flash_driver, test_flash_copy)
+ 			      -EINVAL);
+ }
+ 
++ZTEST(flash_driver, test_suspend_resume)
++{
++	int rc;
++	uint8_t write_buf[24] = { 0xDE, 0xAD, 0xBE, 0xEF };
++	uint8_t read_buf[24] = { 0 };
++	uint8_t *ret_ptr = NULL;
++
++	/* Pre-condition: erase region, write data, read back and verify */
++	rc = flash_erase(flash_dev, page_info.start_offset, sizeof(write_buf));
++	zassert_ok(rc, "Erase before suspend failed");
++
++	rc = flash_write(flash_dev, page_info.start_offset, write_buf, sizeof(write_buf));
++	zassert_ok(rc, "Write before suspend failed");
++
++	rc = flash_read(flash_dev, page_info.start_offset, read_buf, sizeof(write_buf));
++	zassert_ok(rc, "Read before suspend failed");
++	zassert_mem_equal(read_buf, write_buf, sizeof(write_buf), "Data mismatch before suspend");
++
++	/* Suspend the device */
++	rc = pm_device_action_run(flash_dev, PM_DEVICE_ACTION_SUSPEND);
++	zassert_ok(rc, "Flash suspend failed");
++
++	/* Attempt erase, write, read while suspended - expect -EBUSY error */
++	rc = flash_erase(flash_dev, page_info.start_offset, sizeof(write_buf));
++	zassert_true(rc < 0, "Erase after suspend should fail");
++
++	rc = flash_write(flash_dev, page_info.start_offset, write_buf, sizeof(write_buf));
++	zassert_true(rc < 0, "Write after suspend should fail");
++
++	ret_ptr = memset(read_buf, 0, sizeof(read_buf));
++	zassert_true(ret_ptr != NULL, "memset fail");
++	rc = flash_read(flash_dev, page_info.start_offset, read_buf, sizeof(write_buf));
++	zassert_true(rc < 0, "Read after suspend should fail");
++
++	/* Resume the device */
++	rc = pm_device_action_run(flash_dev, PM_DEVICE_ACTION_RESUME);
++	zassert_ok(rc, "Flash resume failed");
++
++	/* Post-condition: read and verify data matches what was written during "suspended" state */
++	memset(read_buf, 0, sizeof(read_buf));
++	rc = flash_read(flash_dev, page_info.start_offset, read_buf, sizeof(write_buf));
++	zassert_ok(rc, "Read after resume failed");
++	zassert_mem_equal(read_buf, write_buf, sizeof(write_buf), "Data mismatch after resume");
++}
++
++ZTEST(flash_driver, test_flash_write_speed)
++{
++	int rc;
++	uint32_t t_start, t_end, dual_time;
++	float t_write_s, write_speed;
++	uint32_t freq = sys_clock_hw_cycles_per_sec();
++
++	t_start = k_cycle_get_32();
++	rc = flash_write(flash_dev, page_info.start_offset, expected, EXPECTED_SIZE);
++	t_end = k_cycle_get_32();
++	zassert_equal(rc, 0, "Cannot write to flash!");
++
++	/* get delta time in us */
++	dual_time = t_end - t_start;
++	t_write_s = (dual_time * 1e6) / freq;
++
++	write_speed = (EXPECTED_SIZE / 1024.0) / (t_write_s / 1e6);
++
++	TC_PRINT("Write %d Bytes data in %.2f us ==> %.2f KB/s\n", EXPECTED_SIZE, t_write_s, write_speed);
++}
++
++ZTEST(flash_driver, test_flash_read_speed)
++{
++	int rc;
++	uint32_t t_start, t_end, dual_time;
++	float t_read_s, read_speed;
++	uint32_t freq = sys_clock_hw_cycles_per_sec();
++	uint8_t read_buf[EXPECTED_SIZE];
++
++	t_start = k_cycle_get_32();
++	rc = flash_read(flash_dev, page_info.start_offset, read_buf, EXPECTED_SIZE);
++	t_end = k_cycle_get_32();
++	zassert_equal(rc, 0, "Cannot read flash!");
++
++	/* get delta time in us */
++	dual_time = t_end - t_start;
++	t_read_s = (dual_time * 1e6) / freq;
++
++	read_speed = (EXPECTED_SIZE / 1024.0) / (t_read_s / 1e6);
++	TC_PRINT("Read %d Bytes data in %.2f us ==> %.2f KB/s\n", EXPECTED_SIZE, t_read_s, read_speed);
++}
++
+ ZTEST_SUITE(flash_driver, NULL, NULL, flash_driver_before, NULL, NULL);

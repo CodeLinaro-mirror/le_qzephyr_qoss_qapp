@@ -1,0 +1,116 @@
+diff --git a/tests/drivers/gpio/gpio_basic_api/src/main.c b/tests/drivers/gpio/gpio_basic_api/src/main.c
+index e82e9918652..0ebba4f8225 100644
+--- a/tests/drivers/gpio/gpio_basic_api/src/main.c
++++ b/tests/drivers/gpio/gpio_basic_api/src/main.c
+@@ -17,6 +17,12 @@
+ #elif defined(CONFIG_BOARD_NRF52_BSIM)
+ #include <NRF_GPIO.h>
+ #endif
++#include <zephyr/pm/device.h>
++
++#ifdef CONFIG_PM_DEVICE
++static const struct device *dev_in;
++static const struct device *dev_out;
++#endif
+ 
+ static void board_setup(void)
+ {
+@@ -81,6 +87,90 @@ static void *gpio_basic_setup(void)
+ 	return NULL;
+ }
+ 
++#ifdef CONFIG_PM_DEVICE
++static void *pm_gpio_basic_setup(void)
++{
++	dev_in = DEVICE_DT_GET(DEV_IN);
++	dev_out = DEVICE_DT_GET(DEV_OUT);
++
++	zassert_true(device_is_ready(dev_in), "dev_in not ready");
++	zassert_true(device_is_ready(dev_out), "dev_out not ready");
++
++	return NULL;
++}
++
++void dummy_callback(const struct device *port,
++		    struct gpio_callback *cb,
++		    gpio_port_pins_t pins)
++{
++	// Do nothing
++}
++
++ZTEST(gpio_pm_tests, test_gpio_pm_suspended_resume_check)
++{
++    int rc;
++    gpio_port_value_t val;
++    gpio_port_pins_t mask = BIT(PIN_OUT);
++    struct gpio_callback cb;
++
++    /* Suspend the driver */
++    rc = pm_device_action_run(dev_out, PM_DEVICE_ACTION_SUSPEND);
++    zassert_equal(rc, 0, "suspend failed: %d", rc);
++
++    /* Now expect -EBUSY from these APIs */
++    rc = gpio_pin_configure(dev_out, PIN_OUT, GPIO_OUTPUT);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_pin_configure should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_port_get_raw(dev_out, &val);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_port_get_raw should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_port_set_masked_raw(dev_out, mask, 0);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_port_set_masked_raw should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_port_set_bits_raw(dev_out, mask);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_port_set_bits_raw should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_port_clear_bits_raw(dev_out, mask);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_port_clear_bits_raw should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_port_toggle_bits(dev_out, mask);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_port_toggle_bits should be -EBUSY when suspended, got %d", rc);
++
++    rc = gpio_pin_interrupt_configure(dev_in, PIN_IN, GPIO_INT_DISABLE);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_pin_interrupt_configure should be -EBUSY when suspended, got %d", rc);
++
++    gpio_init_callback(&cb, dummy_callback, BIT(PIN_IN));
++    rc = gpio_add_callback(dev_out, &cb);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_add_callback should be -EBUSY when suspended, got %d", rc);
++    rc = gpio_remove_callback(dev_out, &cb);
++    zassert_equal(rc, -EBUSY,
++                  "gpio_remove_callback should be -EBUSY when suspended, got %d", rc);
++
++    /* Resume */
++    rc = pm_device_action_run(dev_out, PM_DEVICE_ACTION_RESUME);
++    zassert_equal(rc, 0, "resume failed: %d", rc);
++
++    /* Sanity after resume */
++    rc = gpio_pin_configure(dev_out, PIN_OUT, GPIO_OUTPUT);
++    zassert_true((rc == 0) || (rc == -ENOTSUP),
++                 "gpio_pin_configure after resume unexpected rc=%d", rc);
++
++    rc = gpio_port_get_raw(dev_out, &val);
++    zassert_true((rc == 0) || (rc == -ENOTSUP),
++                 "gpio_port_get_raw after resume unexpected rc=%d", rc);
++
++    (void)gpio_remove_callback(dev_out, &cb);
++}
++#endif
++
+ /* Test GPIO port configuration */
+ ZTEST_SUITE(gpio_port, NULL, gpio_basic_setup, NULL, NULL, NULL);
+ 
+@@ -95,3 +185,7 @@ ZTEST_SUITE(gpio_port_cb_vari, NULL, gpio_basic_setup, NULL, NULL, NULL);
+  */
+ ZTEST_SUITE(after_flash_gpio_config_trigger, NULL, gpio_basic_setup, NULL, NULL,
+ 	    NULL);
++
++#ifdef CONFIG_PM_DEVICE
++ZTEST_SUITE(gpio_pm_tests, NULL, pm_gpio_basic_setup, NULL, NULL, NULL);
++#endif
