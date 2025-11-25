@@ -1,0 +1,12 @@
+diff --git a/tests/kernel/fatal/exception/sentinel.conf b/tests/kernel/fatal/exception/sentinel.conf
+index b4750a403c4..99eede83966 100644
+--- a/tests/kernel/fatal/exception/sentinel.conf
++++ b/tests/kernel/fatal/exception/sentinel.conf
+@@ -5,3 +5,7 @@ CONFIG_HW_STACK_PROTECTION=n
+ CONFIG_ZTEST=y
+ CONFIG_COVERAGE=n
+ CONFIG_MP_MAX_NUM_CPUS=1
++CONFIG_THREAD_NAME=y
++CONFIG_THREAD_MONITOR=y
++CONFIG_THREAD_STACK_INFO=y
++

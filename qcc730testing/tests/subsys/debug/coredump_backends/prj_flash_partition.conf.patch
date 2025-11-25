@@ -1,0 +1,10 @@
+diff --git a/tests/subsys/debug/coredump_backends/prj_flash_partition.conf b/tests/subsys/debug/coredump_backends/prj_flash_partition.conf
+index 71e3eea70fe..a1e3685a841 100644
+--- a/tests/subsys/debug/coredump_backends/prj_flash_partition.conf
++++ b/tests/subsys/debug/coredump_backends/prj_flash_partition.conf
+@@ -7,3 +7,5 @@ CONFIG_MP_MAX_NUM_CPUS=1
+ CONFIG_FLASH=y
+ CONFIG_DEBUG_COREDUMP_MEMORY_DUMP_MIN=y
+ CONFIG_DEBUG_COREDUMP_MEMORY_DUMP_LINKER_RAM=n
++CONFIG_FLASH_MAP=y
++CONFIG_FLASH_PAGE_LAYOUT=y

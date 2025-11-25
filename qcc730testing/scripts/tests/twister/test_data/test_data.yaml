@@ -108,3 +108,13 @@ tests:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_stress"
   drivers.flash.flash_stress:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/flash/flash_stress"
+  ztest.error_hook:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/ztest/error_hook"
+  kernel.fatal:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/kernel/fatal"
+  subsys.debug.coredump:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump"
+  subsys.debug.coredump_backends:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump_backends"
+  subsys.debug.coredump_threads:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump_threads"

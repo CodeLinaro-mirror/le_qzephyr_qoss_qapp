@@ -1,0 +1,25 @@
+diff --git a/tests/kernel/fatal/exception/testcase.yaml b/tests/kernel/fatal/exception/testcase.yaml
+index e10be671b07..2195dc98e31 100644
+--- a/tests/kernel/fatal/exception/testcase.yaml
++++ b/tests/kernel/fatal/exception/testcase.yaml
+@@ -32,6 +32,7 @@ tests:
+       - userspace
+     integration_platforms:
+       - mps2/an385
++      - qcc730mi/qcc730
+   kernel.common.stack_protection_armv8m_mpu_stack_guard:
+     extra_args: CONF_FILE=prj_armv8m_mpu_stack_guard.conf
+     filter: CONFIG_ARM_MPU and CONFIG_ARMV8_M_MAINLINE
+@@ -41,6 +42,7 @@ tests:
+       - userspace
+     integration_platforms:
+       - mps2/an385
++      - qcc730mi/qcc730
+   kernel.common.stack_sentinel:
+     extra_args: CONF_FILE=sentinel.conf
+     platform_exclude:
+@@ -48,3 +50,4 @@ tests:
+     tags: kernel
+     integration_platforms:
+       - qemu_x86
++      - qcc730mi/qcc730

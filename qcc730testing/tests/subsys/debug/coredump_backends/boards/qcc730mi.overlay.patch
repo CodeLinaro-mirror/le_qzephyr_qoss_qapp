@@ -1,0 +1,21 @@
+diff --git a/tests/subsys/debug/coredump_backends/boards/qcc730mi.overlay b/tests/subsys/debug/coredump_backends/boards/qcc730mi.overlay
+new file mode 100644
+index 00000000000..02b88a94fb5
+--- /dev/null
++++ b/tests/subsys/debug/coredump_backends/boards/qcc730mi.overlay
+@@ -0,0 +1,15 @@
++&qspi_nor_flash3 {
++    status = "okay";
++    write-block-size = <256>;
++    erase-block-size = <4096>;
++    partitions {
++        compatible = "fixed-partitions";
++        #address-cells = <1>;
++        #size-cells = <1>;
++        coredump_partition: coredump@0 {
++            label = "coredump_partition";
++            reg = <0x0 0x80000>;
++            status = "okay";
++        };
++    };
++};

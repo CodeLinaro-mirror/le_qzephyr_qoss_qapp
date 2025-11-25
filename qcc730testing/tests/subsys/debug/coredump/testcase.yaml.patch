@@ -1,0 +1,12 @@
+diff --git a/tests/subsys/debug/coredump/testcase.yaml b/tests/subsys/debug/coredump/testcase.yaml
+index 673382bf455..f1579837df2 100644
+--- a/tests/subsys/debug/coredump/testcase.yaml
++++ b/tests/subsys/debug/coredump/testcase.yaml
+@@ -9,6 +9,7 @@ tests:
+       - posix
+     integration_platforms:
+       - qemu_x86
++      - qcc730mi/qcc730
+     harness: console
+     harness_config:
+       type: multi_line

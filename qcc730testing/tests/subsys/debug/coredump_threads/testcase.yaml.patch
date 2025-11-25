@@ -1,0 +1,12 @@
+diff --git a/tests/subsys/debug/coredump_threads/testcase.yaml b/tests/subsys/debug/coredump_threads/testcase.yaml
+index 665627258c5..d95ccf4d4da 100644
+--- a/tests/subsys/debug/coredump_threads/testcase.yaml
++++ b/tests/subsys/debug/coredump_threads/testcase.yaml
+@@ -8,6 +8,7 @@ common:
+   ignore_qemu_crash: true
+   integration_platforms:
+     - qemu_cortex_m3
++    - qcc730mi/qcc730
+ tests:
+   debug.coredump.threads:
+     filter: CONFIG_DEBUG_COREDUMP_MEMORY_DUMP_THREADS
