@@ -1,0 +1,13 @@
+diff --git a/arch/arm/core/cortex_m/thread.c b/arch/arm/core/cortex_m/thread.c
+index f1fc2019d9c..ba0833708c2 100644
+--- a/arch/arm/core/cortex_m/thread.c
++++ b/arch/arm/core/cortex_m/thread.c
+@@ -106,6 +106,8 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack, char *sta
+ 	iframe->a4 = (uint32_t)p3;
+ 
+ 	iframe->xpsr = 0x01000000UL; /* clear all, thumb bit is 1, even if RO */
++	/* Initialize LR to 0 to prevent GDB backtrace timeout */
++	iframe->lr = 0;
+ 
+ 	thread->callee_saved.psp = (uint32_t)iframe;
+ 	thread->arch.basepri = 0;
