@@ -1,0 +1,56 @@
+diff --git a/subsys/net/ip/net_pkt.c b/subsys/net/ip/net_pkt.c
+index 6aa0ca91a10..83715579188 100644
+--- a/subsys/net/ip/net_pkt.c
++++ b/subsys/net/ip/net_pkt.c
+@@ -41,6 +41,8 @@ LOG_MODULE_REGISTER(net_pkt, CONFIG_NET_PKT_LOG_LEVEL);
+ #include "net_private.h"
+ #include "tcp_internal.h"
+ 
++#include "fwconfig_cmn.h"
++
+ /* Make sure net_buf data size is large enough that IPv6
+  * and possible extensions fit to the network buffer.
+  * The check is done using an arbitrarily chosen value 96 by monitoring
+@@ -1858,9 +1860,16 @@ static int net_pkt_cursor_operate(struct net_pkt *pkt,
+ 		}
+ 
+ 		if (copy && data) {
++#ifdef MEM_CPY_VIA_DXE
++			extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++			nt_dpm_memcpy(write ? c_op->pos : data,
++			       write ? data : c_op->pos,
++			       len);
++#else
+ 			memcpy(write ? c_op->pos : data,
+ 			       write ? data : c_op->pos,
+ 			       len);
++#endif
+ 		} else if (data) {
+ 			memset(c_op->pos, *(int *)data, len);
+ 		}
+@@ -1987,7 +1996,12 @@ int net_pkt_copy(struct net_pkt *pkt_dst,
+ 			break;
+ 		}
+ 
++#ifdef MEM_CPY_VIA_DXE
++        extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++        nt_dpm_memcpy(c_dst->pos, c_src->pos, len);
++#else
+ 		memcpy(c_dst->pos, c_src->pos, len);
++#endif
+ 
+ 		if (!net_pkt_is_being_overwritten(pkt_dst)) {
+ 			net_buf_add(c_dst->buf, len);
+@@ -2284,7 +2298,12 @@ int net_pkt_pull(struct net_pkt *pkt, size_t length)
+ 		c_op->buf->len -= rem;
+ 		left -= rem;
+ 		if (left) {
++#ifdef MEM_CPY_VIA_DXE
++			extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++			nt_dpm_memcpy(c_op->pos, c_op->pos+rem, left);
++#else
+ 			memmove(c_op->pos, c_op->pos+rem, left);
++#endif
+ 		} else {
+ 			struct net_buf *buf = pkt->buffer;
+ 
