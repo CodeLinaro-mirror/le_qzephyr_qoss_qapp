@@ -82,6 +82,10 @@ tests:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_api"
   drivers.dma.qcc730_dxe:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/qcc730_dxe"
+  drivers.uart.uart_loopback:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_loopback"
+  drivers.uart.uart_pinctrl_tests:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pinctrl_tests"
   drivers.uart.uart_stress:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress"
   drivers.uart.uart_stress_pytest:
