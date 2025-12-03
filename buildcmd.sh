@@ -46,10 +46,6 @@ if [ ! -d prebuilt_HY11 ]; then
     cp ./modules/hal/qcom/zephyr/blobs/libcryptoqcc730.a ./prebuilt_HY11/
     cp ./modules/hal/qcom/zephyr/blobs/libpowerqcc730.a ./prebuilt_HY11/
     cp ./modules/hal/qcom/zephyr/blobs/libwifiqcc730.a ./prebuilt_HY11/
-    cp ./prop/libwifiqcc730/bin/bdwlan01.bin ./prebuilt_HY11/
-    cp ./prop/libwifiqcc730/bin/bdwlan03.bin ./prebuilt_HY11/
-    cp ./prop/libwifiqcc730/bin/mqm730i.bin ./prebuilt_HY11/
-    cp ./prop/libwifiqcc730/bin/mqm730x.bin ./prebuilt_HY11/
     cp ./prop/libwifiqcc730/bin/regdb.bin ./prebuilt_HY11/
     cp -r ./prebuilt_HY11/* ./prebuilt_HY11_ART/
 fi
