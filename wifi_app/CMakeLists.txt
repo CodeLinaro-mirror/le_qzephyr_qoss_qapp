@@ -25,6 +25,7 @@ add_custom_target(post_process_elf ALL
           --tool-prefix "${SBL_TOOL_PREFIX}"
           --hash-script "${HASH_SCRIPT}"
           --hashed-out "${APP_OUT_DIR}/${HASHED_ELF_BASENAME}"
+          --check-noinit
 
   COMMENT "Post-process ELF and generate hashed ELF"
   VERBATIM
