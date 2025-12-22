@@ -11,7 +11,6 @@
 #include <zephyr/net/net_if.h>
 #include <qcom_wifi_mgmt.h>
 
-
 static int cmd_set_tx_power(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -637,6 +636,128 @@ static int cmd_get_rate(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+/* Info helpers and command implemented via net_mgmt */
+static int32_t get_boot_reason(const struct shell *ctx)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_get_boot_reason_params out =
+	    (struct qcom_wifi_get_boot_reason_params){0};
+    char data[65] = {0};
+    size_t pos = 0;
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_BOOT_REASON, iface, &out, sizeof(out))) {
+        shell_error(ctx, "Failed to get boot reason");
+        return -ENOEXEC;
+    }
+
+    if (out.boot_reason == QAPI_BOOT_REASON_COLD_BOOT) {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from cold boot");
+    } else if (out.boot_reason == QAPI_BOOT_REASON_DTIM_SLEEP) {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from dtim sleep");
+    } else if (out.boot_reason == QAPI_BOOT_REASON_DEEP_SLEEP) {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from deep sleep");
+    } else {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Unknown status 0x%08x", out.boot_reason);
+    }
+
+    shell_print(ctx, "Status: %s", data);
+    return 0;
+}
+
+static int32_t get_wifi_power_mode(const struct shell *ctx)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_get_power_mode_params out = (struct qcom_wifi_get_power_mode_params){0};
+    char data[65] = {0};
+    size_t pos = 0;
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_POWER_MODE, iface, &out, sizeof(out))) {
+        shell_error(ctx, "Failed to get wifi power mode");
+        return -ENOEXEC;
+    }
+
+    if (out.power_mode == 0) {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Max Perf");
+    } else {
+        pos += snprintk(data + pos, sizeof(data) - pos, "Power Save ");
+        if ((out.power_mode & 1) == 1) {
+            pos += snprintk(data + pos, sizeof(data) - pos, "(bmps enabled) ");
+        }
+        if ((out.power_mode & 2) == 2) {
+            pos += snprintk(data + pos, sizeof(data) - pos, "(IMPS enabled) ");
+        }
+        if ((out.power_mode & 4) == 4) {
+            pos += snprintk(data + pos, sizeof(data) - pos, "(WUR enabled) ");
+        }
+        if ((out.power_mode & 8) == 8) {
+            pos += snprintk(data + pos, sizeof(data) - pos, "(WNM enabled) ");
+        }
+    }
+
+    shell_print(ctx, "Power mode: %s", data);
+    return 0;
+}
+
+static int32_t get_device_mac_address(const struct shell *ctx)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_get_mac_address_params out = (struct qcom_wifi_get_mac_address_params){0};
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_MAC_ADDRESS, iface, &out, sizeof(out))) {
+        shell_error(ctx, "Failed to get MAC address");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "Mac Addr: %02x:%02x:%02x:%02x:%02x:%02x",
+                out.mac[0], out.mac[1], out.mac[2], out.mac[3], out.mac[4], out.mac[5]);
+    return 0;
+}
+
+static int32_t get_op_mode(const struct shell *ctx)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    //qapi_WLAN_DEV_Mode_e opmode;
+    struct qcom_wifi_get_concurrency_mode_params conc =
+	    (struct qcom_wifi_get_concurrency_mode_params){0};
+    struct qcom_wifi_get_operation_mode_params op =
+	    (struct qcom_wifi_get_operation_mode_params){0};
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_CONCURRENCY_MODE, iface, &conc, sizeof(conc))) {
+        shell_error(ctx, "Failed to get concurrency mode");
+        return -ENOEXEC;
+    }
+
+    if (conc.conc_mode == DEV_MODE_AP_STA_E) {
+        shell_print(ctx, "concurrency mode");
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_OPERATION_MODE, iface, &op, sizeof(op))) {
+        shell_error(ctx, "Failed to get operation mode");
+        return -ENOEXEC;
+    }
+
+    if (op.opmode == DEV_MODE_STATION_E) {
+        shell_print(ctx, "Operation mode: station");
+    } else if (op.opmode == DEV_MODE_AP_E) {
+        shell_print(ctx, "Operation mode: softap");
+    } else {
+	    shell_print(ctx, "Operation mode: unknown (0x%x)", op.opmode);
+    }
+
+    return 0;
+}
+
+static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)get_boot_reason(ctx);
+    (void)get_device_mac_address(ctx);
+    (void)get_wifi_power_mode(ctx);
+    (void)cmd_get_phy_mode(ctx, argc, argv);
+    (void)get_op_mode(ctx);
+
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
                                              "Set the transmit power in dbm.\n"
@@ -740,6 +861,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Get data rate for station.\n"
 					     "Usage: qwifi get_rate <staid>\n",
                                              cmd_get_rate, 2, 0),
+                               SHELL_CMD_ARG(info, NULL,
+                                             "Show WLAN information: PHY mode, power mode, MAC address, and operation mode.\n"
+					     "Usage: qwifi info\n",
+                                             cmd_info, 1, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
