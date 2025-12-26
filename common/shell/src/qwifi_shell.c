@@ -432,6 +432,211 @@ static int cmd_get_bmiss_threshold(const struct shell *ctx, size_t argc, char **
     return 0;
 }
 
+static int cmd_set_aggregation(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_aggregation_params params = {0};
+
+    if (argc != 3) {
+        shell_error(ctx, "Usage: qwifi set_aggregation <tx_tid_mask> <rx_tid_mask>");
+        return -EINVAL;
+    }
+
+    uint32_t tx = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <tx_tid_mask> (err %d)", err);
+        return err;
+    }
+
+    uint32_t rx = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <rx_tid_mask> (err %d)", err);
+        return err;
+    }
+
+    if (tx > 0xFF || rx > 0xFF) {
+        shell_error(ctx, "The MAX value of tx_tid_mask and rx_tid_mask is 0xFF");
+        return -EINVAL;
+    }
+
+    params.tx_tid_mask = (uint8_t)tx;
+    params.rx_tid_mask = (uint8_t)rx;
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_AGGREGATION, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Failed to set aggregation TIDs: tx=0x%02x rx=0x%02x", params.tx_tid_mask, params.rx_tid_mask);
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "Aggregation TIDs set: tx=0x%02x rx=0x%02x", params.tx_tid_mask, params.rx_tid_mask);
+    return 0;
+}
+
+static int cmd_set_amsdu_rx(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_amsdu_rx_params params = {0};
+
+    if (argc != 3) {
+        shell_error(ctx, "Usage: qwifi set_amsdu rx <enable|disable>");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "rx") != 0) {
+        shell_error(ctx, "Parameter should be 'rx'");
+        return -EINVAL;
+    }
+
+    if (!strcmp(argv[2], "enable")) {
+        params.enable = 1;
+    } else if (!strcmp(argv[2], "disable")) {
+        params.enable = 0;
+    } else {
+        shell_error(ctx, "Second parameter must be 'enable' or 'disable'");
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_AMSDU_RX, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Failed to set AMSDU RX to %s", params.enable ? "enable" : "disable");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "AMSDU RX %s", params.enable ? "enabled" : "disabled");
+    return 0;
+}
+
+static int cmd_set_phy_mode(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_phy_mode_params params = {0};
+    const char *wmode;
+
+    if (argc != 2) {
+        shell_error(ctx, "Usage: qwifi set_phy_mode <a|b|g|ng|abgn>");
+        return -EINVAL;
+    }
+
+    wmode = argv[1];
+
+    if (!strcmp(wmode, "a")) {
+        params.phy_mode = QAPI_WLAN_11A_MODE_E;
+    } else if (!strcmp(wmode, "b")) {
+        params.phy_mode = QAPI_WLAN_11B_MODE_E;
+    } else if (!strcmp(wmode, "g")) {
+        params.phy_mode = QAPI_WLAN_11G_MODE_E;
+    } else if (!strcmp(wmode, "ng")) {
+        params.phy_mode = QAPI_WLAN_11NG_HT20_MODE_E;
+    } else if (!strcmp(wmode, "abgn")) {
+        params.phy_mode = QAPI_WLAN_11ABGN_HT20_MODE_E;
+    } else {
+        shell_error(ctx, "Unknown mode '%s', supported: a/b/g/ng/abgn", wmode);
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_PHY_MODE, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Failed to set PHY mode to %s", wmode);
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "PHY mode set to %s", wmode);
+    return 0;
+}
+
+static int cmd_get_phy_mode(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_get_phy_mode_params out = {0};
+    const char *mode_str = "unknown";
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_PHY_MODE, iface, &out, sizeof(out))) {
+        shell_error(ctx, "Failed to get PHY mode");
+        return -ENOEXEC;
+    }
+
+    switch (out.phy_mode) {
+    case QAPI_WLAN_11A_MODE_E:            mode_str = "a";    break;
+    case QAPI_WLAN_11B_MODE_E:            mode_str = "b";    break;
+    case QAPI_WLAN_11G_MODE_E:            mode_str = "g";    break;
+    case QAPI_WLAN_11NG_HT20_MODE_E:      mode_str = "ng";   break;
+    case QAPI_WLAN_11ABGN_HT20_MODE_E:    mode_str = "abgn"; break;
+    default:
+        mode_str = "unknown";
+        break;
+    }
+
+    shell_print(ctx, "PHY mode: %s (enum=%u)", mode_str, out.phy_mode);
+    return 0;
+}
+
+static int cmd_set_rate(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_rate_params set_rate_cfg;
+
+    memset(&set_rate_cfg, 0, sizeof(set_rate_cfg));
+
+    if (argc == 2 && !strcmp(argv[1], "auto")) {
+        set_rate_cfg.ra_ON = 1;
+    } else if (argc == 5) {
+        set_rate_cfg.ra_ON = 0;
+
+        set_rate_cfg.rate_staid = (uint32_t)shell_strtoul(argv[1], 10, &err);
+        if (err) { shell_error(ctx, "Unable to parse <staid> (err %d)", err); return err; }
+
+        set_rate_cfg.rate_p_rate = (uint32_t)shell_strtoul(argv[2], 10, &err);
+        if (err) { shell_error(ctx, "Unable to parse <p_rate> (err %d)", err); return err; }
+
+        set_rate_cfg.rate_s_rate = (uint32_t)shell_strtoul(argv[3], 10, &err);
+        if (err) { shell_error(ctx, "Unable to parse <s_rate> (err %d)", err); return err; }
+
+        set_rate_cfg.rate_t_rate = (uint32_t)shell_strtoul(argv[4], 10, &err);
+        if (err) { shell_error(ctx, "Unable to parse <t_rate> (err %d)", err); return err; }
+    } else {
+        shell_error(ctx, "Usage: qwifi set_rate auto | <staid> <p_rate> <s_rate> <t_rate>");
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_RATE, iface, &set_rate_cfg, sizeof(set_rate_cfg))) {
+        shell_error(ctx, "Failed to set rate");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "Rate set%s", set_rate_cfg.ra_ON ? " (auto)" : "");
+    return 0;
+}
+
+static int cmd_get_rate(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_rate_params set_rate_cfg;
+
+    memset(&set_rate_cfg, 0, sizeof(set_rate_cfg));
+
+    if (argc != 2) {
+        shell_error(ctx, "Usage: qwifi get_rate <staid>");
+        return -EINVAL;
+    }
+
+    set_rate_cfg.rate_staid = (uint32_t)shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <staid> (err %d)", err);
+        return err;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_RATE, iface, &set_rate_cfg, sizeof(set_rate_cfg))) {
+        shell_error(ctx, "Failed to get rate");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "Rate: p_rate=%d, s_rate=%d, t_rate=%d",
+                set_rate_cfg.rate_p_rate,
+                set_rate_cfg.rate_s_rate,
+                set_rate_cfg.rate_t_rate);
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
                                              "Set the transmit power in dbm.\n"
@@ -510,6 +715,31 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Get BMISS threshold.\n"
 					     "Usage: qwifi get_bmiss_threshold\n",
                                              cmd_get_bmiss_threshold, 1, 0),
+                               SHELL_CMD_ARG(set_aggregation, NULL,
+                                             "Set TX/RX aggregation TID bitmasks.\n"
+					     "Usage: qwifi set_aggregation <tx_tid_mask> <rx_tid_mask>\n"
+                                             "Each mask is 8-bit (0..0xFF); bit i enables aggregation for TID i (0..7).\n",
+                                             cmd_set_aggregation, 3, 0),
+                               SHELL_CMD_ARG(set_amsdu, NULL,
+                                             "Enable/disable AMSDU RX.\n"
+					     "Usage: qwifi set_amsdu rx <enable|disable>\n",
+                                             cmd_set_amsdu_rx, 3, 0),
+                               SHELL_CMD_ARG(set_phy_mode, NULL,
+                                             "Set PHY mode.\n"
+					     "Usage: qwifi set_phy_mode <a|b|g|ng|abgn>\n",
+                                             cmd_set_phy_mode, 2, 0),
+                               SHELL_CMD_ARG(get_phy_mode, NULL,
+                                             "Get PHY mode.\n"
+					     "Usage: qwifi get_phy_mode\n",
+                                             cmd_get_phy_mode, 1, 0),
+                               SHELL_CMD_ARG(set_rate, NULL,
+                                             "Set data rate.\n"
+					     "Usage: qwifi set_rate auto | <staid> <p_rate> <s_rate> <t_rate>\n",
+                                             cmd_set_rate, 2, 3),
+                               SHELL_CMD_ARG(get_rate, NULL,
+                                             "Get data rate for station.\n"
+					     "Usage: qwifi get_rate <staid>\n",
+                                             cmd_get_rate, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
