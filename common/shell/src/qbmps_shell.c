@@ -15,6 +15,7 @@
 #include "qurt_timer.h"
 #include <zephyr/kernel.h>
 #include "zephyr/net/net_ip.h"
+#include <zephyr/pm/policy.h>
 
 WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
@@ -31,6 +32,9 @@ uint64_t bmps_start = 0;
 uint32_t udp_whitelist_arr[UDP_WHITELIST_LEN] = {7777, 0, 0, 0};
 typedef bool (*qapi_bmps_rx_filter_cb)(uint16_t type, bool bm_cast, void *pbuf, uint16_t len);
 
+void pm_timer_debug_dump(void);
+uint32_t pm_timer_stop_all_k_timers(void);
+
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
 static void bmps_timer_cb(struct k_timer *timer)
 {
@@ -41,9 +45,8 @@ static void bmps_timer_cb(struct k_timer *timer)
     memset(pdata, 0, sizeof(*pdata));
     pdata->enable = 0;
     wmi_cmd_send(WMI_BMPS_ENABLE_CMDID, pdata, sizeof(*pdata));
+    pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
     k_timer_stop(&bmps_timer);
-    const struct device *wifi_dev = device_get_binding("qwifi_sta");
-    pm_device_busy_set(wifi_dev);
 }
 
 static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
@@ -75,7 +78,9 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
     shell_print(ctx, "Set bmps enable...");
     wmi_cmd_send(WMI_BMPS_ENABLE_CMDID, pbmps, sizeof(*pbmps));
     if(enable)
-        cmd_clear_busy(ctx, 0, NULL);
+    {
+        pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
+    }
     return 0;
 }
 
@@ -302,6 +307,39 @@ static int cmd_set_bcmc_filter(const struct shell *ctx, size_t argc, char **argv
     return 0;
 }
 
+static int cmd_bmps_get_hres(const struct shell *ctx, size_t argc, char **argv)
+{
+    uint64_t time = 0;
+    time = hres_timer_curr_time_us();
+    shell_print(ctx, "curr_time_us: %u\r\n",(uint32_t)time);
+    return 0;
+}
+
+static int cmd_get_kt_stats(const struct shell *ctx, size_t argc, char **argv)
+{
+    pm_timer_debug_dump();
+    return 0;
+}
+
+static int cmd_kill_all_kt(const struct shell *ctx, size_t argc, char **argv)
+{
+    pm_timer_stop_all_k_timers();
+    pm_timer_debug_dump();
+    return 0;
+}
+
+static int cmd_list_all_dev(const struct shell *ctx, size_t argc, char **argv)
+{
+    pm_device_dump_all_status();
+    return 0;
+}
+
+static int cmd_get_pm_kt(const struct shell *ctx, size_t argc, char **argv)
+{
+    pm_timer_dump_managed_list();
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(enable, NULL,
                                              "set bmps enable \n"
@@ -339,6 +377,26 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                              "enable/disable compress qos null frame sending\n"
                                              "Usage: compress_qos_null_enable 1/0, 1:enable, 0: disable\n",
                                              cmd_compress_qos_null_enable, 2, 0),
+                               SHELL_CMD_ARG(get_hres, NULL,
+                                             "get high resoluation time\n"
+                                             "Usage: get_hres\n",
+                                             cmd_bmps_get_hres, 1, 0),
+                               SHELL_CMD_ARG(get_kt_stats, NULL,
+                                            "get kernel timer stats\n"
+                                            "Usage: get_kt_stats\n",
+                                            cmd_get_kt_stats, 1, 0),
+                               SHELL_CMD_ARG(kill_all_kt, NULL,
+                                            "kill all kernel timer\n"
+                                            "Usage: kill_all_kt\n",
+                                            cmd_kill_all_kt, 1, 0),
+                               SHELL_CMD_ARG(list_all_dev, NULL,
+                                            "list all device inclue driver status busy or idle\n"
+                                            "Usage: list_all_dev\n",
+                                            cmd_list_all_dev, 1, 0),          
+                               SHELL_CMD_ARG(get_pm_kt, NULL,
+                                            "get kernel timers manager by power module\n"
+                                            "Usage: get_pm_kt\n",
+                                            cmd_get_pm_kt, 1, 0),  
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);

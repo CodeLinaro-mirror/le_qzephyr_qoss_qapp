@@ -1,0 +1,7 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+config QPM_AUTO_SLEEP
+    bool "QCOM AUTO SLEEP"
+    depends on PM && PM_DEVICE && PM_DEVICE_SYSTEM_MANAGED
+	default n
