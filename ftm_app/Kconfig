@@ -3,73 +3,9 @@
 
 menu "Zephyr"
 source "Kconfig.zephyr"
-source "modules/segger/Kconfig"
-
-config FTM_MODE
-    bool "Enable FTM Mode"
-    default n
-
-config 6G_BAND
-    bool "Enable 6G Band"
-    default n
-
-config SOC_FAMILY_QCOM
-    bool "Enable SOC_FAMILY_QCOM"
-    default n
-
-config QWIFI
-    bool "Enable QWIFI"
-    default n
-
-config QURT_ABSTRACTION_LAYER
-    bool "Enable QURT_ABSTRACTION_LAYER"
-    default n
-
-config QSYSTEM
-    bool "Enable QSYSTEM"
-    default n
-
-config QHW_SUPPORT
-    bool "Enable QHW_SUPPORT"
-    default n
-
-config QPOWER
-    bool "Enable QPOWER"
-    default n
-
-# uart polling
-config UART_INTERRUPT_DRIVEN
-    bool "Enable UART_INTERRUPT_DRIVEN"
-    default n
-
-config FTM_UART_BAUDRATE
-    int "FTM UART baud rate"
-    default 115200
-    help
-      The baud rate for FTM UART communication.
-
-config FTM_RX_BUFFER_SIZE
-    int "FTM RX buffer size"
-    default 256
-    help
-      Size of the receive buffer for FTM data.
-
-config FTM_TX_BUFFER_SIZE
-    int "FTM TX buffer size"
-    default 256
-    help
-      Size of the transmit buffer for FTM data.
-
-config FTM_POLL_INTERVAL_MS
-    int "FTM UART poll interval (ms)"
-    default 10
-    help
-      Interval for polling UART in milliseconds.
-
 endmenu
 
 module = APP
 module-str = Application
 source "subsys/logging/Kconfig.template.log_config"
-source "modules/openthread/Kconfig"
 
