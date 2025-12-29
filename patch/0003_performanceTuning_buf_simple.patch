@@ -1,3 +1,17 @@
+From d00a4afaac0fdc5cbbe4dc503153735237561ae4 Mon Sep 17 00:00:00 2001
+From: Bolin Wang <boliwang@qti.qualcomm.com>
+Date: Mon, 29 Dec 2025 19:34:03 +0800
+Subject: [PATCH 3/4] net: buf: optionally use DXE memcpy in
+ net_buf_simple_add_mem
+
+Add an optional DXE-backed memcpy path in net_buf_simple_add_mem()
+to offload data movement when MEM_CPY_VIA_DXE is enabled.
+
+Change-Id: I8a50e1a1672462aeb7e6de2ccc6a09f9b83ea349
+---
+ lib/net_buf/buf_simple.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
 diff --git a/lib/net_buf/buf_simple.c b/lib/net_buf/buf_simple.c
 index 9fb0ced6dab..63309fbe9f1 100644
 --- a/lib/net_buf/buf_simple.c
@@ -23,3 +37,6 @@ index 9fb0ced6dab..63309fbe9f1 100644
  }
  
  uint8_t *net_buf_simple_add_u8(struct net_buf_simple *buf, uint8_t val)
+-- 
+2.25.1
+
