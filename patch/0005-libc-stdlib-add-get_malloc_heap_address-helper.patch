@@ -1,0 +1,70 @@
+From a9243b7cd1c6a78b5de05ae0c8edad03d8dfe0fa Mon Sep 17 00:00:00 2001
+From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
+Date: Mon, 29 Dec 2025 10:36:46 +0800
+Subject: [PATCH] libc: stdlib: add get_malloc_heap_address() helper
+
+Expose the malloc heap used by minimal libc via a new
+get_malloc_heap_address() API. When the malloc arena
+is present, the function returns \&z_malloc_heap;
+otherwise it returns NULL.
+
+This enables external modules (e.g. shell diagnostics)
+to query heap runtime statistics with sys_heap_runtime_stats_get()
+and to improve memory usage/fragmentation visibility
+during bring-up and debugging.
+
+Change-Id: Ia78a198206ce090fd57239e4a132c71d4e69c6e9
+---
+ lib/libc/common/source/stdlib/malloc.c | 14 ++++++++++++++
+ lib/libc/minimal/include/stdlib.h      |  3 +++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/lib/libc/common/source/stdlib/malloc.c b/lib/libc/common/source/stdlib/malloc.c
+index 2b01e152f00..b745b33510d 100644
+--- a/lib/libc/common/source/stdlib/malloc.c
++++ b/lib/libc/common/source/stdlib/malloc.c
+@@ -262,6 +262,13 @@ void free(void *ptr)
+ 	malloc_unlock();
+ }
+ 
++#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS)
++struct sys_heap *get_malloc_heap_address(void)
++{
++	return &z_malloc_heap;
++}
++#endif /* CONFIG_SYS_HEAP_RUNTIME_STATS  */
++
+ SYS_INIT(malloc_prepare, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_LIBC);
+ #else /* No malloc arena */
+ void *malloc(size_t size)
+@@ -284,6 +291,13 @@ void *realloc(void *ptr, size_t size)
+ 	ARG_UNUSED(ptr);
+ 	return malloc(size);
+ }
++
++#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS)
++struct sys_heap *get_malloc_heap_address(void)
++{
++	return NULL;
++}
++#endif /* CONFIG_SYS_HEAP_RUNTIME_STATS  */
+ #endif /* else no malloc arena */
+ 
+ #endif /* CONFIG_COMMON_LIBC_MALLOC */
+diff --git a/lib/libc/minimal/include/stdlib.h b/lib/libc/minimal/include/stdlib.h
+index a62a4a1e4d6..b8d305241af 100644
+--- a/lib/libc/minimal/include/stdlib.h
++++ b/lib/libc/minimal/include/stdlib.h
+@@ -26,6 +26,9 @@ int atoi(const char *s);
+ 
+ void *malloc(size_t size);
+ void *aligned_alloc(size_t alignment, size_t size); /* From C11 */
++#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS)
++struct sys_heap *get_malloc_heap_address(void);
++#endif
+ 
+ void free(void *ptr);
+ void *calloc(size_t nmemb, size_t size);
+-- 
+2.25.1
+
