@@ -6,7 +6,6 @@
 
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
-#include <stdlib.h>
 #include <qwifi_api.h>
 #include <zephyr/net/net_if.h>
 #include <qcom_wifi_mgmt.h>
@@ -637,33 +636,6 @@ static int cmd_get_rate(const struct shell *ctx, size_t argc, char **argv)
 }
 
 /* Info helpers and command implemented via net_mgmt */
-static int32_t get_boot_reason(const struct shell *ctx)
-{
-    struct net_if *iface = net_if_get_wifi_sta();
-    struct qcom_wifi_get_boot_reason_params out =
-	    (struct qcom_wifi_get_boot_reason_params){0};
-    char data[65] = {0};
-    size_t pos = 0;
-
-    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_BOOT_REASON, iface, &out, sizeof(out))) {
-        shell_error(ctx, "Failed to get boot reason");
-        return -ENOEXEC;
-    }
-
-    if (out.boot_reason == QAPI_BOOT_REASON_COLD_BOOT) {
-        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from cold boot");
-    } else if (out.boot_reason == QAPI_BOOT_REASON_DTIM_SLEEP) {
-        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from dtim sleep");
-    } else if (out.boot_reason == QAPI_BOOT_REASON_DEEP_SLEEP) {
-        pos += snprintk(data + pos, sizeof(data) - pos, "Boot from deep sleep");
-    } else {
-        pos += snprintk(data + pos, sizeof(data) - pos, "Unknown status 0x%08x", out.boot_reason);
-    }
-
-    shell_print(ctx, "Status: %s", data);
-    return 0;
-}
-
 static int32_t get_wifi_power_mode(const struct shell *ctx)
 {
     struct net_if *iface = net_if_get_wifi_sta();
@@ -749,7 +721,6 @@ static int32_t get_op_mode(const struct shell *ctx)
 
 static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
 {
-    (void)get_boot_reason(ctx);
     (void)get_device_mac_address(ctx);
     (void)get_wifi_power_mode(ctx);
     (void)cmd_get_phy_mode(ctx, argc, argv);
