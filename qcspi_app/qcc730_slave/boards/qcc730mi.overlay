@@ -1,0 +1,36 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+
+/ {
+	gpio_qcspi {
+		compatible = "gpio-qcspi";
+		status = "okay";
+		out-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+	};
+
+	aliases {
+		gpio-qcspi = &gpioa;
+	};
+
+	ring_ctrl_ram: memory@9FF00 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x9FC00 0x400>;
+		zephyr,memory-region = "RING_CTRL_RAM";
+	};
+};
+
+/* 0x9FF00~0xA0000 are reserved as ring buffer control block */
+&sram0 {
+	reg = <0x10000 0x8FC00>;
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&qcspi {
+	status = "okay";
+};
