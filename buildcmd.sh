@@ -30,13 +30,26 @@ newws="$(pwd)"
 echo $newws
 git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
 cd ../
+
+basedirs="pwd"
+subdirs=(
+    "bmps_app"
+    "power_app"
+    "qcli_app"
+)
 west init -l qcc730
-cd qapp/qcli_app
-west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
-west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
-west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
-west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
-cd ../../
+cd qapp
+
+for d in "${subdirs[@]}"; do
+    echo "=== enter $d and build ==="
+    cd "$d"
+    west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
+    west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
+    west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
+    west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
+    cd ..
+done
+cd "$basedirs"
 ws2="$(pwd)"
 echo $ws2
 if [ ! -d prebuilt_HY11 ]; then
