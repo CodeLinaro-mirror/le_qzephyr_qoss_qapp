@@ -9,6 +9,7 @@
 #include <zephyr/pm/pm.h>
 #include <stdio.h>
 #include "qpower.h"
+#include "wifi_fw_cpr_driver.h"
 
 static int cmd_set_softoff(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -42,6 +43,27 @@ static int cmd_set_s2ram(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+#ifdef CONFIG_CPR_ENABLE
+static int cmd_set_cpr(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    uint32_t enable = shell_strtoul(argv[1], 10, &err);
+
+    if (err) {
+        shell_error(ctx, "Unable to parse input slp_time_ms (err %d)", err);
+        return err;
+    }
+
+    shell_print(ctx, "%s cpr ...", enable?"Enable":"Disable");
+    if (enable) {
+        wifi_fw_cpr_reenable();
+    } else {
+        wifi_fw_cpr_disable();
+    }
+    return 0;
+}
+#endif
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                SHELL_CMD_ARG(softoff, NULL,
                                              "set pm state to soft_of\n"
@@ -53,6 +75,13 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "Usage: s2ram <sleep_time_ms:int>\n"
                                              "sleep_time_ms: no timeout if 0>\n",
                                              cmd_set_s2ram, 2, 0),
+#ifdef CONFIG_CPR_ENABLE
+                               SHELL_CMD_ARG(cpr_set, NULL,
+                                             "enable or disable cpr\n"
+                                             "Usage: cpr_set <set:int>\n"
+                                             "set: enable if 1 disable if 0>\n",
+                                             cmd_set_cpr, 2, 0),
+#endif
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qpm, &sub_pm_cmds, "power management commands", NULL);
