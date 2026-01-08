@@ -8,8 +8,10 @@
 #include <zephyr/sys/util.h>
 
 #include <qlib_util.h>
+#if CONFIG_WIFI
 #include <qwifi_api.h>
 #include <qcom_wifi_mgmt.h>
+#endif
 
 #if CONFIG_MBEDTLS_USE_PKA
 #include "self_test.h"
@@ -54,6 +56,7 @@ static int cmd_set_logger_lvl(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+#if CONFIG_WIFI
 static int32_t get_boot_reason(const struct shell *ctx)
 {
     struct net_if *iface = net_if_get_wifi_sta();
@@ -80,6 +83,7 @@ static int32_t get_boot_reason(const struct shell *ctx)
     shell_print(ctx, "Status: %s", data);
     return 0;
 }
+#endif
 
 #if K_HEAP_MEM_POOL_SIZE > 0 && defined(CONFIG_SYS_HEAP_RUNTIME_STATS)
 extern struct sys_heap _system_heap;
@@ -149,7 +153,9 @@ static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
 
     (void)get_kernel_heap(ctx);
     (void)get_z_malloc_heap_statistics(ctx);
+#if CONFIG_WIFI
     (void)get_boot_reason(ctx);
+#endif
 
     return 0;
 }
