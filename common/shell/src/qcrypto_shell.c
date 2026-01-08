@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <CeML.h>
 #include <qapi_wlan_base.h>
+#include "self_test.h"
 
 static int hex2digit(int c)
 {
@@ -238,6 +239,113 @@ error_back:
     return ret;
 }
 
+static int cmd_pka_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    if (argc != 3) {
+        shell_error(ctx, "parameters count not right (cnt %d), should be 3", argc);
+        return -EINVAL;
+    }
+
+    int err = 0;
+    int verbose = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input verbose (err %d)", err);
+        return err;
+    }
+
+    if (strcmp(argv[1], "all") == 0) {
+        /* MPI Test */
+        shell_print(ctx, "MPI Test");
+        if (mbedtls_mpi_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        /* RSA Test */
+        shell_print(ctx, "RSA Test");
+
+        if (mbedtls_rsa_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        /* DH Test */
+        shell_print(ctx, "DH Test");
+
+        if (mbedtls_dhm_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        /* ECP Test */
+        shell_print(ctx, "ECP Test");
+
+        if (mbedtls_ecp_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        /* ECDSA Test */
+        shell_print(ctx, "ECDSA Test");
+
+        if (mbedtls_ecdsa_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+    } else if (strcmp(argv[1], "mpi") == 0) {
+        shell_print(ctx, "MPI Test");
+
+        if (mbedtls_mpi_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+    } else if (strcmp(argv[1], "rsa") == 0) {
+        shell_print(ctx, "RSA Test");
+
+        if (mbedtls_rsa_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+    } else if (strcmp(argv[1], "dh") == 0) {
+        shell_print(ctx, "DH Test");
+
+        if (mbedtls_dhm_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+
+    } else if (strcmp(argv[1], "ecp") == 0) {
+        shell_print(ctx, "ECP Test");
+
+        if (mbedtls_ecp_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+    } else if (strcmp(argv[1], "ecdsa") == 0) {
+        shell_print(ctx, "ECDSA Test");
+
+        if (mbedtls_ecdsa_pka_self_test(verbose) != 0)
+            shell_error(ctx, "Test Fail");
+        else
+            shell_print(ctx, "Test Pass");
+
+        return 0;
+    } else {
+        shell_error(ctx, "Invalid test type '%s'. Valid types: mpi, rsa, dh, ecp, ecdsa", argv[1]);
+        return -EINVAL;
+    }
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                SHELL_CMD_ARG(kdf_key, NULL,
                                              "Test KDF derive key\n"
@@ -259,6 +367,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "derive_key: The length must be 32.\n"
                                              "encrypted_data: The length must be 64.\n",
                                              kdf_decrypt_test_cmd, 4, 0),
+                               SHELL_CMD_ARG(pka_test, NULL,
+                                             "pka_test\n"
+                                             "Usage: pka_test\n",
+                                             cmd_pka_test, 3, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qcrypto, &sub_pm_cmds, "crypto related commands", NULL);
