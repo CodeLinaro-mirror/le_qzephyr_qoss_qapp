@@ -1,5 +1,5 @@
 diff --git a/tests/subsys/debug/coredump_backends/testcase.yaml b/tests/subsys/debug/coredump_backends/testcase.yaml
-index ff4109f9d50..15b333ad0dc 100644
+index b5eb70ba8e9..f90ea35a28d 100644
 --- a/tests/subsys/debug/coredump_backends/testcase.yaml
 +++ b/tests/subsys/debug/coredump_backends/testcase.yaml
 @@ -6,6 +6,7 @@ common:
@@ -10,11 +10,11 @@ index ff4109f9d50..15b333ad0dc 100644
  tests:
    debug.coredump.backends.logging:
      filter: CONFIG_ARCH_SUPPORTS_COREDUMP
-@@ -24,6 +25,7 @@ tests:
+@@ -23,6 +24,7 @@ tests:
        - esp32s2_saola
        - esp32s3_devkitm/esp32s3/procpu
        - esp32c3_devkitm
 +      - qcc730mi
-   debug.coredump.backends.other:
+   debug.coredump.backends.in_memory:
      filter: CONFIG_ARCH_SUPPORTS_COREDUMP
-     extra_args: CONF_FILE=prj_backend_other.conf
+     extra_args: CONF_FILE=prj_in_memory.conf
