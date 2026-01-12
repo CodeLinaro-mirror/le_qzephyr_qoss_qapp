@@ -31,7 +31,7 @@ echo $newws
 git update-ref refs/heads/manifest-rev $(git rev-parse HEAD)
 cd ../
 
-basedirs="pwd"
+basedirs="$(pwd)"
 subdirs=(
     "bmps_app"
     "power_app"
@@ -49,7 +49,7 @@ for d in "${subdirs[@]}"; do
     west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
     cd ..
 done
-cd "$basedirs"
+cd $basedirs
 ws2="$(pwd)"
 echo $ws2
 if [ ! -d prebuilt_HY11 ]; then
