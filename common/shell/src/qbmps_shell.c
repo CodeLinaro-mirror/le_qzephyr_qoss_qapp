@@ -9,6 +9,7 @@
 #include <zephyr/pm/pm.h>
 #include <stdio.h>
 #include "qpower.h"
+#include "qapi_lowpower.h"
 #include "wmi.h"
 #include <zephyr/device.h>
 #include "qurt_timer.h"
@@ -29,7 +30,6 @@ uint64_t bmps_start = 0;
 #define UDP_WHITELIST_LEN     4
 uint32_t udp_whitelist_arr[UDP_WHITELIST_LEN] = {7777, 0, 0, 0};
 typedef bool (*qapi_bmps_rx_filter_cb)(uint16_t type, bool bm_cast, void *pbuf, uint16_t len);
-extern bool (*wakeup_cb_dtim)(uint16_t type, bool bm_cast,void* pbuf,uint16_t len);
 
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
 static void bmps_timer_cb(struct k_timer *timer)
@@ -206,24 +206,6 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
     return TRUE;
 }
 
-static  qapi_Status_t qapi_bmps_bcmc_rx_filter_cb_register(qapi_bmps_rx_filter_cb bmps_cb, qapi_bmps_rx_filter_cb net_cb)
-{
-    if(!bmps_cb)
-    {
-        return QAPI_ERR_INVALID_PARAM;
-    }
-
-    if(bmps_cb)
-    {
-        wakeup_cb_dtim = bmps_cb;
-    }
-
-    /** wakeup_cb_net = net_cb; */
-    
-
-   return QAPI_OK;
-}
-
 static int cmd_bcmc_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -249,7 +231,22 @@ static int cmd_bcmc_enable(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 
 }
+static int cmd_compress_qos_null_enable(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    uint8_t enable = shell_strtoul(argv[1], 10, &err);
 
+    if (err) {
+        shell_error(ctx, "Unable to parse enable (err %d)", err);
+        return err;
+    }
+
+    if(QAPI_OK !=qapi_bmps_compress_qos_null_enable(enable?1:0)){
+        shell_error(ctx, "qapi_bmps_compress_qos_null_enable error");
+    }
+
+    return 0;
+}
 static int cmd_set_bcmc_filter(const struct shell *ctx, size_t argc, char **argv)
 {
 	int opt;
@@ -338,6 +335,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                              "[-u dst udp port]: the dst udp port like 7777\n"
                                              "-q : query the whitelist\n",
                                              cmd_set_bcmc_filter, 2, 3),
+                                SHELL_CMD_ARG(compress_qos_null_enable, NULL,
+                                             "enable/disable compress qos null frame sending\n"
+                                             "Usage: compress_qos_null_enable 1/0, 1:enable, 0: disable\n",
+                                             cmd_compress_qos_null_enable, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);
