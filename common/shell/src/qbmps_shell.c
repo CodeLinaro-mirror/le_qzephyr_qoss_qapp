@@ -262,7 +262,7 @@ static int cmd_set_bcmc_filter(const struct shell *ctx, size_t argc, char **argv
 		{"udpport", required_argument, 0, 'u'},
 		{"querry", no_argument, 0, 'q'},
 		{0, 0, 0, 0}};
-	int en, port;
+	int en=0, port=0;
 
 
 	while ((opt = getopt_long(argc, argv, "a:u:q",
