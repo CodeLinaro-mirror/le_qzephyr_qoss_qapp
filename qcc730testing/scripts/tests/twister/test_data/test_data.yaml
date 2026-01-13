@@ -89,7 +89,7 @@ tests:
   drivers.uart.uart_stress:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress"
   drivers.uart.uart_stress_pytest:
-    device-serial-baud: 230400
+    device-serial-baud: 115200
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress_pytest"
   drivers.uart.qcc730.pm_api:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pm_test"
