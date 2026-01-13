@@ -30,6 +30,9 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 	int ret = 0;
 	uint32_t percent = 0U;
 	unsigned char byte = 0U;
+	uint32_t last_bytes = 0;
+	int64_t last_log_time = 0;
+	//uint32_t err = 0;
 
 	zassume_true(device_is_ready(uart_dev), "UART device not ready");
 	LOG_INF("Starting RX stress test - receiving %u bytes from host", RX_TEST_SIZE);
@@ -38,6 +41,8 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 	printk("RX_TEST_READY\n");
 
 	start_time = k_uptime_get();
+	last_log_time = start_time;
+	printk("RX loop enter\r\n");
 	while (bytes_received < RX_TEST_SIZE) {
 		byte = 0U;
 		ret = uart_poll_in(uart_dev, &byte);
@@ -46,9 +51,21 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 			crc16_calculated = crc16_itu_t(crc16_calculated, &byte, 1);
 			++bytes_received;
 
-			if ((bytes_received % 1024) == 0) {
-				k_yield();
+			if ((bytes_received % 4096) == 0) {
+				LOG_INF("RX 4096 Bytes more(%u) elapsed_since_last_log=%lld ms", bytes_received,
+					k_uptime_get() - last_log_time);
+				last_bytes = bytes_received;
+        		last_log_time = k_uptime_get();
+				//err = uart_err_check(uart_dev);
+				//if (err) {
+    			//	LOG_ERR("UART error: 0x%08x(inside while)", err);
+				//}
 			}
+
+			//if (bytes_received >= 10481664 && (bytes_received % 512) == 0) {
+    		//	LOG_INF("RX debug after 60KB: %u bytes", bytes_received);
+			//}
+
 
 			if ((bytes_received % PROGRESS_INTERVAL) == 0) {
 				percent = (bytes_received * 100) / RX_TEST_SIZE;
@@ -57,19 +74,53 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 				}
 			}
 		} else {
-			k_usleep(10);
+			k_usleep(1);
+		}
+        
+		if (k_uptime_get() - start_time > 1200000) {
+			LOG_ERR("RX timeout: bytes_received=%u, expected=%u",
+                bytes_received, RX_TEST_SIZE);
+				break;
 		}
 	}
+    
+	LOG_INF("RX loop exit (or timeout): bytes_received=%u", bytes_received);
+	//err = uart_err_check(uart_dev);
+	//if (err) {
+	//	LOG_ERR("UART error: 0x%08x (out while)", err);
+	//}
+	printk("RX loop exit, total bytes = %u\r\n", bytes_received);
+
 	end_time = k_uptime_get();
 	k_usleep(100);
+	printk("RX_CRC_READY\n");
 	/* Receive CRC16 from host (2 bytes, big-endian) */
 	LOG_INF("Receiving CRC16 from host...");
+	int64_t crc_start = k_uptime_get();
+	bool crc_timeout = false;
 	for (uint8_t i = 0U; i < 2U; i++) {
 		byte = 0U;
 		while (uart_poll_in(uart_dev, &byte) != 0) {
 			k_sleep(K_USEC(10));
+			if (k_uptime_get() - crc_start > 1000*60) {
+				LOG_ERR("RX CRC receive timeout after %lld ms, received bytes=%u",
+						(long long)(k_uptime_get() - crc_start), i);
+				crc_timeout = true;
+				break;
+        	}
 		}
+
+		if (crc_timeout) {
+        	break;
+    	}
+
 		crc16_received = (crc16_received << 8U) | byte;
+	}
+
+	if (crc_timeout) {
+		printk("RX_TEST_FAIL\n");
+		zassert_true(false, "RX CRC receive timeout");
+		return;
 	}
 
 	/* Verify CRC */

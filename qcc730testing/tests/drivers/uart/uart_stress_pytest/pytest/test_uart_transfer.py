@@ -69,7 +69,7 @@ def test_1_uart_rx_stress(dut: CustomHardwareAdapter, zephyr_config: dict):
     PROGRESS_INTERVAL_KB = zephyr_config['PROGRESS_INTERVAL_KB']
 
     # Wait for test result
-    logger.info("Waiting for RX test result...")
+    logger.info("Waiting for DUT RX_TEST_READY...")
     lines = dut.readlines_until(
         regex=r".*RX_TEST_READY.*",
         timeout=15.0,
@@ -97,7 +97,7 @@ def test_1_uart_rx_stress(dut: CustomHardwareAdapter, zephyr_config: dict):
         dut.write(chunk)
         bytes_sent = chunk_end
 
-        time.sleep(0.001)
+        time.sleep(0.01)
 
         # Progress reporting
         if bytes_sent % PROGRESS_INTERVAL_KB == 0:
@@ -105,6 +105,13 @@ def test_1_uart_rx_stress(dut: CustomHardwareAdapter, zephyr_config: dict):
             logger.info(f"TX Progress: {percent}% ({bytes_sent} bytes)")
 
     time.sleep(0.5)
+
+    logger.info("Waiting for DUT RX_CRC_READY...")
+    lines = dut.readlines_until(
+        regex=r".*RX_CRC_READY.*",
+        timeout=60.0
+    )
+
     logger.info(f"Sending CRC16 to device: 0x{crc16:02X}")
     crc_bytes = crc16.to_bytes(2, byteorder='big')
     dut.write(crc_bytes)
