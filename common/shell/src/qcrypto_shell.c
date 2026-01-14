@@ -13,6 +13,11 @@
 #include <CeML.h>
 #include <qapi_wlan_base.h>
 #include "self_test.h"
+#include "mbedtls/aes.h"
+#include "mbedtls/ccm.h"
+#include "mbedtls/dhm.h"
+#include "mbedtls/sha1.h"
+#include "mbedtls/sha256.h"
 
 static int hex2digit(int c)
 {
@@ -346,6 +351,96 @@ static int cmd_pka_test(const struct shell *ctx, size_t argc, char **argv)
     }
 }
 
+#if defined(CONFIG_MBEDTLS_TEST)
+static int cmd_qcc_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    if (argc != 3) {
+        shell_print(ctx, "usage: qcc_test <module> <verbose>");
+        shell_print(ctx, "module: aes | ccm | sha1 | sha256 | all");
+        return -EINVAL;
+    }
+
+    int err = 0;
+    int verbose = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Invalid verbose (err %d)", err);
+        return -EINVAL;
+    }
+
+    const char *m = argv[1];
+    int rc = 0;
+    bool matched = false;
+#if defined(MBEDTLS_AES_C)
+    if (!strcmp(m, "all") || !strcmp(m, "aes")) {
+        matched = true;
+        shell_print(ctx, "AES Test");
+        rc = mbedtls_aes_self_test(verbose);
+        shell_print(ctx, rc ? "Test Fail" : "Test Pass");
+        if (!strcmp(m, "aes"))
+            return 0;
+    }
+#endif
+#if defined(MBEDTLS_CCM_GCM_CAN_AES) && defined(MBEDTLS_CCM_C)
+    if (!strcmp(m, "all") || !strcmp(m, "ccm")) {
+        matched = true;
+        shell_print(ctx, "AES-CCM Test");
+        rc = mbedtls_ccm_self_test(verbose);
+        shell_print(ctx, rc ? "Test Fail" : "Test Pass");
+        if (!strcmp(m, "ccm"))
+            return 0;
+    }
+#endif
+#if defined(MBEDTLS_SHA1_C)
+    if (!strcmp(m, "all") || !strcmp(m, "sha1")) {
+        matched = true;
+        shell_print(ctx, "SHA1 Test");
+        rc = mbedtls_sha1_self_test(verbose);
+        shell_print(ctx, rc ? "Test Fail" : "Test Pass");
+        if (!strcmp(m, "sha1"))
+            return 0;
+    }
+#endif
+#if defined(MBEDTLS_SHA256_C)
+    if (!strcmp(m, "all") || !strcmp(m, "sha256")) {
+        matched = true;
+        shell_print(ctx, "SHA256 Test");
+        rc = mbedtls_sha256_self_test(verbose);
+        shell_print(ctx, rc ? "Test Fail" : "Test Pass");
+        if (!strcmp(m, "sha256"))
+            return 0;
+    }
+#endif
+    if (!matched) {
+        shell_error(ctx, "Invalid test module '%s'", m);
+        shell_print(ctx, "Available modules:");
+#if defined(MBEDTLS_AES_C)
+        shell_print(ctx, "  - aes");
+#endif
+#if defined(MBEDTLS_CCM_C) && defined(MBEDTLS_CCM_GCM_CAN_AES)
+        shell_print(ctx, "  - ccm");
+#endif
+#if defined(MBEDTLS_SHA1_C)
+        shell_print(ctx, "  - sha1");
+#endif
+#if defined(MBEDTLS_SHA256_C)
+        shell_print(ctx, "  - sha256");
+#endif
+        return -EINVAL;
+    }
+    return 0;
+}
+#else /* !CONFIG_MBEDTLS_TEST */
+static int cmd_qcc_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    shell_error(ctx, "qcc_test is unavailable: CONFIG_MBEDTLS_TEST is not enabled");
+    shell_print(ctx, "Please enable CONFIG_MBEDTLS_TEST in your Mbed TLS config");
+    return -EINVAL;
+}
+#endif /* CONFIG_MBEDTLS_TEST */
+
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                SHELL_CMD_ARG(kdf_key, NULL,
                                              "Test KDF derive key\n"
@@ -371,6 +466,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "pka_test\n"
                                              "Usage: pka_test\n",
                                              cmd_pka_test, 3, 0),
+                                
+                               SHELL_CMD_ARG(qcc_test, NULL,
+                                             "Run qcc test\n"
+                                             "Usage: qcc_test <module> <verbose>\n"
+                                             "module: aes | ccm | sha1 | sha256 | all\n",
+                                             cmd_qcc_test, 3, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qcrypto, &sub_pm_cmds, "crypto related commands", NULL);
