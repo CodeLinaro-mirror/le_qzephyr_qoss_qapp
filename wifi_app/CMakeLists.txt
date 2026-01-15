@@ -46,7 +46,7 @@ set(SECTOOLS_SCRIPT "${SECTOOLS_DIR}/sectools.py")
 set(SECTOOLS_CONFIG "${ZEPHYR_HAL_QCOM_MODULE_DIR}/tools/sectools/config/qcc730/qcc730_secimage.xml")
 
 # Input ELF files
-set(SBL_ELF "${APPLICATION_BINARY_DIR}/modules/hal_qcom/qboot/qcc730mi_sbl.elf")
+set(SBL_ELF "${APPLICATION_BINARY_DIR}/modules/hal_qcom/qboot/${BOARD}_sbl.elf")
 set(APP_ELF "${APPLICATION_BINARY_DIR}/zephyr/zephyr.elf")
 
 # Output directories
@@ -54,7 +54,7 @@ set(SBL_SIGNED_DIR "${APPLICATION_BINARY_DIR}/modules/hal_qcom/qboot/zephyr_sec_
 set(APP_SIGNED_DIR "${APPLICATION_BINARY_DIR}/zephyr/zephyr_sec_app")
 
 # Output files (based on sectools output structure)
-set(SBL_SIGNED_BIN "${SBL_SIGNED_DIR}/qcc730/sbl/qcc730mi_sbl.elf")
+set(SBL_SIGNED_BIN "${SBL_SIGNED_DIR}/qcc730/sbl/${BOARD}_sbl.elf")
 set(APP_SIGNED_BIN "${APP_SIGNED_DIR}/qcc730/app/zephyr.elf")
 
 # Sign SBL image custom command
