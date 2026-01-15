@@ -1,0 +1,50 @@
+From 8ca366c8823c5e7a362e91a266253bd8cfaf8bab Mon Sep 17 00:00:00 2001
+From: yonwen <yonwen@qti.qualcomm.com>
+Date: Thu, 15 Jan 2026 17:57:26 +0800
+Subject: [PATCH] debug: coredump: fix system shell printing logic
+
+Fix the coredump system shell command so that stored coredumps can be
+printed reliably from the flash backend. This addresses the behavior
+reported in #91768 where `coredump find` indicated a stored dump, but
+`coredump print`/`coredump print pretty` failed to emit the contents.
+
+Change-Id: Ic21181b8ddf024bb9a4decdbbfada2b1b2f3efae
+Signed-off-by: yonwen <yonwen@qti.qualcomm.com>
+---
+ subsys/debug/coredump/coredump_shell.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/subsys/debug/coredump/coredump_shell.c b/subsys/debug/coredump/coredump_shell.c
+index 731162aa27c..00f624a5a22 100644
+--- a/subsys/debug/coredump/coredump_shell.c
++++ b/subsys/debug/coredump/coredump_shell.c
+@@ -287,7 +287,7 @@ static int print_raw_data(const struct shell *sh,
+ 		}
+ 
+ 		ret = coredump_cmd(COREDUMP_CMD_COPY_STORED_DUMP, copy);
+-		if (ret != 0) {
++		if (ret < 0) {
+ 			return -EINVAL;
+ 		}
+ 
+@@ -346,7 +346,7 @@ static int parse_and_print_coredump(const struct shell *sh,
+ 	}
+ 
+ 	ret = coredump_cmd(COREDUMP_CMD_COPY_STORED_DUMP, copy);
+-	if (ret != 0) {
++	if (ret < 0) {
+ 		return ret;
+ 	}
+ 
+@@ -393,7 +393,7 @@ static int parse_and_print_coredump(const struct shell *sh,
+ 		}
+ 
+ 		ret = coredump_cmd(COREDUMP_CMD_COPY_STORED_DUMP, copy);
+-		if (ret != 0) {
++		if (ret < 0) {
+ 			return -ENOMEM;
+ 		}
+ 
+-- 
+2.34.1
+

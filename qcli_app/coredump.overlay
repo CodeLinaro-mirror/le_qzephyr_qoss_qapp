@@ -18,9 +18,9 @@
         compatible = "fixed-partitions";
         #address-cells = <1>;
         #size-cells = <1>;
-        coredump_partition: coredump@0 {
+        coredump_partition: coredump@380000 {
             label = "coredump_partition";
-            reg = <0x0 0x80000>;
+            reg = <0x380000 0x80000>;
             status = "okay";
         };
     };
