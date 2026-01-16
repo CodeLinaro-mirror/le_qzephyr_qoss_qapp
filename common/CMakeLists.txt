@@ -7,6 +7,7 @@ if(NOT CONFIG_SOC_FAMILY_QCOM)
 endif()
 
 add_subdirectory_ifdef(CONFIG_SHELL shell)
+add_subdirectory_ifdef(CONFIG_PM pm_service)
 
 function(gen_crm_number)
     set(CRM_NUMBER 999)

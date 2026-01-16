@@ -1,0 +1,13 @@
+diff --git a/kernel/timeout.c b/kernel/timeout.c
+index e9e4f86a850..3ba55eb3fa5 100644
+--- a/kernel/timeout.c
++++ b/kernel/timeout.c
+@@ -14,7 +14,7 @@
+ 
+ static uint64_t curr_tick;
+ 
+-static sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
++sys_dlist_t timeout_list = SYS_DLIST_STATIC_INIT(&timeout_list);
+ 
+ /*
+  * The timeout code shall take no locks other than its own (timeout_lock), nor

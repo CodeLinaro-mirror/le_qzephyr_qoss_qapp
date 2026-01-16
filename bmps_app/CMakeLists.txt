@@ -36,6 +36,7 @@ add_custom_command(
 # Use zephyr_final target which is created by Zephyr build system
 add_custom_target(post_process_elf ALL DEPENDS "${HASHED_ELF}")
 
+
 # ===== Signing support: Manual target "sign" =====
 # Usage: west build -b qcc730mi -t sign
 # This allows signing without rebuilding/reconfiguring the project

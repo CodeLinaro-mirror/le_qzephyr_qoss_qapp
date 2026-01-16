@@ -1,0 +1,13 @@
+diff --git a/drivers/timer/cortex_m_systick.c b/drivers/timer/cortex_m_systick.c
+index e2563ddd9d7..9a837eac03f 100644
+--- a/drivers/timer/cortex_m_systick.c
++++ b/drivers/timer/cortex_m_systick.c
+@@ -461,7 +461,7 @@ void sys_clock_idle_exit(void)
+ #if !defined(CONFIG_CORTEX_M_SYSTICK_LPM_TIMER_NONE)
+ 	if (timeout_idle) {
+ 		cycle_t systick_diff, missed_cycles;
+-		uint32_t dcycles, dticks;
++		uint64_t dcycles, dticks;
+ 		uint64_t systick_us, idle_timer_us;
+ 
+ #if !defined(CONFIG_CORTEX_M_SYSTICK_RESET_BY_LPM)
