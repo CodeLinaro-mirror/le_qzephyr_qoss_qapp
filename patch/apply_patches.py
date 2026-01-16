@@ -65,9 +65,10 @@ def get_patch_checksum(patch_file):
 
 def mark_patches_applied(patch_files):
     """Mark that patches have been applied with checksums for integrity"""
+    from datetime import datetime
     with open(PATCH_MARKER_FILE, 'w') as f:
         f.write("# Zephyr Patches Applied - DO NOT EDIT MANUALLY\n")
-        f.write(f"# Applied on: {subprocess.run(['date'], capture_output=True, text=True, shell=True).stdout.strip()}\n")
+        f.write(f"# Applied on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("# Format: patch_filename:checksum\n")
         for patch_file in patch_files:
             checksum = get_patch_checksum(patch_file)
