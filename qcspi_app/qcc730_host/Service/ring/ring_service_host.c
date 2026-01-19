@@ -708,7 +708,7 @@ int init_qring(void)
 {
 
     int ret = 0;
-    ring_transport_dev_t qcspi_dev = NULL;
+    ring_transport_dev_t qcspi_dev;
     /* Initialize QCSPI transport */
     ret = ring_transport_init(qcspi_dev);
     if (ret == 0) {
