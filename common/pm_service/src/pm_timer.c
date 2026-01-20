@@ -224,6 +224,7 @@ int pm_register_shell_uart_timer(void)
 
     /* Step 5: Now we can safely access the timer member of the defined struct. */
     struct k_timer *rx_timer_ptr = &sh_uart_ctx->rx_timer;
+    g_shell_uart_managed_timer.saved_period.ticks = (sh_uart_ctx->rx_timer).period.ticks;
 
     LOG_INF("Successfully located shell_uart rx_timer at address: %p", rx_timer_ptr);
 
@@ -499,9 +500,16 @@ static void on_idle_pre_sleep(void)
             mt->saved_remaining.ticks = k_timer_remaining_ticks(mt->timer);
             mt->saved_period.ticks = mt->timer->period.ticks;
 
-            if (!K_TIMEOUT_EQ(mt->saved_remaining, K_NO_WAIT)) {
-                k_timer_stop(mt->timer);
-                mt->was_running = true;
+            /*
+             * Check if timer is running by verifying if it is in the kernel's timeout queue.
+             * True periodic timers (like shell_uart_rx) are re-added to the queue atomically
+             * within the expiry ISR, so node.next is always non-NULL while active.
+             * This check correctly identifies running timers and ignores intentionally
+             * stopped timers (which are removed from the queue).
+             */
+            if (mt->timer->timeout.node.next != NULL) {
+                 k_timer_stop(mt->timer);
+                 mt->was_running = true;
             } else {
                 mt->was_running = false;
             }
