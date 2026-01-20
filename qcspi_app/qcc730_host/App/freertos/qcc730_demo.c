@@ -255,8 +255,10 @@ int cmd_qcspi_read(int argc, char **argv)
     }
 
     /* Validate memory range */
-    if (addr + len > 0x9FFFF)
+    if (addr + len - 1 > 0x9FFFF) {
+        printf("ERROR: Access range 0x%08X-0x%08X exceeds memory limit 0x9FFFF\r\n", addr, addr + len - 1);
         return -QC_OSAL_EINVAL;
+    }
 
     ret = ring_transport_read(qcspi_dev, addr, recv_buffer, len);
     if (ret < 0) {
