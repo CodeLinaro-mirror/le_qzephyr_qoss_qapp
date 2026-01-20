@@ -14,6 +14,9 @@ subdirs=(
     "power_app"
     "qcli_app"
 )
+hello_world_app=(
+    "zephyr/samples/hello_world"
+)
 if [ ! -f SRC-IOE-SDK.tar.gz ]; then
     tar --exclude=.git --exclude=.gitignore -czpf SRC-IOE-SDK.tar.gz modules/hal/cmsis modules/hal/qcom modules/lib/hostap \
     zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6
@@ -39,6 +42,18 @@ if [ -d prebuilt_HY11 ]; then
         west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
         cd ..
     done
+
+    cd $basedirs
+    for app_path in "${hello_world_app[@]}"; do
+        echo "=== enter $app_path and build ==="
+        cd "$app_path"
+        west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
+        west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
+        west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
+        west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
+        cd $basedirs
+    done
+    
     cd $basedirs
     exit
 fi
@@ -60,6 +75,18 @@ for d in "${subdirs[@]}"; do
     west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
     cd ..
 done
+
+cd $basedirs
+for app_path in "${hello_world_app[@]}"; do
+    echo "=== enter $app_path and build ==="
+    cd "$app_path"
+    west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
+    west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
+    west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
+    west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
+    cd $basedirs
+done
+
 cd $basedirs
 ws2="$(pwd)"
 echo $ws2
