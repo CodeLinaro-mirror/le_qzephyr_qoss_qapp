@@ -10,3 +10,7 @@
 ./power_app/build/qcc730mx/zephyr/zephyr.elf
 ./power_app/build/qcc730evbi/zephyr/zephyr.elf
 ./power_app/build/qcc730evbx/zephyr/zephyr.elf
+../zephyr/samples/hello_world/build/qcc730mi/zephyr/zephyr.elf
+../zephyr/samples/hello_world/build/qcc730mx/zephyr/zephyr.elf
+../zephyr/samples/hello_world/build/qcc730evbi/zephyr/zephyr.elf
+../zephyr/samples/hello_world/build/qcc730evbx/zephyr/zephyr.elf
