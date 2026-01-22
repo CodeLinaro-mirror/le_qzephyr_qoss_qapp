@@ -20,6 +20,7 @@
 WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
 static void bmps_timer_cb(struct k_timer *timer);
+static void period_wakeup_timer_cb(struct k_timer *timer);
 extern void wmi_ignore_bcmc_in_bmps(void *, uint8_t data);
 static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv);
 static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv);
@@ -36,6 +37,12 @@ void pm_timer_debug_dump(void);
 uint32_t pm_timer_stop_all_k_timers(void);
 
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
+K_TIMER_DEFINE(period_wakeup_timer, period_wakeup_timer_cb, NULL);
+
+static void period_wakeup_timer_cb(struct k_timer *timer)
+{
+    /*printk("TICK\n");*/
+}
 
 static void bmps_timer_cb(struct k_timer *timer)
 {
@@ -237,6 +244,24 @@ static int cmd_bcmc_enable(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 
 }
+
+static int cmd_bmps_power_optimization_enable(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    uint8_t enable = shell_strtoul(argv[1], 10, &err);
+
+    if (err) {
+        shell_error(ctx, "Unable to parse enable (err %d)", err);
+        return err;
+    }
+
+    if(QAPI_OK !=qapi_bmps_power_optimization_enable(enable?1:0)){
+        shell_error(ctx, "qapi_bmps_power_optimization_enable error");
+    }
+
+    return 0;
+}
+
 static int cmd_compress_qos_null_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -342,6 +367,26 @@ static int cmd_get_pm_kt(const struct shell *ctx, size_t argc, char **argv)
 }
 
 
+static int cmd_set_period_wakeup(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    uint32_t slp_time_ms = shell_strtoul(argv[1], 10, &err);
+
+    if (err) {
+        shell_error(ctx, "Unable to parse input slp_time_ms (err %d)", err);
+        return err;
+    }
+
+    shell_print(ctx, "allow state to suspend_to_ram %u ms",slp_time_ms);
+
+    if(slp_time_ms)
+    {
+        k_timer_start(&period_wakeup_timer, K_MSEC(slp_time_ms), K_MSEC(slp_time_ms));
+    }
+
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(enable, NULL,
                                              "set bmps enable \n"
@@ -375,6 +420,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                              "[-u dst udp port]: the dst udp port like 7777\n"
                                              "-q : query the whitelist\n",
                                              cmd_set_bcmc_filter, 2, 3),
+                                SHELL_CMD_ARG(bmps_power_optimization_enable, NULL,
+                                             "enable/disable BMPS when in active mode\n"
+                                             "Usage: bmps_power_optimization_enable 1/0, 1:enable, 0: disable\n",
+                                             cmd_bmps_power_optimization_enable, 2, 0),
                                 SHELL_CMD_ARG(compress_qos_null_enable, NULL,
                                              "enable/disable compress qos null frame sending\n"
                                              "Usage: compress_qos_null_enable 1/0, 1:enable, 0: disable\n",
@@ -399,6 +448,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                             "get kernel timers manager by power module\n"
                                             "Usage: get_pm_kt\n",
                                             cmd_get_pm_kt, 1, 0),  
+                                SHELL_CMD_ARG(set_period_wakeup, NULL,
+                                            "set period wakeup\n"
+                                            "Usage: set_period_wakeup <period(ms)>\n",
+                                            cmd_set_period_wakeup, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);
