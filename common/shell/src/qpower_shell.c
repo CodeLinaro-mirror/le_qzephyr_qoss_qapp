@@ -12,6 +12,7 @@
 #include "qpower.h"
 #include "wifi_fw_cpr_driver.h"
 #include <zephyr/pm/policy.h>
+#include <zephyr/pm/pm.h>
 
 #define TEMPERATUREC_MIN    (-40)
 #define TEMPERATUREC_MAX    (125)
@@ -32,6 +33,23 @@ static void s2ram_timer_cb(struct k_timer *timer);
 K_TIMER_DEFINE(s2ram_timer, s2ram_timer_cb, NULL);
 
 static int slp_count = 1;
+
+static void my_notify_pm_state_entry(enum pm_state state)
+{
+    early_printk("my_notify_pm_state_entry\r\n");
+}
+
+
+static void my_notify_pm_state_exit(enum pm_state state)
+{
+    early_printk("my_notify_pm_state_exit\r\n");
+}
+
+static struct pm_notifier my_notifier = {
+	.state_entry = my_notify_pm_state_entry,
+	.state_exit = my_notify_pm_state_exit,
+};
+
 static int cmd_set_softoff(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -44,6 +62,8 @@ static int cmd_set_softoff(const struct shell *ctx, size_t argc, char **argv)
 
     shell_print(ctx, "Set state to SOFT_OFF...");
     qapi_power_set_parameter(__QAPI_POWER_SOFTOFF_DURATION_MS, slp_time_ms);
+    pm_state_force(0u, &(struct pm_state_info){PM_STATE_SOFT_OFF, 0, 0});
+
     return 0;
 }
 
@@ -62,6 +82,16 @@ static void s2ram_timer_cb(struct k_timer *timer)
 }
 
 
+static int cmd_reg_cb(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+
+    pm_notifier_register(&my_notifier);
+    shell_print(ctx, "sleep callback registered,sleep entry could not use uart beacuse of zephyr pm");
+
+    return 0;
+}
+
 static int cmd_set_s2ram(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -79,7 +109,8 @@ static int cmd_set_s2ram(const struct shell *ctx, size_t argc, char **argv)
     {
         k_timer_start(&s2ram_timer, K_MSEC(slp_time_ms), K_MSEC(slp_time_ms));
     }
-    pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
+    if(pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES))
+        pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
     
     return 0;
 }
@@ -235,6 +266,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "Usage: s2ram <sleep_time_ms:int> <sleep_count:int>\n"
                                              "sleep_time_ms: no timeout if 0>\n sleep_count: the count of sleep-exist loop\n",
                                              cmd_set_s2ram, 2, 1),
+                               SHELL_CMD_ARG(reg_sleep_cb, NULL,
+                                             "register callback demo for sleep/exist \n"
+                                             "Usage: reg_sleep_cb\n",
+                                             cmd_reg_cb, 1, 0),
 #ifdef CONFIG_CPR_ENABLE
                                SHELL_CMD_ARG(cpr_set, NULL,
                                              "enable or disable cpr\n"

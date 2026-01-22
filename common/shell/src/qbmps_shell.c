@@ -36,6 +36,7 @@ void pm_timer_debug_dump(void);
 uint32_t pm_timer_stop_all_k_timers(void);
 
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
+
 static void bmps_timer_cb(struct k_timer *timer)
 {
     WMI_BMPS_ENABLE *pdata = (WMI_BMPS_ENABLE *)&bmps;
@@ -76,8 +77,8 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
 
     pbmps->enable = enable;
     shell_print(ctx, "Set bmps enable...");
-    wmi_cmd_send(WMI_BMPS_ENABLE_CMDID, pbmps, sizeof(*pbmps));
-    if(enable)
+    qapi_bmps_cfg(pbmps->enable, 0);
+    if(enable && pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES))
     {
         pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
     }
@@ -99,7 +100,7 @@ static int cmd_bmps_idle_time(const struct shell *ctx, size_t argc, char **argv)
         shell_print(ctx, "Set bmps idle_timeout to %d ms", idle_timeout);
         memset(pdata, 0, sizeof(*pdata));
         pdata->time = idle_timeout;
-        wmi_cmd_send(WMI_STA_IDLE_TIMER_CMDID, pdata, sizeof(*pdata));
+        qapi_bmps_cfg(2, pdata->time);
     }
     else
     {
@@ -340,6 +341,7 @@ static int cmd_get_pm_kt(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(enable, NULL,
                                              "set bmps enable \n"
@@ -400,3 +402,4 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);
+
