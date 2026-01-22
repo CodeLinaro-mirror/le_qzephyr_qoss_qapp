@@ -18,6 +18,8 @@
 #include "mbedtls/dhm.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/sha256.h"
+#include "mbedtls/entropy.h"
+#include "entropy_poll.h"
 
 static int hex2digit(int c)
 {
@@ -441,6 +443,83 @@ static int cmd_qcc_test(const struct shell *ctx, size_t argc, char **argv)
 #endif /* CONFIG_MBEDTLS_TEST */
 
 
+#if defined(MBEDTLS_SELF_TEST) && defined(MBEDTLS_ENTROPY_C)
+static int cmd_entropy_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    if (argc != 2) {
+        shell_print(ctx, "usage: entropy_test <verbose>");
+        return -EINVAL;
+    }
+
+    int err = 0;
+    int verbose = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Invalid verbose (err %d)", err);
+        return -EINVAL;
+    }
+
+    shell_print(ctx, "Entropy Self-Test");
+    int rc = mbedtls_entropy_self_test(verbose);
+    shell_print(ctx, rc ? "Test Fail" : "Test Pass");
+    return rc ? -EFAULT : 0;
+}
+#else
+static int cmd_entropy_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    shell_error(ctx, "entropy_test unavailable: need MBEDTLS_SELF_TEST and MBEDTLS_ENTROPY_C");
+    shell_print(ctx, "Enable MBEDTLS_SELF_TEST + MBEDTLS_ENTROPY_C (and SHA256/SHA512) to use this command.");
+    return -ENOTSUP;
+}
+#endif /* MBEDTLS_SELF_TEST && MBEDTLS_ENTROPY_C */
+
+
+#if defined(MBEDTLS_ENTROPY_HARDWARE_ALT)
+static int cmd_entropy_hw_poll(const struct shell *ctx, size_t argc, char **argv)
+{
+    if (argc != 2) {
+        shell_print(ctx, "usage: entropy_hw_poll <len>");
+        return -EINVAL;
+    }
+
+    int err = 0;
+    size_t req = shell_strtoul(argv[1], 10, &err);
+    if (err || req == 0 || req > 1024) {
+        shell_error(ctx, "Invalid len (1..1024)");
+        return -EINVAL;
+    }
+
+    uint8_t *buf = (uint8_t *)malloc(req);
+    if (!buf) {
+        shell_error(ctx, "malloc failed");
+        return -ENOMEM;
+    }
+
+    size_t olen = 0;
+    int rc = mbedtls_hardware_poll(NULL, buf, req, &olen);
+    if (rc != 0 || olen == 0) {
+        shell_error(ctx, "hardware_poll failed rc=%d, olen=%zu", rc, olen);
+        free(buf);
+        return -EIO;
+    }
+
+    shell_print(ctx, "HW entropy bytes (len=%zu, olen=%zu):", req, olen);
+    hexdump(ctx, buf, (uint32_t)olen);
+    free(buf);
+    return 0;
+}
+#else
+static int cmd_entropy_hw_poll(const struct shell *ctx, size_t argc, char **argv)
+{
+    ARG_UNUSED(argc);
+    ARG_UNUSED(argv);
+    shell_error(ctx, "entropy_hw_poll unavailable: MBEDTLS_ENTROPY_HARDWARE_ALT not enabled");
+    shell_print(ctx, "Enable MBEDTLS_ENTROPY_HARDWARE_ALT and provide mbedtls_hardware_poll().");
+    return -ENOTSUP;
+}
+#endif /* MBEDTLS_ENTROPY_HARDWARE_ALT */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                SHELL_CMD_ARG(kdf_key, NULL,
                                              "Test KDF derive key\n"
@@ -472,6 +551,15 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "Usage: qcc_test <module> <verbose>\n"
                                              "module: aes | ccm | sha1 | sha256 | all\n",
                                              cmd_qcc_test, 3, 0),
+
+                               SHELL_CMD_ARG(entropy_test, NULL,
+                                             "Run entropy self-test\n"
+                                             "Usage: entropy_test <verbose>\n",
+                                             cmd_entropy_test, 2, 0),
+                               SHELL_CMD_ARG(entropy_hw_poll, NULL,
+                                             "Poll HW entropy bytes\n"
+                                             "Usage: entropy_hw_poll <len>\n",
+                                             cmd_entropy_hw_poll, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qcrypto, &sub_pm_cmds, "crypto related commands", NULL);
