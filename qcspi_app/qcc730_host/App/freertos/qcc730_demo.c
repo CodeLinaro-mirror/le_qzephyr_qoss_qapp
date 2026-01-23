@@ -484,15 +484,17 @@ int cmd_qcspi_reset(int argc, char **argv)
     return 0;
 }
 
-/* Shell command: Test ring_transport_write performance */
+/* Shell command: Test qcspi write/read performance */
 static int cmd_qcspi_test_transfer(int argc, char **argv)
 {
-    if (argc != 4) {
-        printf("Usage: qcspi test_transfer <address> <size> <count>\r\n");
-        printf("Example: qcspi test_transfer 0x8fc00 1452 1000\r\n");
+    if (argc != 5) {
+        printf("Usage: qcspi_test_transfer <tx|rx> <address> <size> <count>\r\n");
+        printf("Example: qcspi_test_transfer tx 0x8fc00 1452 1000\r\n");
+        printf("Example: qcspi_test_transfer rx 0x8fc00 1452 1000\r\n");
+        printf("  tx|rx: transfer direction (tx=write, rx=read)\r\n");
         printf("  address: target memory address (0x%08X - 0x%08X)\r\n", QCC730_MEM_START, QCC730_MEM_END);
-        printf("  size: bytes per write (1-2048)\r\n");
-        printf("  count: number of write iterations (1-100000)\r\n");
+        printf("  size: bytes per transfer (1-1500)\r\n");
+        printf("  count: number of transfer iterations (1-100000)\r\n");
         return -QC_OSAL_EINVAL;
     }
 
@@ -502,13 +504,26 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
         return -QC_OSAL_ENODEV;
     }
 
-    uint32_t addr = strtoul(argv[1], NULL, 0);
-    uint32_t size = strtoul(argv[2], NULL, 0);
-    uint32_t count = strtoul(argv[3], NULL, 0);
+    /* Parse direction */
+    const char *direction = argv[1];
+    bool is_tx = false;
+    
+    if (strcmp(direction, "tx") == 0) {
+        is_tx = true;
+    } else if (strcmp(direction, "rx") == 0) {
+        is_tx = false;
+    } else {
+        printf("ERROR: Invalid direction '%s' (use 'tx' or 'rx')\r\n", direction);
+        return -QC_OSAL_EINVAL;
+    }
+
+    uint32_t addr = strtoul(argv[2], NULL, 0);
+    uint32_t size = strtoul(argv[3], NULL, 0);
+    uint32_t count = strtoul(argv[4], NULL, 0);
 
     /* Validate size parameter */
-    if (size == 0 || size > 2048) {
-        printf("ERROR: Invalid size (1-2048 bytes)\r\n");
+    if (size == 0 || size > 1500) {
+        printf("ERROR: Invalid size (1-1500 bytes)\r\n");
         return -QC_OSAL_EINVAL;
     }
 
@@ -525,16 +540,18 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
     }
 
     /* Allocate test buffer */
-    static uint8_t test_buffer[2048];
+    static uint8_t test_buffer[1500];
 
-    /* Fill buffer with test pattern */
-    for (uint32_t i = 0; i < size; i++) {
-        test_buffer[i] = i & 0xFF;
+    /* Fill buffer with test pattern for TX */
+    if (is_tx) {
+        for (uint32_t i = 0; i < size; i++) {
+            test_buffer[i] = i & 0xFF;
+        }
     }
 
-    printf("=== QCSPI Transport Write Performance Test ===\r\n");
+    printf("=== QCSPI Transport %s Performance Test ===\r\n", is_tx ? "Write (TX)" : "Read (RX)");
     printf("Target Address: 0x%08X\r\n", addr);
-    printf("Write Size: %u bytes\r\n", size);
+    printf("Transfer Size: %u bytes\r\n", size);
     printf("Iterations: %u\r\n", count);
     printf("Starting test...\r\n");
 
@@ -544,13 +561,20 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
     uint32_t success_count = 0;
     uint32_t fail_count = 0;
 
-    /* Perform write test */
+    /* Perform transfer test */
     for (uint32_t i = 0; i < count; i++) {
-        ret = ring_transport_write(qcspi_dev, addr, test_buffer, size);
+        if (is_tx) {
+            /* TX: use ring_transport_write */
+            ret = ring_transport_write(qcspi_dev, addr, test_buffer, size);
+        } else {
+            /* RX: use ring_transport_read */
+            ret = ring_transport_read(qcspi_dev, addr, test_buffer, size);
+        }
+        
         if (ret < 0) {
             fail_count++;
             if (fail_count <= 10) { /* Only print first 10 errors */
-                printf("Write %u failed: %d\r\n", i, ret);
+                printf("%s %u failed: %d\r\n", is_tx ? "Write" : "Read", i, ret);
             }
         } else {
             success_count++;
@@ -558,7 +582,7 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
 
         /* Print progress every 1000 iterations */
         if ((i + 1) % 1000 == 0) {
-            printf("Progress: %u/%u writes completed\r\n", i + 1, count);
+            printf("Progress: %u/%u %s completed\r\n", i + 1, count, is_tx ? "writes" : "reads");
         }
     }
 
@@ -570,9 +594,9 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
 
     printf("\r\n");
     printf("=== Test Results ===\r\n");
-    printf("Success: %u writes\r\n", success_count);
-    printf("Failed: %u writes\r\n", fail_count);
-    printf("Total Bytes Written: %u bytes\r\n", total_bytes);
+    printf("Success: %u %s\r\n", success_count, is_tx ? "writes" : "reads");
+    printf("Failed: %u %s\r\n", fail_count, is_tx ? "writes" : "reads");
+    printf("Total Bytes %s: %u bytes\r\n", is_tx ? "Written" : "Read", total_bytes);
     printf("Elapsed Time: %u ms\r\n", elapsed_time);
 
     if (elapsed_time > 0) {
@@ -582,10 +606,10 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
         /* Calculate throughput in bits/sec */
         uint32_t bits_per_sec = bytes_per_sec * 8;
 
-        /* Calculate writes per second */
-        uint32_t writes_per_sec = (success_count * 1000) / elapsed_time;
+        /* Calculate transfers per second */
+        uint32_t transfers_per_sec = (success_count * 1000) / elapsed_time;
 
-        /* Calculate average time per write in microseconds */
+        /* Calculate average time per transfer in microseconds */
         uint32_t avg_time_us = (elapsed_time * 1000) / success_count;
 
         printf("\r\n");
@@ -593,8 +617,8 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
         printf("Throughput: %u bytes/sec (%u KB/sec)\r\n", bytes_per_sec, bytes_per_sec / 1024);
         printf("Throughput: %u bps (%u Kbps, %u Mbps)\r\n", bits_per_sec, bits_per_sec / 1024,
                bits_per_sec / (1024 * 1024));
-        printf("Write Rate: %u writes/sec\r\n", writes_per_sec);
-        printf("Average Time per Write: %u us\r\n", avg_time_us);
+        printf("Transfer Rate: %u %s/sec\r\n", transfers_per_sec, is_tx ? "writes" : "reads");
+        printf("Average Time per Transfer: %u us\r\n", avg_time_us);
     }
 
     if (fail_count > 0) {
