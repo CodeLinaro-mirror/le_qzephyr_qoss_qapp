@@ -332,7 +332,7 @@ static int cmd_set_bcmc_filter(const struct shell *ctx, size_t argc, char **argv
 
     return 0;
 }
-
+#ifdef CONFIG_PM
 static int cmd_bmps_get_hres(const struct shell *ctx, size_t argc, char **argv)
 {
     uint64_t time = 0;
@@ -365,7 +365,7 @@ static int cmd_get_pm_kt(const struct shell *ctx, size_t argc, char **argv)
     pm_timer_dump_managed_list();
     return 0;
 }
-
+#endif
 
 static int cmd_set_period_wakeup(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -428,6 +428,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                              "enable/disable compress qos null frame sending\n"
                                              "Usage: compress_qos_null_enable 1/0, 1:enable, 0: disable\n",
                                              cmd_compress_qos_null_enable, 2, 0),
+#ifdef CONFIG_PM
                                SHELL_CMD_ARG(get_hres, NULL,
                                              "get high resoluation time\n"
                                              "Usage: get_hres\n",
@@ -447,7 +448,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(get_pm_kt, NULL,
                                             "get kernel timers manager by power module\n"
                                             "Usage: get_pm_kt\n",
-                                            cmd_get_pm_kt, 1, 0),  
+                                            cmd_get_pm_kt, 1, 0),
+#endif
                                 SHELL_CMD_ARG(set_period_wakeup, NULL,
                                             "set period wakeup\n"
                                             "Usage: set_period_wakeup <period(ms)>\n",
