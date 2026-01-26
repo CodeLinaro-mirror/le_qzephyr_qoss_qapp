@@ -205,6 +205,7 @@ int qcspi_transport_init(ring_transport_dev_t dev)
         QC_OSAL_LOG_INF("QCC730 slave detected: ID=%02X %02X %02X", slave_id[0], slave_id[1], slave_id[2]);
     } else {
         QC_OSAL_LOG_WRN("Unexpected slave ID: %02X %02X %02X", slave_id[0], slave_id[1], slave_id[2]);
+        return -ENODEV;
     }
 
     g_transport_inst.initialized = true;
