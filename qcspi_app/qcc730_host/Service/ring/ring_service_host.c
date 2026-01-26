@@ -706,13 +706,14 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, ring_transport_dev_t
 
 int init_qring(void)
 {
-
     int ret = 0;
-    ring_transport_dev_t qcspi_dev;
+    ring_transport_dev_t qcspi_dev = NULL;
     /* Initialize QCSPI transport */
     ret = ring_transport_init(qcspi_dev);
+
     if (ret == 0) {
         QC_OSAL_LOG_INF("QCSPI transport initialized successfully");
+        qcspi_dev = qcspi_transport_get_device();
         if (qcspi_dev) {
             /* Initialize ring service */
             ret = ring_service_host_init(CONFIG_RING_CTRL_BLOCK_ADDR, qcspi_dev);
@@ -723,10 +724,11 @@ int init_qring(void)
             }
         } else {
             QC_OSAL_LOG_ERR("QCSPI device not ready");
+            ret = -QC_OSAL_ENODEV;
         }
     } else {
         QC_OSAL_LOG_ERR("QCSPI transport initialization failed: %d", ret);
     }
 
-    return 0;
+    return ret;
 }

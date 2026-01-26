@@ -460,26 +460,39 @@ int cmd_qcspi_interrupt(int argc, char **argv)
     return 0;
 }
 
+void qcc730_reset()
+{
+#define DELAY_TIMING	300
+	int ret = -1;
+
+	HAL_NVIC_DisableIRQ(EXTI12_IRQn);
+
+	ring_transport_dev_t qcspi_dev;
+
+	while (ret < 0) {
+		/* host toggle */
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET); //chip_on test
+		HAL_Delay(DELAY_TIMING);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET); //chip_on test
+		HAL_Delay(DELAY_TIMING);
+		HAL_Delay(1000);
+		ring_transport_deinit(qcspi_dev);
+		ring_service_deinit();
+
+		/* Initialize QCSPI transport */
+		ret = init_qring();
+	}
+
+	HAL_NVIC_EnableIRQ(EXTI12_IRQn);
+}
+
 /**
  * @brief Reset QCSPI
  * Usage: qcspi_reset
  */
 int cmd_qcspi_reset(int argc, char **argv)
 {
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
-    }
-
-    int ret = ring_transport_reset(qcspi_dev);
-    if (ret < 0) {
-        printf("ERROR: QCSPI reset failed: %d\r\n", ret);
-        return ret;
-    }
-
-    printf("QCSPI reset successfully\r\n");
+    qcc730_reset();
 
     return 0;
 }
@@ -1112,7 +1125,7 @@ void vTaskShell(void *p)
 {
 
     cmd_shell_init(&(UART_DEVICE));
-    init_qring();
+    qcc730_reset();
     /* Register callback to handle data from QCC730 */
     ring_register_callback(ring_host_rx_callback, NULL);
 
