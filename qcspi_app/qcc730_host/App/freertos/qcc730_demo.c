@@ -107,6 +107,8 @@ static void print_received_data(const uint8_t *data, size_t len)
         }
     }
 
+    qc_osal_msleep(5);
+
     if (is_printable) {
         /* Print as string */
         QC_OSAL_LOG_INF("Received string (%d bytes): %.*s", len, len, data);
