@@ -560,7 +560,6 @@ int pm_timer_register(struct pm_managed_timer *mt, struct k_timer *timer, bool s
     mt->auto_restart = auto_restart;
     mt->was_running = false;
     
-    LOG_INF("pm_timer_register: %s", mt->name);
 
     k_spinlock_key_t key = k_spin_lock(&g_pm_timer_lock);
     sys_slist_append(&g_pm_timer_list, &mt->node);
@@ -575,7 +574,6 @@ int pm_timer_unregister(struct k_timer *timer)
 
     SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&g_pm_timer_list, mt, next, node) {
         if (mt->timer == timer) {
-            LOG_INF("pm_timer_unregister: %s", mt->name);
             sys_slist_find_and_remove(&g_pm_timer_list, &mt->node);
             k_free(mt); 
             break;

@@ -84,6 +84,9 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
 
     pbmps->enable = enable;
     shell_print(ctx, "Set bmps enable...");
+    // wmi_cmd_send(WMI_BMPS_RX_FILTER_ENABLE_CMDID, pdata, sizeof(*pdata));
+    qapi_bmps_rx_filter_enable(enable);
+
     qapi_bmps_cfg(pbmps->enable, 0);
     if(enable && pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES))
     {
