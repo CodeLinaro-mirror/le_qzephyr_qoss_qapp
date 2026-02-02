@@ -147,7 +147,7 @@ void ring_host_rx_callback(uint8_t ring_id, void *user_data)
             break; /* Exit on error */
         }
         if (packet_count > 0 && packet_count % 10 == 0)
-        	qc_osal_msleep(1);
+            qc_osal_msleep(1);
 
         /* ret == 0 means no more data available, loop will exit */
     } while (ret > 0);
@@ -213,13 +213,13 @@ static int validate_memory_range(uint32_t addr, uint32_t len)
 
     /* Check if address is within valid range */
     if (addr < QCC730_MEM_START || addr >= QCC730_MEM_END) {
-        printf("ERROR: Address 0x%08X out of range (0x%08X - 0x%08X)\r\n", addr, QCC730_MEM_START, QCC730_MEM_END);
+        printf("ERROR: Address 0x%08X out of range (0x%08X - 0x%08X)\r\n", addr, QCC730_MEM_START, QCC730_MEM_END -1);
         return -QC_OSAL_EINVAL;
     }
 
     /* Check if end address is within valid range */
     if (addr + len > QCC730_MEM_END) {
-        printf("ERROR: Access range 0x%08X-0x%08X exceeds memory limit 0x%08X\r\n", addr, addr + len, QCC730_MEM_END);
+        printf("ERROR: Access range 0x%08X-0x%08X exceeds memory limit 0x%08X\r\n", addr, addr + len, QCC730_MEM_END - 1);
         return -QC_OSAL_EINVAL;
     }
 
@@ -464,28 +464,28 @@ int cmd_qcspi_interrupt(int argc, char **argv)
 
 void qcc730_reset()
 {
-#define DELAY_TIMING	300
-	int ret = -1;
+#define DELAY_TIMING 300
+    int ret = -1;
 
-	HAL_NVIC_DisableIRQ(EXTI12_IRQn);
+    HAL_NVIC_DisableIRQ(EXTI12_IRQn);
 
-	ring_transport_dev_t qcspi_dev;
+    ring_transport_dev_t qcspi_dev;
 
-	while (ret < 0) {
-		/* host toggle */
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET); //chip_on test
-		HAL_Delay(DELAY_TIMING);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET); //chip_on test
-		HAL_Delay(DELAY_TIMING);
-		HAL_Delay(1000);
-		ring_transport_deinit(qcspi_dev);
-		ring_service_deinit();
+    while (ret < 0) {
+        /* host toggle */
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET); // chip_on test
+        HAL_Delay(DELAY_TIMING);
+        HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET); // chip_on test
+        HAL_Delay(DELAY_TIMING);
+        HAL_Delay(1000);
+        ring_transport_deinit(qcspi_dev);
+        ring_service_deinit();
 
-		/* Initialize QCSPI transport */
-		ret = init_qring();
-	}
+        /* Initialize QCSPI transport */
+        ret = init_qring();
+    }
 
-	HAL_NVIC_EnableIRQ(EXTI12_IRQn);
+    HAL_NVIC_EnableIRQ(EXTI12_IRQn);
 }
 
 /**
@@ -522,7 +522,7 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
     /* Parse direction */
     const char *direction = argv[1];
     bool is_tx = false;
-    
+
     if (strcmp(direction, "tx") == 0) {
         is_tx = true;
     } else if (strcmp(direction, "rx") == 0) {
@@ -585,7 +585,7 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
             /* RX: use ring_transport_read */
             ret = ring_transport_read(qcspi_dev, addr, test_buffer, size);
         }
-        
+
         if (ret < 0) {
             fail_count++;
             if (fail_count <= 10) { /* Only print first 10 errors */
@@ -605,33 +605,43 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
     uint32_t elapsed_time = qc_osal_uptime_get_ms() - start_time;
 
     /* Calculate statistics */
-    uint32_t total_bytes = success_count * size;
+    uint64_t total_bytes = (uint64_t)success_count * size;
 
     printf("\r\n");
     printf("=== Test Results ===\r\n");
     printf("Success: %u %s\r\n", success_count, is_tx ? "writes" : "reads");
     printf("Failed: %u %s\r\n", fail_count, is_tx ? "writes" : "reads");
-    printf("Total Bytes %s: %u bytes\r\n", is_tx ? "Written" : "Read", total_bytes);
+    printf("Total Bytes %s: %llu bytes\r\n", is_tx ? "Written" : "Read", (unsigned long long)total_bytes);
     printf("Elapsed Time: %u ms\r\n", elapsed_time);
 
     if (elapsed_time > 0) {
-        /* Calculate throughput in bytes/sec */
-        uint32_t bytes_per_sec = (uint32_t)((uint64_t)total_bytes * 1000 / elapsed_time);
+        uint64_t throughput_bps = (total_bytes * 8 * 1000) / elapsed_time; /* bps */
 
-        /* Calculate throughput in bits/sec */
-        uint32_t bits_per_sec = bytes_per_sec * 8;
+        /* Bytes per second */
+        uint32_t bytes_per_sec = (uint32_t)((total_bytes * 1000) / elapsed_time);
+        uint32_t kb_per_sec = bytes_per_sec / 1024;
+        uint32_t kb_per_sec_frac = ((bytes_per_sec % 1024) * 100) / 1024;
 
-        /* Calculate transfers per second */
+        /* Kbps */
+        uint32_t throughput_kbps = (uint32_t)(throughput_bps / 1000);
+
+        /* Mbps with 2 decimal places */
+        uint32_t throughput_mbps = (uint32_t)(throughput_bps / 1000000);
+        uint32_t throughput_mbps_frac = (uint32_t)((throughput_bps % 1000000) / 10000);
+
+        /* Transfers per second */
         uint32_t transfers_per_sec = (success_count * 1000) / elapsed_time;
 
-        /* Calculate average time per transfer in microseconds */
+        /* Average time per transfer in microseconds */
         uint32_t avg_time_us = (elapsed_time * 1000) / success_count;
 
         printf("\r\n");
         printf("=== Performance Metrics ===\r\n");
-        printf("Throughput: %u bytes/sec (%u KB/sec)\r\n", bytes_per_sec, bytes_per_sec / 1024);
-        printf("Throughput: %u bps (%u Kbps, %u Mbps)\r\n", bits_per_sec, bits_per_sec / 1024,
-               bits_per_sec / (1024 * 1024));
+
+        printf("Throughput:\r\n");
+        printf("  %u bytes/sec (%u.%02u KB/sec)\r\n", bytes_per_sec, kb_per_sec, kb_per_sec_frac);
+        printf("  %u Kbps (%u.%02u Mbps)\r\n", throughput_kbps, throughput_mbps, throughput_mbps_frac);
+
         printf("Transfer Rate: %u %s/sec\r\n", transfers_per_sec, is_tx ? "writes" : "reads");
         printf("Average Time per Transfer: %u us\r\n", avg_time_us);
     }
@@ -965,9 +975,7 @@ static void burst_test_thread(void *arg)
                 printf("[BURST_THREAD] Progress: %u/%u MB sent\r\n", sent_mb, params->data_mb);
             }
         }
-
-        /* Yield to allow other tasks to run */
-        // qc_osal_thread_yield();
+        qc_osal_thread_yield();
     }
 
 test_complete:
@@ -982,12 +990,14 @@ test_complete:
         uint32_t total_kb = (uint32_t)(total_bytes / 1024);
         uint32_t total_mb = (uint32_t)(total_bytes / (1024 * 1024));
 
-        /* Calculate throughput */
-        uint64_t throughput_kbps = (total_bytes * 8) / elapsed_time; /* Kbps */
-        uint32_t throughput_mbps = (uint32_t)(throughput_kbps / 1000);
+        uint64_t throughput_bps = (total_bytes * 8 * 1000) / elapsed_time; /* bps */
+        uint32_t throughput_kbps = (uint32_t)(throughput_bps / 1000);      /* Kbps */
+        uint32_t throughput_mbps = (uint32_t)(throughput_bps / 1000000);   /* Mbps */
+        uint32_t throughput_mbps_frac = (uint32_t)((throughput_bps % 1000000) / 10000);
 
         printf("Total Data: %u KB (%u MB)\r\n", total_kb, total_mb);
-        printf("Throughput: %u Kbps (%u Mbps)\r\n", (uint32_t)throughput_kbps, throughput_mbps);
+
+        printf("Throughput: %u Kbps (%u.%02u Mbps)\r\n", throughput_kbps, throughput_mbps, throughput_mbps_frac);
 
         uint32_t pps = (success_count * 1000) / elapsed_time;
         printf("Packet Rate: %u pps\r\n", pps);
