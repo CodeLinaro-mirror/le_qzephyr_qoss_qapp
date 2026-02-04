@@ -1,0 +1,20 @@
+diff --git a/tests/subsys/debug/coredump_backends/testcase.yaml b/tests/subsys/debug/coredump_backends/testcase.yaml
+index b5eb70ba8e9..f90ea35a28d 100644
+--- a/tests/subsys/debug/coredump_backends/testcase.yaml
++++ b/tests/subsys/debug/coredump_backends/testcase.yaml
+@@ -6,6 +6,7 @@ common:
+     - posix
+   integration_platforms:
+     - qemu_x86
++    - qcc730mi/qcc730
+ tests:
+   debug.coredump.backends.logging:
+     filter: CONFIG_ARCH_SUPPORTS_COREDUMP
+@@ -23,6 +24,7 @@ tests:
+       - esp32s2_saola
+       - esp32s3_devkitm/esp32s3/procpu
+       - esp32c3_devkitm
++      - qcc730mi
+   debug.coredump.backends.in_memory:
+     filter: CONFIG_ARCH_SUPPORTS_COREDUMP
+     extra_args: CONF_FILE=prj_in_memory.conf

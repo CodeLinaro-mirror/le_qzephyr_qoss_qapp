@@ -1,0 +1,78 @@
+From 6f8ba14bf7163bdcaaace69070b032ab70f4988b Mon Sep 17 00:00:00 2001
+From: Bolin Wang <boliwang@qti.qualcomm.com>
+Date: Mon, 29 Dec 2025 19:32:02 +0800
+Subject: [PATCH 2/4] net: net_pkt: use DXE memcpy when MEM_CPY_VIA_DXE is
+ enabled
+
+This change optionally routes net_pkt data copy/move
+operations through a platform DXE (DMA) memcpy
+implementation when MEM_CPY_VIA_DXE is defined.
+memcpy/memmove on large network buffers can be CPU-intensive
+and less power-efficient. Platforms providing a DXE/DMA
+memcpy can offload these copies to improve throughput
+and reduce CPU load/power.
+
+Change-Id: I41e730a850ef38a6daa8e0868487140bb6e98495
+---
+ subsys/net/ip/net_pkt.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/subsys/net/ip/net_pkt.c b/subsys/net/ip/net_pkt.c
+index 28b28024c3f..fcd8958fd5a 100644
+--- a/subsys/net/ip/net_pkt.c
++++ b/subsys/net/ip/net_pkt.c
+@@ -41,6 +41,8 @@ LOG_MODULE_REGISTER(net_pkt, CONFIG_NET_PKT_LOG_LEVEL);
+ #include "net_private.h"
+ #include "tcp_internal.h"
+ 
++#include "fwconfig_cmn.h"
++
+ /* Make sure net_buf data size is large enough that IPv6
+  * and possible extensions fit to the network buffer.
+  * The check is done using an arbitrarily chosen value 96 by monitoring
+@@ -1866,9 +1868,16 @@ static int net_pkt_cursor_operate(struct net_pkt *pkt,
+ 		}
+ 
+ 		if (copy && data) {
++#ifdef MEM_CPY_VIA_DXE
++			extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++			nt_dpm_memcpy(write ? c_op->pos : data,
++			       write ? data : c_op->pos,
++			       len);
++#else
+ 			memcpy(write ? c_op->pos : data,
+ 			       write ? data : c_op->pos,
+ 			       len);
++#endif
+ 		} else if (data) {
+ 			memset(c_op->pos, *(int *)data, len);
+ 		}
+@@ -1996,7 +2005,12 @@ int net_pkt_copy(struct net_pkt *pkt_dst,
+ 			break;
+ 		}
+ 
++#ifdef MEM_CPY_VIA_DXE
++        extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++        nt_dpm_memcpy(c_dst->pos, c_src->pos, len);
++#else
+ 		memcpy(c_dst->pos, c_src->pos, len);
++#endif
+ 
+ 		if (!net_pkt_is_being_overwritten(pkt_dst)) {
+ 			net_buf_add(c_dst->buf, len);
+@@ -2240,7 +2254,12 @@ int net_pkt_pull(struct net_pkt *pkt, size_t length)
+ 		c_op->buf->len -= rem;
+ 		left -= rem;
+ 		if (left) {
++#ifdef MEM_CPY_VIA_DXE
++			extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++			nt_dpm_memcpy(c_op->pos, c_op->pos+rem, left);
++#else
+ 			memmove(c_op->pos, c_op->pos+rem, left);
++#endif
+ 		} else {
+ 			struct net_buf *buf = pkt->buffer;
+ 
+-- 
+2.25.1
+

@@ -82,10 +82,14 @@ tests:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_api"
   drivers.dma.qcc730_dxe:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/dma/qcc730_dxe"
+  drivers.uart.uart_loopback:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_loopback"
+  drivers.uart.uart_pinctrl_tests:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pinctrl_tests"
   drivers.uart.uart_stress:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress"
   drivers.uart.uart_stress_pytest:
-    device-serial-baud: 230400
+    device-serial-baud: 115200
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_stress_pytest"
   drivers.uart.qcc730.pm_api:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/uart/uart_pm_test"
@@ -104,3 +108,13 @@ tests:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/clock_control/clock_control_stress"
   drivers.flash.flash_stress:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/flash/flash_stress"
+  ztest.error_hook:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/ztest/error_hook"
+  kernel.fatal:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/kernel/fatal"
+  subsys.debug.coredump:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump"
+  subsys.debug.coredump_backends:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump_backends"
+  subsys.debug.coredump_threads:
+    testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/subsys/debug/coredump_threads"

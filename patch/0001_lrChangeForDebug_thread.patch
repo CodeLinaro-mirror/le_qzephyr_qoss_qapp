@@ -1,0 +1,37 @@
+From f2fae246a19ac1348e76925d637588331d3530ef Mon Sep 17 00:00:00 2001
+From: Wangson <wangson@qti.qualcomm.com>
+Date: Mon, 29 Dec 2025 19:28:05 +0800
+Subject: [PATCH 1/4] arch: arm: cortex_m: initialize LR to 0 to avoid GDB
+ backtrace timeout
+
+On ARM Cortex-M, newly created threads may start with
+an undefined/garbage LR in the initial exception frame.
+When using GDB, the backtrace unwinder can follow this
+invalid LR value and end up hanging or timing out while
+trying to unwind into a non-existent call chain.
+Initialize the LR in the initial interrupt/exception
+frame to 0 in arch_new_thread(). Setting LR to 0 acts
+as a sentinel for GDB unwinding, indicating the end of
+the call chain and preventing backtrace hangs.
+
+Change-Id: Ia3e1ea05571db2f88c7dcbf4ae8455714e8b5e48
+---
+ arch/arm/core/cortex_m/thread.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/arch/arm/core/cortex_m/thread.c b/arch/arm/core/cortex_m/thread.c
+index e7d0f347471..35d4f54ae0a 100644
+--- a/arch/arm/core/cortex_m/thread.c
++++ b/arch/arm/core/cortex_m/thread.c
+@@ -137,6 +137,8 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack, char *sta
+ 	iframe->a4 = (uint32_t)p3;
+ 
+ 	iframe->xpsr = 0x01000000UL; /* clear all, thumb bit is 1, even if RO */
++	/* Initialize LR to 0 to prevent GDB backtrace timeout */
++	iframe->lr = 0;
+ 
+ 	thread->callee_saved.psp = (uint32_t)iframe;
+ 	thread->arch.basepri = 0;
+-- 
+2.25.1
+

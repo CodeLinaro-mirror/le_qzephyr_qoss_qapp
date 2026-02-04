@@ -1,0 +1,26 @@
+diff --git a/kernel/idle.c b/kernel/idle.c
+index 3cf47910093..b447a7e9200 100644
+--- a/kernel/idle.c
++++ b/kernel/idle.c
+@@ -50,6 +50,10 @@ void idle(void *unused1, void *unused2, void *unused3)
+ 		 */
+ 		(void) arch_irq_lock();
+ 
++#ifdef CONFIG_PM
++		z_idle_hooks_run_suspend();
++#endif
++
+ #ifdef CONFIG_PM
+ 		_kernel.idle = z_get_next_timeout_expiry();
+ 
+@@ -75,6 +79,10 @@ void idle(void *unused1, void *unused2, void *unused3)
+ 		k_cpu_idle();
+ #endif /* CONFIG_PM */
+ 
++#ifdef CONFIG_PM
++		z_idle_hooks_run_resume();
++#endif
++
+ #if !defined(CONFIG_PREEMPT_ENABLED)
+ # if !defined(CONFIG_USE_SWITCH) || defined(CONFIG_SPARC)
+ 		/* A legacy mess: the idle thread is by definition

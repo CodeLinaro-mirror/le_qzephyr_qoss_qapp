@@ -1,0 +1,46 @@
+From af2198fd19a720a63cd0d95a6e0900ab1c50335f Mon Sep 17 00:00:00 2001
+From: Bolin Wang <boliwang@qti.qualcomm.com>
+Date: Mon, 29 Dec 2025 19:39:07 +0800
+Subject: [PATCH 4/4] net: net_buf: optionally use DXE nt_dpm_memcpy in
+ linearize()
+
+When MEM_CPY_VIA_DXE is defined, use nt_dpm_memcpy
+in net_buf_linearize() to copy data from fragments,
+falling back to the standard memcpy otherwise.
+This enables a DXE-accelerated memcpy path on supported
+platforms, which can reduce CPU load during buffer
+linearization.
+
+Change-Id: I4728f8bff57a0bcbf1cc138e02fc719b7f8782fd
+---
+ lib/net_buf/buf.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/lib/net_buf/buf.c b/lib/net_buf/buf.c
+index 9a32aeddd33..0403575a027 100644
+--- a/lib/net_buf/buf.c
++++ b/lib/net_buf/buf.c
+@@ -19,6 +19,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
+ #include <zephyr/sys/byteorder.h>
+ 
+ #include <zephyr/net_buf.h>
++#include "fwconfig_cmn.h"
+ 
+ #if defined(CONFIG_NET_BUF_LOG)
+ #define NET_BUF_DBG(fmt, ...) LOG_DBG("(%p) " fmt, k_current_get(), \
+@@ -644,7 +645,12 @@ size_t net_buf_linearize(void *dst, size_t dst_len, const struct net_buf *src,
+ 	copied = 0;
+ 	while (frag && len > 0) {
+ 		to_copy = min(len, frag->len - offset);
++#ifdef MEM_CPY_VIA_DXE
++		extern void *nt_dpm_memcpy(void *dst, const void *src, uint32_t length);
++		nt_dpm_memcpy((uint8_t *)dst + copied, frag->data + offset, to_copy);
++#else
+ 		memcpy((uint8_t *)dst + copied, frag->data + offset, to_copy);
++#endif
+ 
+ 		copied += to_copy;
+ 
+-- 
+2.25.1
+

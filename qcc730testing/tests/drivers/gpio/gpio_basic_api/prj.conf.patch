@@ -1,10 +1,10 @@
 diff --git a/tests/drivers/gpio/gpio_basic_api/prj.conf b/tests/drivers/gpio/gpio_basic_api/prj.conf
-index b5511690df7..34dc63b2603 100644
+index 81bfcdc9c07..740bf574331 100644
 --- a/tests/drivers/gpio/gpio_basic_api/prj.conf
 +++ b/tests/drivers/gpio/gpio_basic_api/prj.conf
-@@ -4,3 +4,27 @@ CONFIG_ZTEST=y
- CONFIG_ENTROPY_GENERATOR=y
- CONFIG_TEST_RANDOM_GENERATOR=y
+@@ -2,3 +2,27 @@ CONFIG_GPIO=y
+ CONFIG_GPIO_GET_CONFIG=y
+ CONFIG_ZTEST=y
  #CONFIG_TEST_USERSPACE=y
 +CONFIG_PM_DEVICE=y
 +CONFIG_MAIN_STACK_SIZE=2048
