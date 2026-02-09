@@ -1,0 +1,42 @@
+From 7055a121aa007ff8327709297a1d628c88e97174 Mon Sep 17 00:00:00 2001
+From: yonwen <yonwen@qti.qualcomm.com>
+Date: Wed, 4 Feb 2026 18:04:48 +0800
+Subject: [PATCH] subsys: debug: coredump: disable watchdog before ramdump
+
+Change-Id: I4dffe77be6abc73785785c7e927fd8d7a0ec76f9
+Signed-off-by: yonwen <yonwen@qti.qualcomm.com>
+---
+ subsys/debug/coredump/coredump_core.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/subsys/debug/coredump/coredump_core.c b/subsys/debug/coredump/coredump_core.c
+index fc56e4cf3b6..75fc162102f 100644
+--- a/subsys/debug/coredump/coredump_core.c
++++ b/subsys/debug/coredump/coredump_core.c
+@@ -10,7 +10,9 @@
+ #include <zephyr/debug/coredump.h>
+ #include <zephyr/sys/byteorder.h>
+ #include <zephyr/sys/util.h>
+-
++#if defined(CONFIG_QWDT)
++#include <zephyr/drivers/watchdog.h>
++#endif
+ #include "coredump_internal.h"
+ #if defined(CONFIG_DEBUG_COREDUMP_BACKEND_LOGGING)
+ extern struct coredump_backend_api coredump_backend_logging;
+@@ -202,6 +204,12 @@ static void dump_threads_metadata(void)
+ void coredump(unsigned int reason, const struct arch_esf *esf,
+ 	      struct k_thread *thread)
+ {
++#if defined(CONFIG_QWDT) && DT_NODE_HAS_STATUS(DT_NODELABEL(watchdog0), okay)
++	const struct device *wdt = DEVICE_DT_GET(DT_NODELABEL(watchdog0));
++	if (device_is_ready(wdt)) {
++		wdt_disable(wdt);
++	}
++#endif
+ 	z_coredump_start();
+ 
+ 	dump_header(reason);
+-- 
+2.34.1
+
