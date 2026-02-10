@@ -14,7 +14,7 @@
     };
 };
 
-    &qspi_nor_flash2 {
+    &qspi_nor_flash3 {
         status = "okay";
         write-block-size = <256>;
         erase-block-size = <4096>;
