@@ -188,22 +188,22 @@ void pm_suspend_resume_check(const struct device *dev)
 	ret = pm_device_action_run(dev, PM_DEVICE_ACTION_SUSPEND);
 	zassert_ok(ret, "pm suspend failed: %d", ret);
 
-	/* While suspended, counter API calls should return an error (negative) */
+	/* While suspended, counter API calls should return 0, since qtmr should work for sleep */
 	ret = counter_start(dev);
-	zassert_true(ret < 0, "counter_start() expected error when suspended, got %d", ret);
+	zassert_ok(ret, "counter_start() expected error when suspended, got %d", ret);
 
 	ret = counter_stop(dev);
-	zassert_true(ret < 0, "counter_stop() expected error when suspended, got %d", ret);
+	zassert_ok(ret, "counter_stop() expected error when suspended, got %d", ret);
 
 	ret = counter_get_value_64(dev, &now);
-	zassert_true(ret < 0, "counter_get_value_64() expected error when suspended, got %d", ret);
+	zassert_ok(ret, "counter_get_value_64() expected error when suspended, got %d", ret);
 
 	/* Setting and canceling alarms while suspended should return error */
 	ret = counter_set_channel_alarm(dev, 0, &alarm_cfg);
-	zassert_true(ret < 0, "counter_set_channel_alarm() expected error when suspended, got %d", ret);
+	zassert_ok(ret, "counter_set_channel_alarm() expected error when suspended, got %d", ret);
 
 	ret = counter_cancel_channel_alarm(dev, 0);
-	zassert_true(ret < 0, "counter_cancel_channel_alarm() expected error when suspended, got %d", ret);
+	zassert_ok(ret, "counter_cancel_channel_alarm() expected error when suspended, got %d", ret);
 
 	/* Resume device */
 	ret = pm_device_action_run(dev, PM_DEVICE_ACTION_RESUME);

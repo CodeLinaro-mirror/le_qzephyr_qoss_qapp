@@ -93,6 +93,7 @@ static void pm_service_timer_cb(struct k_timer *timer);
 
 
 K_TIMER_DEFINE(pm_service_timer, pm_service_timer_cb, NULL);
+struct k_timer dummy_timer;
 
 static void pm_service_timer_cb(struct k_timer *timer)
 {
@@ -655,7 +656,7 @@ int pm_timer_manager_init(void)
      * internal _timeout struct.
      */
     if (g_timer_expiry_handler_fn == NULL) {
-        struct k_timer dummy_timer;
+   
         k_timer_init(&dummy_timer, NULL, NULL);
         /* Start and immediately stop the timer. This is enough for the kernel
          * to populate the internal timeout struct. Using K_MSEC(1) is safe. */
