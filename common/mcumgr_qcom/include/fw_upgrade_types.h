@@ -85,4 +85,14 @@ int drv_flash_read(uint32_t address, uint32_t size, void *buffer, void *callback
 int drv_flash_write(uint32_t address, uint32_t size, void *buffer, void *callback, void *context);
 int drv_flash_erase(flash_erase_type_t erase_type, uint32_t start_block, uint32_t num_blocks, void *callback, void *context);
 
+/* Flash adapter function declarations (Zephyr implementation) */
+int flash_adapter_init(void);
+flash_config_data_t *flash_adapter_get_config(void);
+int flash_adapter_read(uint32_t address, uint32_t size, void *buffer, void *callback, void *context);
+int flash_adapter_write(uint32_t address, uint32_t size, void *buffer, void *callback, void *context);
+int flash_adapter_erase(flash_erase_type_t erase_type, uint32_t start_block, uint32_t num_blocks, void *callback, void *context);
+
+/* System reset function declaration */
+void nt_system_sw_reset(void);
+
 #endif /* _FW_UPGRADE_TYPES_H */

@@ -1537,7 +1537,6 @@ fw_upgrade_status_code_t fw_upgrade_set_force_boot(uint8_t force_boot_fwd)
 
 void display_sub_image_info(fu_part_hdl_t hdl)
 {
-    uint32_t result = 0;
     fu_partition_client_t *partition = (fu_partition_client_t *)hdl;
 
     LOG_INF("        Image ID: 0x%X", partition->img_id);

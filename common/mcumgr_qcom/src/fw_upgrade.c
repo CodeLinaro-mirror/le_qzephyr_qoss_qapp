@@ -203,24 +203,6 @@ static void fw_upgrade_set_error_code(int32_t err_code)
     }
 }
 
-/*
- * get fw upgrade session error code
- */
-static int32_t fw_upgrade_get_error_code(void)
-{
-    fw_upgrade_context_t *fw_upgrade_cxt = fw_upgrade_get_context();
-
-    if (fw_upgrade_cxt != NULL) {
-        return fw_upgrade_cxt->error_code;
-    }
-    return FW_UPGRADE_ERR_SESSION_NOT_START_E;
-}
-
-/* Stub function for fw_upgrade_update_callback */
-static void fw_upgrade_update_callback(int32_t state, int32_t status)
-{
-    /* LOG_DBG("fw_upgrade_update_callback: state=%d, status=%d (stub)", state, status); */
-}
 
 /*
  * fw upgrade session fin
@@ -267,7 +249,6 @@ static fw_upgrade_status_code_t fw_upgrade_session_fin(void)
 static fw_upgrade_status_code_t fw_upgrade_session_init(void)
 {
     fw_upgrade_status_code_t ret = FW_UPGRADE_OK_E;
-    uint32_t url_len = 0, filename_len = 0;
     uint32_t i;
 
     if (fw_upgrade_init() != FW_UPGRADE_OK_E) {
@@ -1317,8 +1298,8 @@ int fw_upgrade_session_process(uint32_t offset, const uint8_t *data, uint32_t le
 
                         /*  Print partition info before erase */
                         {
-                            fu_partition_client_t *part = (fu_partition_client_t *)(fw_upgrade_cxt->partition_hdl);
                             uint32_t block_size = 0;
+                            
                             fw_upgrade_get_mem_block_size(&block_size);
                         }
 
