@@ -788,6 +788,65 @@ static int cmd_csa(const struct shell *ctx, size_t argc, char **argv)
     return net_mgmt(NET_REQUEST_WIFI_QCOM_SET_SAP_CSA, iface, &csa, sizeof(csa));
 }
 
+static int cmd_wifi_set_operation_mode(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_op_mode_params set_op_mode_cfg;
+
+    if(argc < 1) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    if (argc >= 3) {
+        set_op_mode_cfg.hidden_ssid = argv[2];
+    }
+    set_op_mode_cfg.opmode = argv[1];
+
+    if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface, &set_op_mode_cfg, sizeof(set_op_mode_cfg))) {
+        shell_error(ctx, "Set op mode to %s fail", set_op_mode_cfg.opmode);
+        return -ENOEXEC;
+    } else {
+        shell_print(ctx, "Set op mode to %s", set_op_mode_cfg.opmode);
+    }
+
+    return 0;
+
+}
+
+static int cmd_wifi_set_active_device(const struct shell *ctx, size_t argc, char **argv)
+{
+    uint16_t deviceId;
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+
+    if(argc != 2) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    deviceId = shell_strtoul(argv[1], 10, err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input deviceId (err %d)", err);
+        return err;
+    }
+
+    if (deviceId != 0 && deviceId != 1) {
+        shell_error(ctx, "Invaild device id");
+        return EINVAL;
+    }
+
+    if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_DEVICE_ID, iface, &deviceId, sizeof(uint16_t))) {
+        shell_error(ctx, "Set device id to %s fail", deviceId == 0? "softap":"station");
+        return -ENOEXEC;
+    } else {
+        shell_print(ctx, "Set device id to %s", deviceId == 0? "softap":"station");
+    }
+
+    return 0;
+}
+
+
 static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
 {
     (void)get_device_mac_address(ctx);
@@ -820,6 +879,14 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Example: To perform HW readouts\n"
                                              "  qwifi unit_test 1 4 1 12\n"
                                              "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.", cmd_qwifi_unit_test, 4, 20),
+                               SHELL_CMD_ARG(set_operation_mode, NULL,
+                                             "Set operation mode.\n"
+                                             "Usage: qwifi set_operation_mode <ap|station> [<hidden|0>]",
+                                             cmd_wifi_set_operation_mode, 3, 0),
+                               SHELL_CMD_ARG(set_device, NULL,
+                                             "Set Active Device.\n"
+                                             "Usage: qwifi set_device [0|1]",
+                                             cmd_wifi_set_active_device, 2, 0),
                                SHELL_CMD_ARG(set_rts, NULL,
                                              "Enable/disable RTS/CTS protection.\n"
 					     "Usage: qwifi set_rts <0 | 1>\n",
