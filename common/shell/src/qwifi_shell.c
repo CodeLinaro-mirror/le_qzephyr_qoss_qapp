@@ -9,6 +9,8 @@
 #include <qwifi_api.h>
 #include <zephyr/net/net_if.h>
 #include <qcom_wifi_mgmt.h>
+#include <stdlib.h>
+#include <zephyr/net/wifi_utils.h>
 
 static int cmd_set_tx_power(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -775,7 +777,7 @@ static int cmd_csa(const struct shell *ctx, size_t argc, char **argv)
          unsigned long iface_index = shell_strtoul(argv[4], 10, &err);
         if (err) {
             shell_error(ctx, "Unable to parse iface index (err %d)", err);
-            return NULL;
+            return -EINVAL;
         }
         iface = net_if_get_by_index(iface_index);
     }

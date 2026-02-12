@@ -6,7 +6,8 @@
 
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
-
+#include <stdlib.h>
+#include <nt_sys_monitoring.h>
 #include <qlib_util.h>
 #if CONFIG_WIFI
 #include <qwifi_api.h>
@@ -23,6 +24,10 @@
 #define NT_LOG_LVL_CRIT 3
 #endif
 extern uint8_t min_loglvl; // warn
+
+#if defined(CONFIG_SYS_HEAP_RUNTIME_STATS)
+extern struct sys_heap *get_malloc_heap_address(void);
+#endif
 
 static int cmd_set_logger_lvl(const struct shell *ctx, size_t argc, char **argv)
 {
