@@ -19,6 +19,10 @@
 #include <zephyr/pm/device.h>
 #include <zephyr/net/wifi_mgmt.h>
 #include "pm_timer.h"
+#include <zephyr/net/socket.h>
+#include <string.h>
+
+#define GATEWAY_PORT 12345
 
 WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
@@ -27,6 +31,9 @@ static void period_wakeup_timer_cb(struct k_timer *timer);
 extern void wmi_ignore_bcmc_in_bmps(void *, uint8_t data);
 static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv);
 static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv);
+static struct k_timer udp_timer;
+static int udp_sock = -1;
+struct net_if_ipv4 *sta_ipv4;
 extern uint64_t bmps_duration;
 uint64_t bmps_start = 0;
 
@@ -390,6 +397,67 @@ static int cmd_set_period_wakeup(const struct shell *ctx, size_t argc, char **ar
     return 0;
 }
 
+static void udp_timer_handler(struct k_timer *timer)
+{
+    const char *msg = "Hello Gateway";
+
+    if (udp_sock >= 0) {
+        zsock_send(udp_sock, msg, strlen(msg), 0);
+    }
+}
+
+static int cmd_start_udp_timer(const struct shell *shell, size_t argc, char **argv)
+{
+    int err = 0;
+    uint32_t period_ms = shell_strtoul(argv[1], 10, &err);
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct in_addr gw;
+    char gw_str[NET_IPV4_ADDR_LEN];
+
+    if (!iface) { 
+        shell_error(shell, "WiFi STA interface not found"); 
+        return -1; 
+    }
+
+    gw = net_if_ipv4_get_gw(iface);
+    net_addr_ntop(AF_INET, &gw, gw_str, sizeof(gw_str));
+
+    shell_print(shell, "Using gateway: %s", gw_str);
+
+    if (udp_sock < 0) {
+        udp_sock = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (udp_sock < 0) {
+            shell_error(shell, "Failed to create UDP socket");
+            return -1;
+        }
+
+        struct sockaddr_in addr = { 
+            .sin_family = AF_INET, 
+            .sin_port = htons(GATEWAY_PORT), 
+        };
+
+        if (zsock_inet_pton(AF_INET, gw_str, &addr.sin_addr) != 1) { 
+            shell_error(shell, "inet_pton failed"); 
+            zsock_close(udp_sock); 
+            udp_sock = -1; 
+            return -1; 
+        }
+
+        if (zsock_connect(udp_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            shell_error(shell, "Failed to connect UDP socket");
+            zsock_close(udp_sock);
+            udp_sock = -1;
+            return -1;
+        }
+    }
+
+    k_timer_init(&udp_timer, udp_timer_handler, NULL);
+    k_timer_start(&udp_timer, K_MSEC(period_ms), K_MSEC(period_ms));
+
+    shell_print(shell, "UDP timer started with period %u ms", period_ms);
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(enable, NULL,
                                              "set bmps enable \n"
@@ -457,6 +525,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                             "set period wakeup\n"
                                             "Usage: set_period_wakeup <period(ms)>\n",
                                             cmd_set_period_wakeup, 2, 0),
+                                            SHELL_CMD_ARG(start_udp_timer, NULL,
+                                "set period wakeup and send a udp packet to gateway\n"
+                                "Usage: start_udp_timer <period(ms)>\n",
+                                cmd_start_udp_timer, 2, 0),
+                                
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);
