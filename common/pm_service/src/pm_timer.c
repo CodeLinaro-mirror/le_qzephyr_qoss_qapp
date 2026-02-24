@@ -409,7 +409,7 @@ void pm_device_dump_all_status(void)
         /* Check if the device has PM configured */
         if (dev->pm_base != NULL) {
             /* Format the PM flags for printing */
-            snprintk(flags_str, sizeof(flags_str), "0x%02x", dev->pm_base->flags);
+            snprintk(flags_str, sizeof(flags_str), "0x%02x", (uint32_t)dev->pm_base->flags);
 
             snprintk(pm_state_str, sizeof(pm_state_str),"%d", dev->pm_base->state);
             

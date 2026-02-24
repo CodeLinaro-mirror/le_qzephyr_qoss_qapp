@@ -16,6 +16,9 @@
 #include <zephyr/kernel.h>
 #include "zephyr/net/net_ip.h"
 #include <zephyr/pm/policy.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/net/wifi_mgmt.h>
+#include "pm_timer.h"
 
 WMI_BMPS_ENABLE bmps;
 WMI_BMPS_IDLE_TIME idle_time;
@@ -124,7 +127,7 @@ static int cmd_bmps_ignore_bcmc(const struct shell *ctx, size_t argc, char **arg
 {
     int err = 0;
     uint8_t enable = shell_strtoul(argv[1], 10, &err);
-    WMI_BMPS_IGNORE_BCMC *pdata = &bmps;
+    WMI_BMPS_IGNORE_BCMC *pdata = (WMI_BMPS_IGNORE_BCMC *)&bmps;
 
     pdata->enable = enable;
 
@@ -139,7 +142,6 @@ static int cmd_bmps_ignore_bcmc(const struct shell *ctx, size_t argc, char **arg
 
 static int cmd_dbg_tsf(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     WMI_BMPS_ENABLE *pbmps = &bmps;
     memset(pbmps, 0, sizeof(*pbmps));
     shell_print(ctx, "dbg tsf...");
@@ -149,7 +151,6 @@ static int cmd_dbg_tsf(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     const struct device *wifi_dev = device_get_binding("qwifi_sta");
 
     if (!wifi_dev) {
@@ -168,7 +169,6 @@ static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     const struct device *wifi_dev = device_get_binding("qwifi_sta");
 
     if (!wifi_dev) {
@@ -193,7 +193,7 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
 
         }
 
-        const uint8_t *llc_snap_header = wifi_frame + WIFI_MAC_HEADER_LEN;
+        const uint8_t *llc_snap_header =(uint8_t *) wifi_frame + WIFI_MAC_HEADER_LEN;
 
         if (llc_snap_header[6] != 0x08 || llc_snap_header[7] != 0x00) {
             return TRUE;
@@ -206,7 +206,7 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
             return TRUE;
         }
 
-        struct net_udp_hdr  *udp = (struct udp_hdr_hdr *)(ip_frame +NET_IPV4H_LEN);
+        struct net_udp_hdr  *udp = (struct net_udp_hdr *)(ip_frame +NET_IPV4H_LEN);
         uint16_t src_port = ntohs(udp->src_port);
         uint16_t dst_port = ntohs(udp->dst_port);
 

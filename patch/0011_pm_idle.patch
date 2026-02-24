@@ -1,8 +1,20 @@
 diff --git a/kernel/idle.c b/kernel/idle.c
-index 3cf47910093..b447a7e9200 100644
+index 3cf47910093..ba56c6447bc 100644
 --- a/kernel/idle.c
 +++ b/kernel/idle.c
-@@ -50,6 +50,10 @@ void idle(void *unused1, void *unused2, void *unused3)
+@@ -19,6 +19,11 @@
+ 
+ LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
+ 
++#ifdef CONFIG_PM
++void z_idle_hooks_run_suspend(void);
++void z_idle_hooks_run_resume(void);
++#endif
++
+ void idle(void *unused1, void *unused2, void *unused3)
+ {
+ 	ARG_UNUSED(unused1);
+@@ -50,6 +55,10 @@ void idle(void *unused1, void *unused2, void *unused3)
  		 */
  		(void) arch_irq_lock();
  
@@ -13,7 +25,7 @@ index 3cf47910093..b447a7e9200 100644
  #ifdef CONFIG_PM
  		_kernel.idle = z_get_next_timeout_expiry();
  
-@@ -75,6 +79,10 @@ void idle(void *unused1, void *unused2, void *unused3)
+@@ -75,6 +84,10 @@ void idle(void *unused1, void *unused2, void *unused3)
  		k_cpu_idle();
  #endif /* CONFIG_PM */
  
