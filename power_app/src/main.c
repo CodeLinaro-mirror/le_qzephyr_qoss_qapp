@@ -43,7 +43,8 @@ int main(void)
     struct pm_policy_latency_request req;
 #endif
 
-    printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
+    k_sleep(K_MSEC(1));
+    LOG_INF("Hello World! %s", CONFIG_BOARD_TARGET);
 
 #ifdef PM_SLEEP_BY_LATENCY
     dead_loop_cond1();

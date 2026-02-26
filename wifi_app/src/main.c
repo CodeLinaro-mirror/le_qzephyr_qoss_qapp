@@ -17,6 +17,8 @@ LOG_MODULE_REGISTER(app, CONFIG_APP_LOG_LEVEL);
 
 int main(void)
 {
-    printf("Hello World! %s\n", CONFIG_BOARD_TARGET);
+    k_sleep(K_MSEC(1));
+    LOG_INF("Hello World! %s", CONFIG_BOARD_TARGET);
+    
     return 0;
 }
