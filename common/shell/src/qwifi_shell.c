@@ -803,6 +803,9 @@ static int cmd_wifi_set_operation_mode(const struct shell *ctx, size_t argc, cha
     if (argc >= 3) {
         set_op_mode_cfg.hidden_ssid = argv[2];
     }
+    else {
+        set_op_mode_cfg.hidden_ssid = "0";
+    }
     set_op_mode_cfg.opmode = argv[1];
 
     if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface, &set_op_mode_cfg, sizeof(set_op_mode_cfg))) {
@@ -884,7 +887,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_operation_mode, NULL,
                                              "Set operation mode.\n"
                                              "Usage: qwifi set_operation_mode <ap|station> [<hidden|0>]",
-                                             cmd_wifi_set_operation_mode, 3, 0),
+                                             cmd_wifi_set_operation_mode, 2, 1),
                                SHELL_CMD_ARG(set_device, NULL,
                                              "Set Active Device.\n"
                                              "Usage: qwifi set_device [0|1]",
