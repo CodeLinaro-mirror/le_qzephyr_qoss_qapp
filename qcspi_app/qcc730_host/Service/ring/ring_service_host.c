@@ -5,9 +5,9 @@
 
 #include <stdio.h>
 #include <string.h>
-#include "qc_osal.h"
+#include "../../Port/osal/qc_osal.h"
 #include "ring_service.h"
-#include "ring_transport.h"
+#include "ring_adapter.h"
 
 /* Work queue for deferred processing */
 static qc_osal_work_q_t ring_host_work_q;
@@ -35,7 +35,7 @@ static struct {
     bool initialized;
     uint32_t num_rings;
     uint32_t ctrl_block_addr;
-    ring_transport_dev_t transport;
+    const struct ring_adapter_ops *adapter;
 
     /* Local cache of control block */
     struct ring_control_block ctrl_cache;
@@ -216,7 +216,7 @@ int ring_get_tx_available(uint8_t ring_id)
     /* Read remote read index */
     uint32_t rd_idx_addr =
         g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, tx_rd_idx) + ring_id * sizeof(uint32_t);
-    ret = ring_transport_read(g_ring_service.transport, rd_idx_addr, (uint8_t *)&rd_idx, sizeof(rd_idx));
+    ret = g_ring_service.adapter->mem_read(rd_idx_addr, &rd_idx, sizeof(rd_idx));
     if (ret < 0) {
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
         return ret;
@@ -266,7 +266,7 @@ int ring_get_rx_available(uint8_t ring_id)
     /* Read remote write index */
     uint32_t wr_idx_addr =
         g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, rx_wr_idx) + ring_id * sizeof(uint32_t);
-    ret = ring_transport_read(g_ring_service.transport, wr_idx_addr, (uint8_t *)&wr_idx, sizeof(wr_idx));
+    ret = g_ring_service.adapter->mem_read(wr_idx_addr, &wr_idx, sizeof(wr_idx));
     if (ret < 0) {
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
         return ret;
@@ -346,7 +346,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
         /* Read remote read index (updated by Slave) */
         rd_idx_addr = g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, tx_rd_idx) +
                       ring_id * sizeof(uint32_t);
-        ret = ring_transport_read(g_ring_service.transport, rd_idx_addr, (uint8_t *)&rd_idx, sizeof(rd_idx));
+        ret = g_ring_service.adapter->mem_read(rd_idx_addr, &rd_idx, sizeof(rd_idx));
         if (ret < 0) {
             QC_OSAL_LOG_ERR("Failed to read remote rd_idx: %d", ret);
             qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
@@ -373,7 +373,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
     buf_addr = g_ring_service.ctrl_cache.tx_buf_base[ring_id] + wr_idx * g_ring_service.ctrl_cache.tx_buf_size[ring_id];
 
     /* Write data to remote buffer */
-    ret = ring_transport_write(g_ring_service.transport, buf_addr, data, len);
+    ret = g_ring_service.adapter->mem_write(buf_addr, data, len);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write data: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
@@ -389,7 +389,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
     desc_addr = g_ring_service.ctrl_cache.tx_desc_base[ring_id] + wr_idx * sizeof(struct ring_descriptor);
 
     /* Write descriptor back */
-    ret = ring_transport_write(g_ring_service.transport, desc_addr, (uint8_t *)&desc, sizeof(desc));
+    ret = g_ring_service.adapter->mem_write(desc_addr, &desc, sizeof(desc));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write descriptor: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
@@ -403,7 +403,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
     /* Write back remote write index */
     wr_idx_addr =
         g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, tx_wr_idx) + ring_id * sizeof(uint32_t);
-    ret = ring_transport_write(g_ring_service.transport, wr_idx_addr, (uint8_t *)&next_wr_idx, sizeof(next_wr_idx));
+    ret = g_ring_service.adapter->mem_write(wr_idx_addr, &next_wr_idx, sizeof(next_wr_idx));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write wr_idx: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
@@ -416,7 +416,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
     qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
 
     /* Trigger Slave interrupt */
-    ret = ring_transport_interrupt(g_ring_service.transport);
+    ret = g_ring_service.adapter->trigger_irq();
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to trigger interrupt: %d", ret);
     }
@@ -470,7 +470,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     /* Read remote write index (updated by Slave) */
     wr_idx_addr =
         g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, rx_wr_idx) + ring_id * sizeof(uint32_t);
-    ret = ring_transport_read(g_ring_service.transport, wr_idx_addr, (uint8_t *)&wr_idx, sizeof(wr_idx));
+    ret = g_ring_service.adapter->mem_read(wr_idx_addr, &wr_idx, sizeof(wr_idx));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to read remote wr_idx: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
@@ -508,7 +508,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
             return ret;
         }
 
-        ret = ring_transport_read(g_ring_service.transport, wr_idx_addr, (uint8_t *)&wr_idx, sizeof(wr_idx));
+        ret = g_ring_service.adapter->mem_read(wr_idx_addr, &wr_idx, sizeof(wr_idx));
         if (ret < 0) {
             qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
             return ret;
@@ -521,7 +521,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     desc_addr = g_ring_service.ctrl_cache.rx_desc_base[ring_id] + rd_idx * sizeof(struct ring_descriptor);
 
     /* Read descriptor */
-    ret = ring_transport_read(g_ring_service.transport, desc_addr, (uint8_t *)&desc, sizeof(desc));
+    ret = g_ring_service.adapter->mem_read(desc_addr, &desc, sizeof(desc));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to read descriptor: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
@@ -549,7 +549,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     buf_addr = desc.buffer_addr;
 
     /* Read data from remote buffer */
-    ret = ring_transport_read(g_ring_service.transport, buf_addr, data, data_len);
+    ret = g_ring_service.adapter->mem_read(buf_addr, data, data_len);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to read data: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
@@ -561,7 +561,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     desc.length = 0;
 
     /* Write descriptor back */
-    ret = ring_transport_write(g_ring_service.transport, desc_addr, (uint8_t *)&desc, sizeof(desc));
+    ret = g_ring_service.adapter->mem_write(desc_addr, &desc, sizeof(desc));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write descriptor: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
@@ -575,7 +575,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     /* Write back remote read index */
     rd_idx_addr =
         g_ring_service.ctrl_block_addr + offsetof(struct ring_control_block, rx_rd_idx) + ring_id * sizeof(uint32_t);
-    ret = ring_transport_write(g_ring_service.transport, rd_idx_addr, (uint8_t *)&next_rd_idx, sizeof(next_rd_idx));
+    ret = g_ring_service.adapter->mem_write(rd_idx_addr, &next_rd_idx, sizeof(next_rd_idx));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write rd_idx: %d", ret);
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
@@ -593,7 +593,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
 /**
  * @brief Host ring service initialization
  */
-static int ring_service_host_init(uint32_t ctrl_block_addr, ring_transport_dev_t transport)
+static int ring_service_host_init(uint32_t ctrl_block_addr, const struct ring_adapter_ops *adapter)
 {
     struct ring_control_block ctrl;
     int ret;
@@ -607,13 +607,13 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, ring_transport_dev_t
     QC_OSAL_LOG_INF("  Control block addr: 0x%08x", ctrl_block_addr);
 
     /* Validate parameters */
-    if (!transport) {
-        QC_OSAL_LOG_ERR("Invalid transport device");
+    if (!adapter) {
+        QC_OSAL_LOG_ERR("Invalid adapter");
         return -QC_OSAL_EINVAL;
     }
 
     /* 1. Read control block from Slave */
-    ret = ring_transport_read(transport, ctrl_block_addr, (uint8_t *)&ctrl, sizeof(ctrl));
+    ret = adapter->mem_read(ctrl_block_addr, &ctrl, sizeof(ctrl));
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to read control block: %d", ret);
         return ret;
@@ -638,7 +638,7 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, ring_transport_dev_t
 
     /* 5. Save configuration */
     g_ring_service.ctrl_block_addr = ctrl_block_addr;
-    g_ring_service.transport = transport;
+    g_ring_service.adapter = adapter;
     g_ring_service.num_rings = ctrl.num_rings;
     memcpy(&g_ring_service.ctrl_cache, &ctrl, sizeof(ctrl));
 
@@ -707,27 +707,30 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, ring_transport_dev_t
 int init_qring(void)
 {
     int ret = 0;
-    ring_transport_dev_t qcspi_dev = NULL;
-    /* Initialize QCSPI transport */
-    ret = ring_transport_init(qcspi_dev);
+    const struct ring_adapter_ops *adapter = NULL;
 
+    /* Get QCSPI adapter */
+    adapter = ring_adapter_get_qcspi();
+    if (!adapter) {
+        QC_OSAL_LOG_ERR("Failed to get QCSPI adapter");
+        return -QC_OSAL_ENODEV;
+    }
+
+    /* Initialize QCSPI adapter */
+    ret = adapter->init();
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("QCSPI adapter initialization failed: %d", ret);
+        return ret;
+    }
+
+    QC_OSAL_LOG_INF("QCSPI adapter initialized successfully");
+
+    /* Initialize ring service */
+    ret = ring_service_host_init(CONFIG_RING_CTRL_BLOCK_ADDR, adapter);
     if (ret == 0) {
-        QC_OSAL_LOG_INF("QCSPI transport initialized successfully");
-        qcspi_dev = qcspi_transport_get_device();
-        if (qcspi_dev) {
-            /* Initialize ring service */
-            ret = ring_service_host_init(CONFIG_RING_CTRL_BLOCK_ADDR, qcspi_dev);
-            if (ret == 0) {
-                QC_OSAL_LOG_INF("Ring service initialized successfully");
-            } else {
-                QC_OSAL_LOG_ERR("Ring service initialization failed: %d", ret);
-            }
-        } else {
-            QC_OSAL_LOG_ERR("QCSPI device not ready");
-            ret = -QC_OSAL_ENODEV;
-        }
+        QC_OSAL_LOG_INF("Ring service initialized successfully");
     } else {
-        QC_OSAL_LOG_ERR("QCSPI transport initialization failed: %d", ret);
+        QC_OSAL_LOG_ERR("Ring service initialization failed: %d", ret);
     }
 
     return ret;

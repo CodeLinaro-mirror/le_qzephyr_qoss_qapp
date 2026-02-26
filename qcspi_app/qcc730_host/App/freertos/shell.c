@@ -4,7 +4,6 @@
  */
 #include "shell.h"
 #include "qc_osal.h"
-#include "qc_platform.h"
 
 typedef struct {
     char *cmd;
@@ -72,7 +71,7 @@ uint8_t cmd_shell_init(UART_HandleTypeDef *huart)
 
     qc_osal_queue_init(&qShell, 10, sizeof(char));
 
-    if (QC_PLATFORM_EOK != QC_HAL_UART_Receive_IT(shell_huart, (uint8_t *)&c, 1)) {
+    if (QC_PLAT_OK != QC_HAL_UART_Receive_IT(shell_huart, (uint8_t *)&c, 1)) {
         return 1;
     }
 

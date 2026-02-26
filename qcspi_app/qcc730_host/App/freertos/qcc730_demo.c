@@ -2,17 +2,17 @@
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
-#include "qc_port_config.h"
+#include "../../Port/qc_port_config.h"
 
 #if defined(QC_OS_FREERTOS) && defined(SPI_DEMO_ENABLE)
 #ifdef SHELL_FEATURE
 #include "shell.h"
 #endif
-#include "ring_transport.h"
-#include "qcspi_driver.h"
+#include "../../Port/osal/qc_osal.h"
+#include "../../Service/qcspi/qcspi_adapter.h"
 
 #ifdef CONFIG_RING_SERVICE
-#include "ring_service.h"
+#include "../../Service/ring/ring_service.h"
 #endif
 
 #ifdef SHELL_FEATURE
@@ -166,19 +166,34 @@ void ring_host_rx_callback(uint8_t ring_id, void *user_data)
  * ============================================================================ */
 
 /**
- * @brief Initialize QCSPI transport
+ * @brief Initialize QCSPI adapter
  * Usage: qcspi_init
  */
 int cmd_qcspi_init(int argc, char **argv)
 {
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
+    int ret;
 
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
+    /* Check if already initialized */
+    if (qcspi_adapter_is_initialized()) {
+        printf("QCSPI adapter is already initialized\r\n");
+        
+        /* Get QCC730 slave ID */
+        uint8_t slave_id[3] = {0};
+        qcspi_get_slaveid(slave_id);
+        printf("QCC730 Slave ID: %02X %02X %02X\r\n", slave_id[0], slave_id[1], slave_id[2]);
+        
+        return 0;
     }
 
-    printf("QCSPI transport initialized successfully\r\n");
+    /* Initialize QCSPI adapter */
+    printf("Initializing QCSPI adapter...\r\n");
+    ret = qcspi_adapter_init();
+    if (ret < 0) {
+        printf("ERROR: QCSPI adapter initialization failed: %d\r\n", ret);
+        return ret;
+    }
+
+    printf("QCSPI adapter initialized successfully\r\n");
 
     /* Get QCC730 slave ID */
     uint8_t slave_id[3] = {0};
@@ -229,7 +244,7 @@ static int validate_memory_range(uint32_t addr, uint32_t len)
 }
 
 /**
- * @brief Read QCC730 memory via QCSPI transport
+ * @brief Read QCC730 memory via QCSPI adapter
  * Usage: qcspi_read <address> <length>
  */
 int cmd_qcspi_read(int argc, char **argv)
@@ -240,13 +255,6 @@ int cmd_qcspi_read(int argc, char **argv)
         printf("Example: qcspi_read 0x8fc00 4\r\n");
         printf("Valid range: 0x0 - 0x9FFFF\r\n");
         return -QC_OSAL_EINVAL;
-    }
-
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
     }
 
     uint32_t addr = strtoul(argv[1], NULL, 0);
@@ -264,7 +272,7 @@ int cmd_qcspi_read(int argc, char **argv)
         return -QC_OSAL_EINVAL;
     }
 
-    ret = ring_transport_read(qcspi_dev, addr, recv_buffer, len);
+    ret = qcspi_adapter_mem_read(addr, recv_buffer, len);
     if (ret < 0) {
         printf("ERROR: QCSPI read failed: %d\r\n", ret);
         return ret;
@@ -288,7 +296,7 @@ int cmd_qcspi_read(int argc, char **argv)
 }
 
 /**
- * @brief Write QCC730 memory via QCSPI transport
+ * @brief Write QCC730 memory via QCSPI adapter
  * Usage: qcspi_write <address> <hex_data>
  */
 int cmd_qcspi_write(int argc, char **argv)
@@ -298,13 +306,6 @@ int cmd_qcspi_write(int argc, char **argv)
         printf("Example: qcspi_write 0x8fc00 AABBCCDD\r\n");
         printf("Valid range: 0x%08X - 0x%08X\r\n", QCC730_MEM_START, QCC730_MEM_END);
         return -QC_OSAL_EINVAL;
-    }
-
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
     }
 
     uint32_t addr = strtoul(argv[1], NULL, 0);
@@ -321,7 +322,7 @@ int cmd_qcspi_write(int argc, char **argv)
         return ret;
     }
 
-    ret = ring_transport_write(qcspi_dev, addr, send_buffer, len);
+    ret = qcspi_adapter_mem_write(addr, send_buffer, len);
     if (ret < 0) {
         printf("ERROR: QCSPI write failed: %d\r\n", ret);
         return ret;
@@ -373,13 +374,6 @@ int cmd_qcspi_reg_read(int argc, char **argv)
         return -QC_OSAL_EINVAL;
     }
 
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
-    }
-
     uint8_t reg_addr = (uint8_t)strtoul(argv[1], NULL, 0);
 
     /* Validate register address */
@@ -390,7 +384,7 @@ int cmd_qcspi_reg_read(int argc, char **argv)
 
     uint32_t reg_val;
 
-    ret = ring_transport_reg_read(qcspi_dev, reg_addr, &reg_val);
+    ret = qcspi_IRR(reg_addr, &reg_val);
     if (ret < 0) {
         printf("ERROR: QCSPI register read failed: %d\r\n", ret);
         return ret;
@@ -414,13 +408,6 @@ int cmd_qcspi_reg_write(int argc, char **argv)
         return -QC_OSAL_EINVAL;
     }
 
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
-    }
-
     uint8_t reg_addr = (uint8_t)strtoul(argv[1], NULL, 0);
     uint32_t reg_val = strtoul(argv[2], NULL, 0);
 
@@ -430,7 +417,7 @@ int cmd_qcspi_reg_write(int argc, char **argv)
         return ret;
     }
 
-    ret = ring_transport_reg_write(qcspi_dev, reg_addr, reg_val);
+    ret = qcspi_IRW(reg_addr, reg_val);
     if (ret < 0) {
         printf("ERROR: QCSPI register write failed: %d\r\n", ret);
         return ret;
@@ -446,14 +433,7 @@ int cmd_qcspi_reg_write(int argc, char **argv)
  */
 int cmd_qcspi_interrupt(int argc, char **argv)
 {
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
-    }
-
-    int ret = ring_transport_interrupt(qcspi_dev);
+    int ret = qcspi_adapter_trigger_irq();
     if (ret < 0) {
         printf("ERROR: QCSPI interrupt failed: %d\r\n", ret);
         return ret;
@@ -471,8 +451,6 @@ void qcc730_reset()
 
     HAL_NVIC_DisableIRQ(EXTI12_IRQn);
 
-    ring_transport_dev_t qcspi_dev;
-
     while (ret < 0) {
         /* host toggle */
         HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET); // chip_on test
@@ -480,10 +458,12 @@ void qcc730_reset()
         HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET); // chip_on test
         HAL_Delay(DELAY_TIMING);
         HAL_Delay(1000);
-        ring_transport_deinit(qcspi_dev);
+        
+        /* Deinitialize ring service and adapter */
         ring_service_deinit();
+        qcspi_adapter_deinit();
 
-        /* Initialize QCSPI transport */
+        /* Initialize QCSPI adapter and ring service */
         ret = init_qring();
     }
 
@@ -513,12 +493,6 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
         printf("  size: bytes per transfer (1-1500)\r\n");
         printf("  count: number of transfer iterations (1-100000)\r\n");
         return -QC_OSAL_EINVAL;
-    }
-
-    ring_transport_dev_t qcspi_dev = qcspi_transport_get_device();
-    if (!qcspi_dev) {
-        printf("ERROR: QCSPI transport device not ready\r\n");
-        return -QC_OSAL_ENODEV;
     }
 
     /* Parse direction */
@@ -581,11 +555,11 @@ static int cmd_qcspi_test_transfer(int argc, char **argv)
     /* Perform transfer test */
     for (uint32_t i = 0; i < count; i++) {
         if (is_tx) {
-            /* TX: use ring_transport_write */
-            ret = ring_transport_write(qcspi_dev, addr, test_buffer, size);
+            /* TX: use qcspi_adapter_mem_write */
+            ret = qcspi_adapter_mem_write(addr, test_buffer, size);
         } else {
-            /* RX: use ring_transport_read */
-            ret = ring_transport_read(qcspi_dev, addr, test_buffer, size);
+            /* RX: use qcspi_adapter_mem_read */
+            ret = qcspi_adapter_mem_read(addr, test_buffer, size);
         }
 
         if (ret < 0) {

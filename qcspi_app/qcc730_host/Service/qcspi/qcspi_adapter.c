@@ -5,13 +5,13 @@
 
 #include <stdbool.h>
 #include <string.h>
-#include "qc_osal.h"
-#include "qc_platform.h"
-#include "qcspi_driver.h"
+#include "../../Port/qc_port.h"
+#include "qcspi_adapter.h"
 #include "qcspi_protocol.h"
+#include "../ring/ring_adapter.h"
 
-/* Global platform context */
-static qc_platform_ctx_t g_platform_ctx;
+/* Global port context */
+static struct qc_port_ctx g_port_ctx;
 
 /* Buffers for SPI transactions */
 static uint8_t qcspi_tx_buffer[QCSPI_MAX_TRANSFER_SIZE];
@@ -20,12 +20,15 @@ static uint8_t qcspi_rx_buffer[QCSPI_MAX_TRANSFER_SIZE];
 /* Mutex for thread-safe access */
 static qc_osal_mutex_t qcspi_mutex;
 
+/* Initialization state */
+static bool g_qcspi_initialized = false;
+
 /**
  * @brief Perform SPI transfer with CS held low (for scatter-gather)
  */
 static int qcspi_transfer_sg(uint8_t *tx_buf, uint8_t *rx_buf, size_t len)
 {
-    return qc_platform_spi_transceive(g_platform_ctx, tx_buf, rx_buf, len, true);
+    return qc_transport_transceive(g_port_ctx.transport, tx_buf, rx_buf, len, true);
 }
 
 /**
@@ -33,7 +36,7 @@ static int qcspi_transfer_sg(uint8_t *tx_buf, uint8_t *rx_buf, size_t len)
  */
 static int qcspi_transfer(uint8_t *tx_buf, uint8_t *rx_buf, size_t len)
 {
-    return qc_platform_spi_transceive(g_platform_ctx, tx_buf, rx_buf, len, false);
+    return qc_transport_transceive(g_port_ctx.transport, tx_buf, rx_buf, len, false);
 }
 
 void qcspi_word_to_byte_big_endian(uint8_t *byte_value_buf, uint32_t word_value)
@@ -44,7 +47,9 @@ void qcspi_word_to_byte_big_endian(uint8_t *byte_value_buf, uint32_t word_value)
     byte_value_buf[3] = (word_value >> 0) & 0xFF;
 }
 
-int qcspi_read_addr_align(uint32_t handle, uint16_t bytes_to_read, uint32_t addr, uint8_t *read_data_buf)
+/* ========== Internal helper functions ========== */
+
+static int qcspi_read_addr_align(uint16_t bytes_to_read, uint32_t addr, uint8_t *read_data_buf)
 {
     int ret;
     uint32_t addr_align;
@@ -60,14 +65,14 @@ int qcspi_read_addr_align(uint32_t handle, uint16_t bytes_to_read, uint32_t addr
     /* Check if already 4-byte aligned */
     if (((addr & 0x3) == 0) && ((bytes_to_read % 4) == 0)) {
         QC_OSAL_LOG_DBG("addr=0x%08X, bytes_to_read=%d are 4 bytes aligned", addr, bytes_to_read);
-        return qcspi_read(handle, bytes_to_read, addr, read_data_buf);
+        return qcspi_read(bytes_to_read, addr, read_data_buf);
     }
 
     QC_OSAL_LOG_DBG("addr=0x%08X, bytes_to_read=%d (unaligned)", addr, bytes_to_read);
 
     /* Read 1st DWORD */
     addr_align = addr & 0xFFFFFFFC;
-    ret = qcspi_read(handle, 4, addr_align, data_buf);
+    ret = qcspi_read(4, addr_align, data_buf);
     if (ret < 0) {
         return ret;
     }
@@ -85,7 +90,7 @@ int qcspi_read_addr_align(uint32_t handle, uint16_t bytes_to_read, uint32_t addr
     /* Read middle DWORDs */
     if (bytes_to_read >= (total_size + 4)) {
         size = (bytes_to_read - total_size) & 0xFFFFFFFC;
-        ret = qcspi_read(handle, size, addr_align, &read_data_buf[total_size]);
+        ret = qcspi_read(size, addr_align, &read_data_buf[total_size]);
         if (ret < 0) {
             return ret;
         }
@@ -99,7 +104,7 @@ int qcspi_read_addr_align(uint32_t handle, uint16_t bytes_to_read, uint32_t addr
 
     /* Read last DWORD */
     size = bytes_to_read - total_size;
-    ret = qcspi_read(handle, 4, addr_align, data_buf);
+    ret = qcspi_read(4, addr_align, data_buf);
     if (ret < 0) {
         return ret;
     }
@@ -108,7 +113,7 @@ int qcspi_read_addr_align(uint32_t handle, uint16_t bytes_to_read, uint32_t addr
     return 0;
 }
 
-int qcspi_write_addr_align(uint32_t handle, uint16_t bytes_to_write, uint32_t addr, uint8_t *write_data_buf)
+static int qcspi_write_addr_align(uint16_t bytes_to_write, uint32_t addr, uint8_t *write_data_buf)
 {
     int ret;
     uint32_t addr_align;
@@ -126,14 +131,14 @@ int qcspi_write_addr_align(uint32_t handle, uint16_t bytes_to_write, uint32_t ad
     /* Check if already 4-byte aligned */
     if (((addr & 0x3) == 0) && ((bytes_to_write % 4) == 0)) {
         QC_OSAL_LOG_DBG("addr=0x%08X, bytes_to_write=%d are 4 bytes aligned", addr, bytes_to_write);
-        return qcspi_write(handle, bytes_to_write, addr, write_data_buf);
+        return qcspi_write(bytes_to_write, addr, write_data_buf);
     }
 
     QC_OSAL_LOG_DBG("addr=0x%08X, bytes_to_write=%d (unaligned)", addr, bytes_to_write);
 
     /* Write 1st DWORD */
     addr_align = addr & 0xFFFFFFFC;
-    ret = qcspi_read(handle, 4, addr_align, data_buf);
+    ret = qcspi_read(4, addr_align, data_buf);
     if (ret < 0) {
         return ret;
     }
@@ -148,7 +153,7 @@ int qcspi_write_addr_align(uint32_t handle, uint16_t bytes_to_write, uint32_t ad
         QC_OSAL_LOG_WRN("NOP failed: %d", ret);
     }
 
-    ret = qcspi_write(handle, 4, addr_align, data_buf);
+    ret = qcspi_write(4, addr_align, data_buf);
     if (ret < 0) {
         return ret;
     }
@@ -162,7 +167,7 @@ int qcspi_write_addr_align(uint32_t handle, uint16_t bytes_to_write, uint32_t ad
     /* Write middle DWORDs */
     if (bytes_to_write >= (total_size + 4)) {
         size = (bytes_to_write - total_size) & 0xFFFFFFFC;
-        ret = qcspi_write(handle, size, addr_align, &write_data_buf[total_size]);
+        ret = qcspi_write(size, addr_align, &write_data_buf[total_size]);
         if (ret < 0) {
             return ret;
         }
@@ -176,17 +181,95 @@ int qcspi_write_addr_align(uint32_t handle, uint16_t bytes_to_write, uint32_t ad
 
     /* Write last DWORD */
     size = bytes_to_write - total_size;
-    ret = qcspi_read(handle, 4, addr_align, data_buf);
+    ret = qcspi_read(4, addr_align, data_buf);
     if (ret < 0) {
         return ret;
     }
     memcpy(data_buf, &write_data_buf[total_size], size);
-    ret = qcspi_write(handle, 4, addr_align, data_buf);
+    ret = qcspi_write(4, addr_align, data_buf);
 
     return ret;
 }
 
-int qcspi_interrupt(uint32_t handle)
+/* ========== Public adapter interface (implements ring_adapter_ops) ========== */
+
+int qcspi_adapter_init(void)
+{
+    uint8_t write_buf[5] = {0};
+    uint8_t read_buf[5] = {0};
+    int ret;
+
+    /* Initialize port layer */
+    ret = qc_port_init(&g_port_ctx);
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("Failed to initialize port layer: %d", ret);
+        return ret;
+    }
+
+    /* Initialize mutex */
+    qc_osal_mutex_init(&qcspi_mutex);
+
+    /* Send NOP */
+    write_buf[0] = SPI_CMDCODE_NOP;
+    ret = qcspi_transfer(write_buf, read_buf, 1);
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("NOP failed: %d", ret);
+    }
+
+    /* Send WREN */
+    write_buf[0] = SPI_CMDCODE_WREN;
+    ret = qcspi_transfer(write_buf, read_buf, 1);
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("WREN failed: %d", ret);
+    }
+
+    /* Read status */
+    write_buf[0] = SPI_CMDCODE_RDSR;
+    write_buf[1] = 0;
+    write_buf[2] = 0;
+    write_buf[3] = 0;
+    write_buf[4] = 0;
+
+    ret = qcspi_transfer(write_buf, read_buf, 3);
+    if (ret == 0) {
+        QC_OSAL_LOG_INF("RDSR: %02x %02x %02x", read_buf[1], read_buf[2], read_buf[3]);
+    } else {
+        QC_OSAL_LOG_ERR("RDSR failed: %d", ret);
+    }
+
+    QC_OSAL_LOG_INF("QCSPI adapter initialized");
+
+    g_qcspi_initialized = true;
+
+    return 0;
+}
+
+int qcspi_adapter_deinit(void)
+{
+    g_qcspi_initialized = false;
+    /* Currently no cleanup needed */
+    return 0;
+}
+
+int qcspi_adapter_mem_read(uint32_t addr, void *buf, size_t len)
+{
+    if (!buf || len == 0 || len > UINT16_MAX) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    return qcspi_read_addr_align((uint16_t)len, addr, (uint8_t *)buf);
+}
+
+int qcspi_adapter_mem_write(uint32_t addr, const void *buf, size_t len)
+{
+    if (!buf || len == 0 || len > UINT16_MAX) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    return qcspi_write_addr_align((uint16_t)len, addr, (uint8_t *)buf);
+}
+
+int qcspi_adapter_trigger_irq(void)
 {
     uint32_t config_value = 0;
     int ret;
@@ -194,7 +277,7 @@ int qcspi_interrupt(uint32_t handle)
     QC_OSAL_LOG_DBG("Triggering Slave interrupt");
 
     /* Read current config */
-    ret = qcspi_IRR(handle, SPI_SLAVE_CONFIG, &config_value);
+    ret = qcspi_IRR(SPI_SLAVE_CONFIG, &config_value);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to read SPI_SLAVE_CONFIG: %d", ret);
         return ret;
@@ -203,7 +286,7 @@ int qcspi_interrupt(uint32_t handle)
     /* Check if interrupt already set */
     if (config_value & QCSPI_CONFIG_HOST_IRQ_INT0_EN(1)) {
         qc_osal_msleep(10);
-        ret = qcspi_IRR(handle, SPI_SLAVE_CONFIG, &config_value);
+        ret = qcspi_IRR(SPI_SLAVE_CONFIG, &config_value);
         if (ret == 0 && (config_value & QCSPI_CONFIG_HOST_IRQ_INT0_EN(1))) {
             QC_OSAL_LOG_DBG("Interrupt already set, config=0x%x", config_value);
             return 0;
@@ -212,7 +295,7 @@ int qcspi_interrupt(uint32_t handle)
 
     /* Set interrupt bit */
     config_value |= QCSPI_CONFIG_HOST_IRQ_INT0_EN(1);
-    ret = qcspi_IRW(handle, SPI_SLAVE_CONFIG, config_value);
+    ret = qcspi_IRW(SPI_SLAVE_CONFIG, config_value);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to write SPI_SLAVE_CONFIG: %d", ret);
         return ret;
@@ -221,7 +304,9 @@ int qcspi_interrupt(uint32_t handle)
     return 0;
 }
 
-int qcspi_read(uint32_t handle, uint16_t size, uint32_t address, uint8_t *rcv_buf)
+/* ========== Low-level QCSPI protocol functions ========== */
+
+int qcspi_read(uint16_t size, uint32_t address, uint8_t *rcv_buf)
 {
     uint8_t header_tx[15] = {0};
     uint8_t header_rx[15] = {0};
@@ -239,7 +324,7 @@ int qcspi_read(uint32_t handle, uint16_t size, uint32_t address, uint8_t *rcv_bu
     }
 
     /* Update TRNS_LEN register */
-    ret = qcspi_IRW(0, SPI_SLAVE_TRNS_LEN, size << 16);
+    ret = qcspi_IRW(SPI_SLAVE_TRNS_LEN, size << 16);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to update TRNS_LEN: %d", ret);
     }
@@ -275,7 +360,7 @@ int qcspi_read(uint32_t handle, uint16_t size, uint32_t address, uint8_t *rcv_bu
 
     /* Wait until READ bulk is completed */
     while (retry++ < QCSPI_MAX_INIT_TRY_TIMES) {
-        ret = qcspi_RDSR(0, &status);
+        ret = qcspi_RDSR(&status);
         if (ret == 0 && !BIT_CHECK(status, QCSPI_STATUS_BUSY_BIT)) {
             break;
         }
@@ -289,12 +374,14 @@ int qcspi_read(uint32_t handle, uint16_t size, uint32_t address, uint8_t *rcv_bu
 
     return 0;
 }
-int qcspi_write(uint32_t handle, uint16_t size, uint32_t address, uint8_t *snd_buf)
+
+int qcspi_write(uint16_t size, uint32_t address, uint8_t *snd_buf)
 {
     static uint8_t header[5];
     uint32_t retry = 0;
     uint32_t status = 0;
     int ret;
+
     if (!snd_buf) {
         return -QC_OSAL_EINVAL;
     }
@@ -316,6 +403,7 @@ int qcspi_write(uint32_t handle, uint16_t size, uint32_t address, uint8_t *snd_b
         qc_osal_mutex_unlock(qcspi_mutex);
         return ret;
     }
+
     /* Send data (release CS after) */
     ret = qcspi_transfer(snd_buf, qcspi_rx_buffer, size);
 
@@ -327,7 +415,7 @@ int qcspi_write(uint32_t handle, uint16_t size, uint32_t address, uint8_t *snd_b
 
     /* Wait until write is completed */
     while (retry++ < QCSPI_MAX_INIT_TRY_TIMES) {
-        ret = qcspi_RDSR(0, &status);
+        ret = qcspi_RDSR(&status);
         if (ret == 0) {
             if (BIT_CHECK(status, QCSPI_STATUS_TXUERR_BIT)) {
                 // QC_OSAL_LOG_WRN("TXUERR error: 0x%x", status);
@@ -364,58 +452,9 @@ void qcspi_reset(void)
     }
     qc_osal_msleep(1);
 
-    qcspi_RDSR(0, &status);
+    qcspi_RDSR(&status);
     QC_OSAL_LOG_INF("Status after reset: 0x%x", status);
     qc_osal_msleep(1);
-}
-
-int qcspi_init(void)
-{
-    uint8_t write_buf[5] = {0};
-    uint8_t read_buf[5] = {0};
-    int ret;
-
-    /* Initialize platform layer */
-    ret = qc_platform_init(&g_platform_ctx);
-    if (ret < 0) {
-        QC_OSAL_LOG_ERR("Failed to initialize platform: %d", ret);
-        return ret;
-    }
-
-    /* Initialize mutex */
-    qc_osal_mutex_init(&qcspi_mutex);
-
-    /* Send NOP */
-    write_buf[0] = SPI_CMDCODE_NOP;
-    ret = qcspi_transfer(write_buf, read_buf, 1);
-    if (ret < 0) {
-        QC_OSAL_LOG_ERR("NOP failed: %d", ret);
-    }
-
-    /* Send WREN */
-    write_buf[0] = SPI_CMDCODE_WREN;
-    ret = qcspi_transfer(write_buf, read_buf, 1);
-    if (ret < 0) {
-        QC_OSAL_LOG_ERR("WREN failed: %d", ret);
-    }
-
-    /* Read status */
-    write_buf[0] = SPI_CMDCODE_RDSR;
-    write_buf[1] = 0;
-    write_buf[2] = 0;
-    write_buf[3] = 0;
-    write_buf[4] = 0;
-
-    ret = qcspi_transfer(write_buf, read_buf, 3);
-    if (ret == 0) {
-        QC_OSAL_LOG_INF("RDSR: %02x %02x %02x", read_buf[1], read_buf[2], read_buf[3]);
-    } else {
-        QC_OSAL_LOG_ERR("RDSR failed: %d", ret);
-    }
-
-    QC_OSAL_LOG_INF("QCSPI driver initialized");
-
-    return 0;
 }
 
 void qcspi_get_slaveid(uint8_t *id_array)
@@ -454,7 +493,7 @@ void qcspi_get_slaveid(uint8_t *id_array)
     }
 }
 
-int qcspi_RDSR(uint32_t handle, uint32_t *status)
+int qcspi_RDSR(uint32_t *status)
 {
     uint8_t write_buf[5] = {0};
     uint8_t read_buf[5] = {0};
@@ -485,7 +524,7 @@ int qcspi_RDSR(uint32_t handle, uint32_t *status)
     return 0;
 }
 
-int qcspi_IRR(uint32_t handle, uint8_t reg_addr, uint32_t *reg_val)
+int qcspi_IRR(uint8_t reg_addr, uint32_t *reg_val)
 {
     uint8_t op_buf[8] = {0};
     uint8_t read_buf[8] = {0};
@@ -516,7 +555,7 @@ int qcspi_IRR(uint32_t handle, uint8_t reg_addr, uint32_t *reg_val)
     return 0;
 }
 
-int qcspi_IRW(uint32_t handle, uint8_t reg_addr, uint32_t reg_val)
+int qcspi_IRW(uint8_t reg_addr, uint32_t reg_val)
 {
     uint8_t op_buf[6] = {0};
     uint8_t read_buf[8] = {0};
@@ -540,4 +579,24 @@ int qcspi_IRW(uint32_t handle, uint8_t reg_addr, uint32_t reg_val)
     QC_OSAL_LOG_DBG("IRW reg=0x%x val=0x%x", reg_addr, reg_val);
 
     return 0;
+}
+
+/* ========== ring_adapter_ops implementation ========== */
+
+static const struct ring_adapter_ops qcspi_adapter_ops = {
+    .init = qcspi_adapter_init,
+    .deinit = qcspi_adapter_deinit,
+    .mem_read = qcspi_adapter_mem_read,
+    .mem_write = qcspi_adapter_mem_write,
+    .trigger_irq = qcspi_adapter_trigger_irq,
+};
+
+const struct ring_adapter_ops *ring_adapter_get_qcspi(void)
+{
+    return &qcspi_adapter_ops;
+}
+
+bool qcspi_adapter_is_initialized(void)
+{
+    return g_qcspi_initialized;
 }

@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "qc_osal.h"
-#include "qc_platform.h"
+#include "qc_plat_al.h"
 
 extern char c;
 extern qc_osal_queue_t qShell;
