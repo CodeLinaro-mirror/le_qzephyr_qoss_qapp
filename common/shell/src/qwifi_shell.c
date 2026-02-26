@@ -883,14 +883,22 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "  qwifi unit_test 1 4 1 0\n"
                                              "Example: To perform HW readouts\n"
                                              "  qwifi unit_test 1 4 1 12\n"
-                                             "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.", cmd_qwifi_unit_test, 4, 20),
+                                             "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.\n", cmd_qwifi_unit_test, 4, 20),
                                SHELL_CMD_ARG(set_operation_mode, NULL,
                                              "Set operation mode.\n"
-                                             "Usage: qwifi set_operation_mode <ap|station> [<hidden|0>]",
+                                             "Usage: qwifi set_operation_mode <ap|station|ap_sta> [<hidden|0>] \n"
+                                             "Example: Set operation mode to station\n"
+                                             "  qwifi set_operation_mode station \n"
+                                             "Example: Set operation mode to soft ap \n"
+                                             "  qwifi set_operation_mode ap \n"
+                                             "Example: Enable ap+sta concurrency mode\n"
+                                             "  qwifi set_operation_mode ap_sta \n"
+                                             "Example: To hide ssid \n"
+                                             "  qwifi set_operation_mode ap hidden \n",
                                              cmd_wifi_set_operation_mode, 2, 1),
                                SHELL_CMD_ARG(set_device, NULL,
                                              "Set Active Device.\n"
-                                             "Usage: qwifi set_device [0|1]",
+                                             "Usage: qwifi set_device [0 : soft ap | 1: station] \n",
                                              cmd_wifi_set_active_device, 2, 0),
                                SHELL_CMD_ARG(set_rts, NULL,
                                              "Enable/disable RTS/CTS protection.\n"
