@@ -635,7 +635,7 @@ static void on_idle_post_sleep(void)
         if (!mt->was_running || !mt->timer) continue;
 
         if (mt->auto_restart) {
-            k_timer_start(mt->timer, mt->saved_period, mt->saved_period);
+            k_timer_start(mt->timer, mt->saved_remaining, mt->saved_period);
         }
         mt->was_running = false;
     }
