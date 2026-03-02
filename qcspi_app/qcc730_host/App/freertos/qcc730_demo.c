@@ -149,7 +149,7 @@ void ring_host_rx_callback(uint8_t ring_id, void *user_data)
             break; /* Exit on error */
         }
         if (packet_count > 0 && packet_count % 10 == 0)
-            qc_osal_msleep(1);
+            qc_osal_msleep(3);
 
         /* ret == 0 means no more data available, loop will exit */
     } while (ret > 0);
