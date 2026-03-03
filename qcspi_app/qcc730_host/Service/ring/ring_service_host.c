@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <stdio.h>
@@ -89,6 +90,29 @@ void ring_service_deinit(void)
     }
 
     g_ring_service.initialized = false;
+
+    /* Clear cached control block to force re-sync on next init */
+    memset(&g_ring_service.ctrl_cache, 0, sizeof(g_ring_service.ctrl_cache));
+
+    //    /* Clear callback */
+    //    g_ring_service.callback = NULL;
+    //    g_ring_service.callback_data = NULL;
+
+    const struct ring_adapter_ops *adapter = NULL;
+
+    /* Get QCSPI adapter */
+    adapter = ring_adapter_get_qcspi();
+    if (!adapter) {
+        QC_OSAL_LOG_ERR("Failed to get QCSPI adapter");
+        return;
+    }
+
+    /* Initialize QCSPI adapter */
+    if (adapter->deinit() < 0) {
+        QC_OSAL_LOG_ERR("QCSPI adapter deinitialization failed");
+    }
+
+    QC_OSAL_LOG_INF("QCSPI adapter deinitialized successfully");
 
     QC_OSAL_LOG_INF("Host ring service deinitialized");
 }

@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include "../qc_port_config.h"
@@ -17,9 +18,9 @@
  * This structure holds all state needed for SPI transport operations.
  */
 struct qc_transport_spi_ctx {
-    qc_hal_spi_t spi;           /* SPI handle from HAL */
-    qc_hal_gpio_t cs_gpio;      /* CS GPIO handle from HAL */
-    qc_osal_mutex_t lock;       /* Mutex for thread-safe access */
+    qc_hal_spi_t spi;                /* SPI handle from HAL */
+    qc_hal_gpio_t cs_gpio;           /* CS GPIO handle from HAL */
+    qc_osal_mutex_t lock;            /* Mutex for thread-safe access */
     struct qc_transport_stats stats; /* Transport statistics */
 };
 
@@ -145,8 +146,7 @@ int qc_transport_deinit(qc_transport_t transport)
     return 0;
 }
 
-int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uint8_t *rx_buf, size_t len,
-                             bool hold_cs)
+int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uint8_t *rx_buf, size_t len, bool hold_cs)
 {
     struct qc_transport_spi_ctx *ctx = (struct qc_transport_spi_ctx *)transport;
     int ret = 0;
@@ -156,8 +156,8 @@ int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uin
     }
 
     /* Lock for thread-safe access */
-    //QC_OSAL_LOG_ERR("lock qc_transport_transceive");
-    //ret = qc_osal_mutex_lock(ctx->lock, QC_OSAL_TIMEOUT_FOREVER);
+    // QC_OSAL_LOG_ERR("lock qc_transport_transceive");
+    // ret = qc_osal_mutex_lock(ctx->lock, QC_OSAL_TIMEOUT_FOREVER);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to lock mutex");
         return -QC_TRANSPORT_EBUSY;
@@ -167,7 +167,7 @@ int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uin
     ret = qc_hal_gpio_set(ctx->cs_gpio, true);
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to assert CS");
-        //qc_osal_mutex_unlock(ctx->lock);
+        // qc_osal_mutex_unlock(ctx->lock);
         ctx->stats.tx_errors++;
         return hal_errno_to_transport(ret);
     }
@@ -178,7 +178,7 @@ int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uin
         QC_OSAL_LOG_ERR("SPI transfer failed: %d", ret);
         /* Ensure CS is deasserted on error */
         qc_hal_gpio_set(ctx->cs_gpio, false);
-        //qc_osal_mutex_unlock(ctx->lock);
+        // qc_osal_mutex_unlock(ctx->lock);
         ctx->stats.tx_errors++;
         return hal_errno_to_transport(ret);
     }
@@ -188,7 +188,7 @@ int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uin
         ret = qc_hal_gpio_set(ctx->cs_gpio, false);
         if (ret < 0) {
             QC_OSAL_LOG_ERR("Failed to deassert CS");
-            //qc_osal_mutex_unlock(ctx->lock);
+            // qc_osal_mutex_unlock(ctx->lock);
             return hal_errno_to_transport(ret);
         }
     }
@@ -197,8 +197,8 @@ int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uin
     ctx->stats.tx_bytes += len;
     ctx->stats.rx_bytes += len;
     ctx->stats.transactions++;
-    //QC_OSAL_LOG_ERR("unlock qc_transport_transceive");
-    //qc_osal_mutex_unlock(ctx->lock);
+    // QC_OSAL_LOG_ERR("unlock qc_transport_transceive");
+    // qc_osal_mutex_unlock(ctx->lock);
 
     return 0;
 }

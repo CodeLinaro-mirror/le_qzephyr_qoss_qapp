@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef RING_SERVICE_H_
@@ -8,6 +9,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <sys/_stdint.h>
 
 /* Maximum number of rings supported */
@@ -93,10 +95,11 @@ struct ring_control_block {
  * @brief Ring types
  */
 enum ring_type {
-    RING_CONFIG, /* RX data available */
-    RING_DATA,   /* TX buffer available */
-    RING_LOOPBACK,
-    RING_ERROR, /* Error occurred */
+    RING_0,
+    RING_1,
+    RING_2,
+
+    RING_MAX,
 };
 
 /**

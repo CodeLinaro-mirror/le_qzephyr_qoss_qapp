@@ -1,0 +1,19 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+config QAT_COMMON
+	bool "QAT Common AT Commands"
+	depends on QAT
+	default y
+	help
+	  Enable common AT commands for QAT module.
+	  This provides basic AT commands.
+	  Requires both QAT and QAT_COMMON to be enabled.
+
+config QAT_TCPIP
+	bool "QAT TCP/IP AT Commands"
+	depends on QAT
+	default y
+	help
+	  Enable TCP/IP related AT commands for QAT module.
+	  This provides commands like AT+CIPSEND for data passthrough mode.

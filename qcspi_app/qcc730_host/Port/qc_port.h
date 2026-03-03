@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef QC_PORT_H_
@@ -38,8 +39,8 @@
  * This structure holds all port layer contexts for easy management.
  */
 struct qc_port_ctx {
-    qc_hal_ctx_t hal_ctx;           /* HAL context */
-    qc_transport_t transport;       /* Transport handle */
+    qc_hal_ctx_t hal_ctx;     /* HAL context */
+    qc_transport_t transport; /* Transport handle */
 };
 
 /**

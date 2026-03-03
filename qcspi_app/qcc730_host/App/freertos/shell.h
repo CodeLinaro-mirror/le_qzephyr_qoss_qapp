@@ -1,17 +1,17 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef INC_SHELL_H_
 #define INC_SHELL_H_
-
 /* Includes ------------------------------------------------------------------*/
+#include "qc_port.h"
+#include "qc_hal_stm32.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "qc_osal.h"
-#include "qc_plat_al.h"
 
 extern char c;
 extern qc_osal_queue_t qShell;

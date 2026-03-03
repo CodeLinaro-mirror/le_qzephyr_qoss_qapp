@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <stdbool.h>
@@ -591,12 +592,6 @@ static const struct ring_adapter_ops qcspi_adapter_ops = {
     .trigger_irq = qcspi_adapter_trigger_irq,
 };
 
-const struct ring_adapter_ops *ring_adapter_get_qcspi(void)
-{
-    return &qcspi_adapter_ops;
-}
+const struct ring_adapter_ops *ring_adapter_get_qcspi(void) { return &qcspi_adapter_ops; }
 
-bool qcspi_adapter_is_initialized(void)
-{
-    return g_qcspi_initialized;
-}
+bool qcspi_adapter_is_initialized(void) { return g_qcspi_initialized; }
