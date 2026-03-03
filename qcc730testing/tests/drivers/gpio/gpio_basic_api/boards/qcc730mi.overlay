@@ -7,8 +7,8 @@
 / {
 	resources {
 		compatible = "test-gpio-basic-api";
-		out-gpios = <&gpioa 5 0>;
-		in-gpios = <&gpioa 6 0>;
+		out-gpios = <&gpioa 0 0>;
+		in-gpios = <&gpioa 2 0>;
 	};
 };
 
