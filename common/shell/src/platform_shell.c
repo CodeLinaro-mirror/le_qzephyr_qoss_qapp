@@ -7,11 +7,15 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <nt_sys_monitoring.h>
 #include <qlib_util.h>
 #if CONFIG_WIFI
 #include <qwifi_api.h>
 #include <qcom_wifi_mgmt.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/wifi_mgmt.h>
 #endif
 
 #if 0
@@ -59,6 +63,18 @@ static int cmd_set_logger_lvl(const struct shell *ctx, size_t argc, char **argv)
 }
 
 #if CONFIG_WIFI
+static bool wifi_is_connected(struct net_if *iface)
+{
+    if (!iface) {
+        return false;
+    }
+    struct wifi_iface_status status = (struct wifi_iface_status){0};
+    int ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &status, sizeof(status));
+    if (ret) {
+        return false;
+    }
+    return status.state == WIFI_STATE_ASSOCIATED || status.state == WIFI_STATE_COMPLETED;
+}
 static int32_t get_boot_reason(const struct shell *ctx)
 {
     struct net_if *iface = net_if_get_wifi_sta();
@@ -173,6 +189,25 @@ static int cmd_reboot(const struct shell *ctx, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
+
+#if CONFIG_WIFI
+    struct net_if *iface = net_if_get_wifi_sta();
+    if (iface != NULL) {
+        if (wifi_is_connected(iface)) {
+            shell_print(ctx, "Wi-Fi is connected, disconnecting before reboot...");
+            int ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, iface, NULL, 0);
+            if (ret) {
+                shell_warn(ctx, "Wi-Fi disconnect failed (err %d)", ret);
+            } else {
+                shell_print(ctx, "Wi-Fi disconnected");
+		k_sleep(K_MSEC(100)); // Allow disconnect to complete
+            }
+        } else {
+            shell_print(ctx, "Wi-Fi not connected");
+        }
+    }
+#endif
+
     shell_print(ctx, "Reboot...");
     nt_system_sw_reset();
     return 0;
