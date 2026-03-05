@@ -532,9 +532,9 @@ static void on_idle_pre_sleep(void)
 
     if(!pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES) && !pm_device_is_any_busy())
     {
-        k_spinlock_key_t key = k_spin_lock(&g_pm_timer_lock);
-
         suspend_all_os_default_tasks();
+        
+        k_spinlock_key_t key = k_spin_lock(&g_pm_timer_lock);
 
         SYS_SLIST_FOR_EACH_CONTAINER(&g_pm_timer_list, mt, node) {
             if (!mt->suspendable || !mt->timer) continue;
