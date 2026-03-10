@@ -16,14 +16,22 @@
 #include <zephyr/kernel.h>
 #include "zephyr/net/net_ip.h"
 #include <zephyr/pm/policy.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/net/wifi_mgmt.h>
+#include "pm_timer.h"
+#include <zephyr/net/socket.h>
+#include <qcom_wifi_mgmt.h>
+#include <string.h>
+
+#define GATEWAY_PORT 12345
 
 WMI_BMPS_ENABLE bmps;
-WMI_BMPS_IDLE_TIME idle_time;
 static void bmps_timer_cb(struct k_timer *timer);
 static void period_wakeup_timer_cb(struct k_timer *timer);
-extern void wmi_ignore_bcmc_in_bmps(void *, uint8_t data);
 static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv);
 static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv);
+static struct k_timer udp_timer;
+static int udp_sock = -1;
 extern uint64_t bmps_duration;
 uint64_t bmps_start = 0;
 
@@ -31,7 +39,6 @@ uint64_t bmps_start = 0;
 #define LLC_SNAP_HEADER_LEN 8
 #define UDP_WHITELIST_LEN     4
 uint32_t udp_whitelist_arr[UDP_WHITELIST_LEN] = {7777, 0, 0, 0};
-typedef bool (*qapi_bmps_rx_filter_cb)(uint16_t type, bool bm_cast, void *pbuf, uint16_t len);
 
 void pm_timer_debug_dump(void);
 uint32_t pm_timer_stop_all_k_timers(void);
@@ -60,8 +67,9 @@ static void bmps_timer_cb(struct k_timer *timer)
 static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
-    WMI_BMPS_ENABLE *pbmps = &bmps;
-    memset(pbmps, 0, sizeof(*pbmps));
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_pm_bmps_params bmps = {0};
+    struct qcom_wifi_pm_rx_filter_params rx_filter = {0};
     uint8_t enable = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse enable (err %d)", err);
@@ -74,27 +82,42 @@ static int cmd_bmps_enable(const struct shell *ctx, size_t argc, char **argv)
         shell_error(ctx, "Unable to parse enable (err %d)", err);
         return err;
     }
-    if(time!= 0)
-    {
+
+    if(time != 0) {
         k_timer_start(&bmps_timer, K_MSEC(time), K_NO_WAIT);
         bmps_start = hres_timer_curr_time_us();
         bmps_duration = bmps_start + (uint64_t)time*1000;
         shell_print(ctx, "%s duration:%llu ms:%d\r\n", __func__, bmps_duration, time);
     }
 
-    pbmps->enable = enable;
     shell_print(ctx, "Set bmps enable...");
-    qapi_bmps_cfg(pbmps->enable, 0);
-    if(enable && pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES))
-    {
+
+    rx_filter.enable = enable;
+    net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_RX_FILTER_IN_BMPS, iface, &rx_filter, sizeof(rx_filter));
+    if (err) {
+        shell_error(ctx, "fail to set rx filter (err %d)", err);
+        return err;
+    }
+
+    bmps.enable = enable;
+    err = net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_BMPS_ENABLE, iface, &bmps, sizeof(bmps));
+    if (err) {
+        shell_error(ctx, "fail to enable bmps (err %d)", err);
+        return err;
+    }
+
+    if(enable && pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES)) {
         pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES);
     }
+
     return 0;
 }
 
 static int cmd_bmps_idle_time(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
+    struct wifi_ps_params params = {0};
+    struct net_if *iface = net_if_get_wifi_sta();
     uint32_t idle_timeout = shell_strtoul(argv[1], 10, &err);
 
     if (err) {
@@ -103,14 +126,11 @@ static int cmd_bmps_idle_time(const struct shell *ctx, size_t argc, char **argv)
     }
 
     if (idle_timeout) {
-        WMI_BMPS_IDLE_TIME *pdata = &idle_time;
         shell_print(ctx, "Set bmps idle_timeout to %d ms", idle_timeout);
-        memset(pdata, 0, sizeof(*pdata));
-        pdata->time = idle_timeout;
-        qapi_bmps_cfg(2, pdata->time);
-    }
-    else
-    {
+        params.type = WIFI_PS_PARAM_TIMEOUT;
+        params.timeout_ms = idle_timeout;
+        net_mgmt(NET_REQUEST_WIFI_PS, iface, &params, sizeof(params));
+    } else {
         shell_error(ctx, "bmps idle_timeout can't set to 0");
     }
 
@@ -120,23 +140,23 @@ static int cmd_bmps_idle_time(const struct shell *ctx, size_t argc, char **argv)
 static int cmd_bmps_ignore_bcmc(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_pm_ignore_bc_mc_params ignore_bc_mc  = {0};
+
     uint8_t enable = shell_strtoul(argv[1], 10, &err);
-    WMI_BMPS_IGNORE_BCMC *pdata = &bmps;
-
-    pdata->enable = enable;
-
     if (err) {
         shell_error(ctx, "Unable to parse enable (err %d)", err);
         return err;
     }
-    /** wmi_ignore_bcmc_in_bmps(NULL, enable); */
-    wmi_cmd_send(WMI_BMPS_IGNORE_BCMC_CMDID, pdata, sizeof(*pdata));
+
+    ignore_bc_mc.enable = enable;
+    net_mgmt(NET_REQUEST_WIFI_PM_QCOM_IGNORE_BC_MC_IN_BMPS, iface, &ignore_bc_mc, sizeof(ignore_bc_mc));
+
     return 0;
 }
 
 static int cmd_dbg_tsf(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     WMI_BMPS_ENABLE *pbmps = &bmps;
     memset(pbmps, 0, sizeof(*pbmps));
     shell_print(ctx, "dbg tsf...");
@@ -146,7 +166,6 @@ static int cmd_dbg_tsf(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     const struct device *wifi_dev = device_get_binding("qwifi_sta");
 
     if (!wifi_dev) {
@@ -165,7 +184,6 @@ static int cmd_clear_busy(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
     const struct device *wifi_dev = device_get_binding("qwifi_sta");
 
     if (!wifi_dev) {
@@ -181,7 +199,8 @@ static int cmd_set_busy(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
-bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, uint16_t len)
+
+static bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, uint16_t len)
 {
     uint8_t *ip_frame;
     if (bm_cast) {
@@ -190,7 +209,7 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
 
         }
 
-        const uint8_t *llc_snap_header = wifi_frame + WIFI_MAC_HEADER_LEN;
+        const uint8_t *llc_snap_header =(uint8_t *) wifi_frame + WIFI_MAC_HEADER_LEN;
 
         if (llc_snap_header[6] != 0x08 || llc_snap_header[7] != 0x00) {
             return TRUE;
@@ -203,7 +222,7 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
             return TRUE;
         }
 
-        struct net_udp_hdr  *udp = (struct udp_hdr_hdr *)(ip_frame +NET_IPV4H_LEN);
+        struct net_udp_hdr  *udp = (struct net_udp_hdr *)(ip_frame +NET_IPV4H_LEN);
         uint16_t src_port = ntohs(udp->src_port);
         uint16_t dst_port = ntohs(udp->dst_port);
 
@@ -222,7 +241,9 @@ bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_frame, u
 static int cmd_bcmc_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
-    WMI_BMPS_ENABLE *pdata = (WMI_BMPS_ENABLE *)&bmps;
+    struct qcom_wifi_pm_rx_filter_params rx_filter = {0};
+    struct net_if *iface = net_if_get_wifi_sta();
+
     uint8_t enable = shell_strtoul(argv[1], 10, &err);
 
     if (err) {
@@ -230,32 +251,28 @@ static int cmd_bcmc_enable(const struct shell *ctx, size_t argc, char **argv)
         return err;
     }
 
-    memset(pdata, 0, sizeof(*pdata));
-    pdata->enable = enable;
-    wmi_cmd_send(WMI_BMPS_RX_FILTER_ENABLE_CMDID, pdata, sizeof(*pdata));
-
-    if (enable) {
-        qapi_bmps_bcmc_rx_filter_cb_register(wakeup_cb_bcmc_filter_dtim, NULL);
-
-    }
-
-
+    rx_filter.enable = enable;
+    rx_filter.bmps_rx_filter_cb = wakeup_cb_bcmc_filter_dtim;
+    net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_RX_FILTER_IN_BMPS, iface, &rx_filter, sizeof(rx_filter));
 
     return 0;
-
 }
 
 static int cmd_bmps_power_optimization_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
-    uint8_t enable = shell_strtoul(argv[1], 10, &err);
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_pm_power_optimization_params power_optimization = {0};
 
+    uint8_t enable = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse enable (err %d)", err);
         return err;
     }
 
-    if(QAPI_OK !=qapi_bmps_power_optimization_enable(enable?1:0)){
+    power_optimization.enable = enable;
+    if (net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_POWER_OPTIMIZATION_ENABLE_IN_BMPS,
+                 iface, &power_optimization, sizeof(power_optimization))) {
         shell_error(ctx, "qapi_bmps_power_optimization_enable error");
     }
 
@@ -265,14 +282,18 @@ static int cmd_bmps_power_optimization_enable(const struct shell *ctx, size_t ar
 static int cmd_compress_qos_null_enable(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
-    uint8_t enable = shell_strtoul(argv[1], 10, &err);
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_pm_compress_qos_null_params qos_null = {0};
 
+    uint8_t enable = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse enable (err %d)", err);
         return err;
     }
 
-    if(QAPI_OK !=qapi_bmps_compress_qos_null_enable(enable?1:0)){
+    qos_null.enable = enable;
+    if (net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_COMPRESS_QOS_NULL_ENABLE_IN_BMPS,
+                 iface, &qos_null, sizeof(qos_null))) {
         shell_error(ctx, "qapi_bmps_compress_qos_null_enable error");
     }
 
@@ -387,6 +408,67 @@ static int cmd_set_period_wakeup(const struct shell *ctx, size_t argc, char **ar
     return 0;
 }
 
+static void udp_timer_handler(struct k_timer *timer)
+{
+    const char *msg = "Hello Gateway";
+
+    if (udp_sock >= 0) {
+        zsock_send(udp_sock, msg, strlen(msg), 0);
+    }
+}
+
+static int cmd_start_udp_timer(const struct shell *shell, size_t argc, char **argv)
+{
+    int err = 0;
+    uint32_t period_ms = shell_strtoul(argv[1], 10, &err);
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct in_addr gw;
+    char gw_str[NET_IPV4_ADDR_LEN];
+
+    if (!iface) { 
+        shell_error(shell, "WiFi STA interface not found"); 
+        return -1; 
+    }
+
+    gw = net_if_ipv4_get_gw(iface);
+    net_addr_ntop(AF_INET, &gw, gw_str, sizeof(gw_str));
+
+    shell_print(shell, "Using gateway: %s", gw_str);
+
+    if (udp_sock < 0) {
+        udp_sock = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (udp_sock < 0) {
+            shell_error(shell, "Failed to create UDP socket");
+            return -1;
+        }
+
+        struct sockaddr_in addr = { 
+            .sin_family = AF_INET, 
+            .sin_port = htons(GATEWAY_PORT), 
+        };
+
+        if (zsock_inet_pton(AF_INET, gw_str, &addr.sin_addr) != 1) { 
+            shell_error(shell, "inet_pton failed"); 
+            zsock_close(udp_sock); 
+            udp_sock = -1; 
+            return -1; 
+        }
+
+        if (zsock_connect(udp_sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+            shell_error(shell, "Failed to connect UDP socket");
+            zsock_close(udp_sock);
+            udp_sock = -1;
+            return -1;
+        }
+    }
+
+    k_timer_init(&udp_timer, udp_timer_handler, NULL);
+    k_timer_start(&udp_timer, K_MSEC(period_ms), K_MSEC(period_ms));
+
+    shell_print(shell, "UDP timer started with period %u ms", period_ms);
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                SHELL_CMD_ARG(enable, NULL,
                                              "set bmps enable \n"
@@ -454,6 +536,11 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                             "set period wakeup\n"
                                             "Usage: set_period_wakeup <period(ms)>\n",
                                             cmd_set_period_wakeup, 2, 0),
+                                            SHELL_CMD_ARG(start_udp_timer, NULL,
+                                "set period wakeup and send a udp packet to gateway\n"
+                                "Usage: start_udp_timer <period(ms)>\n",
+                                cmd_start_udp_timer, 2, 0),
+                                
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qbmps, &sub_bmps_cmds, "bmps commands", NULL);

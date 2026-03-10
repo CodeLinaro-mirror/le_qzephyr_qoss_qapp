@@ -25,7 +25,7 @@ tests:
     pre_test_setup: |
       This test requires a physical loopback connection. Please connect the
       following GPIO pins on your board:
-        - Connect GPIO 5 to GPIO 6
+        - Connect GPIO 0 to GPIO 2
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/gpio/gpio_basic_api"
   drivers.i2c.i2c_lis2dw12:
     fixture: i2c_lis2dw12
@@ -60,7 +60,7 @@ tests:
     pre_test_setup: |
       This test requires a physical loopback connection between GPIO Pins
       Please connect the following GPIO pins on your QCC730 board:
-        - Connect GPIO 5 (QCC730) to the GPIO 6 (QCC730).
+        - Connect GPIO 0 (QCC730) to the GPIO 2 (QCC730).
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/gpio/gpio_stress"
   drivers.pinctrl.qcc730_pinctrl:
     testsuite-root: "{WORKSPACE_ROOT}/zephyr/tests/drivers/pinctrl/qcc730mi"

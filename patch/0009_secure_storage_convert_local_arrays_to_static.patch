@@ -1,0 +1,63 @@
+diff --git a/subsys/secure_storage/src/its/implementation.c b/subsys/secure_storage/src/its/implementation.c
+index afa24c5cd80..87c7909f08b 100644
+--- a/subsys/secure_storage/src/its/implementation.c
++++ b/subsys/secure_storage/src/its/implementation.c
+@@ -17,6 +17,9 @@ BUILD_ASSERT(1 << SECURE_STORAGE_ITS_CALLER_ID_BIT_SIZE >= SECURE_STORAGE_ITS_CA
+ BUILD_ASSERT(SECURE_STORAGE_ITS_CALLER_ID_BIT_SIZE + SECURE_STORAGE_ITS_UID_BIT_SIZE == 32);
+ #endif
+ 
++static uint8_t data[CONFIG_SECURE_STORAGE_ITS_MAX_DATA_SIZE];
++static uint8_t stored_data[SECURE_STORAGE_ITS_TRANSFORM_MAX_STORED_DATA_SIZE];
++
+ static psa_status_t make_its_uid(secure_storage_its_caller_id_t caller_id, psa_storage_uid_t uid,
+ 				 secure_storage_its_uid_t *its_uid)
+ {
+@@ -81,7 +84,6 @@ static psa_status_t get_entry(secure_storage_its_uid_t uid, size_t data_size, ui
+ 			      size_t *data_len, psa_storage_create_flags_t *create_flags)
+ {
+ 	psa_status_t ret;
+-	uint8_t stored_data[SECURE_STORAGE_ITS_TRANSFORM_MAX_STORED_DATA_SIZE];
+ 	size_t stored_data_len;
+ 
+ 	ret = get_stored_data(uid, stored_data, &stored_data_len);
+@@ -133,7 +135,6 @@ static psa_status_t store_entry(secure_storage_its_uid_t uid, size_t data_length
+ 				const void *p_data, psa_storage_create_flags_t create_flags)
+ {
+ 	psa_status_t ret;
+-	uint8_t stored_data[SECURE_STORAGE_ITS_TRANSFORM_MAX_STORED_DATA_SIZE];
+ 	size_t stored_data_len;
+ 
+ 	ret = secure_storage_its_transform_to_store(uid, data_length, p_data, create_flags,
+@@ -182,7 +183,6 @@ psa_status_t secure_storage_its_get(secure_storage_its_caller_id_t caller_id, ps
+ {
+ 	psa_status_t ret;
+ 	secure_storage_its_uid_t its_uid;
+-	uint8_t stored_data[SECURE_STORAGE_ITS_TRANSFORM_MAX_STORED_DATA_SIZE];
+ 	size_t stored_data_len;
+ 	psa_storage_create_flags_t create_flags;
+ 
+@@ -204,7 +204,7 @@ psa_status_t secure_storage_its_get(secure_storage_its_caller_id_t caller_id, ps
+ 		return transform_stored_data(its_uid, stored_data_len, stored_data, data_size,
+ 					     p_data, p_data_length, &create_flags);
+ 	}
+-	uint8_t data[CONFIG_SECURE_STORAGE_ITS_MAX_DATA_SIZE];
++
+ 	size_t data_len;
+ 
+ 	ret = transform_stored_data(its_uid, stored_data_len, stored_data, sizeof(data), data,
+@@ -226,7 +226,6 @@ psa_status_t secure_storage_its_get_info(secure_storage_its_caller_id_t caller_i
+ {
+ 	psa_status_t ret;
+ 	secure_storage_its_uid_t its_uid;
+-	uint8_t data[CONFIG_SECURE_STORAGE_ITS_MAX_DATA_SIZE];
+ 
+ 	if (make_its_uid(caller_id, uid, &its_uid) != PSA_SUCCESS) {
+ 		return PSA_ERROR_INVALID_ARGUMENT;
+@@ -245,7 +244,6 @@ psa_status_t secure_storage_its_remove(secure_storage_its_caller_id_t caller_id,
+ 	psa_status_t ret;
+ 	secure_storage_its_uid_t its_uid;
+ 	psa_storage_create_flags_t create_flags;
+-	uint8_t data[CONFIG_SECURE_STORAGE_ITS_MAX_DATA_SIZE];
+ 	size_t data_len;
+ 
+ 	if (make_its_uid(caller_id, uid, &its_uid) != PSA_SUCCESS) {

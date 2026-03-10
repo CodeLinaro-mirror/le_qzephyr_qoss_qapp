@@ -1,0 +1,104 @@
+# Copyright (c) 2024 Qualcomm Technologies, Inc.
+# SPDX-License-Identifier: BSD-3-Clause
+
+menuconfig QCOM_IMG_MGMT
+	bool "Qualcomm Custom Image Management"
+	depends on FLASH
+	depends on MCUMGR
+	select MCUMGR_SMP_CBOR_MIN_DECODING_LEVEL_2
+	select MCUMGR_SMP_CBOR_MIN_ENCODING_LEVEL_2
+	select CRC
+	select BASE64
+	select MCUMGR_GRP_OS
+	select MCUMGR_GRP_OS_TASKSTAT
+	select MCUMGR_GRP_OS_ECHO
+	select MCUMGR_TRANSPORT_UDP
+	select MCUMGR_TRANSPORT_UDP_IPV4
+	help
+	  Enable custom image management without MCUboot dependency.
+	  This provides firmware update capability through MCUmgr.
+	  
+	  This automatically enables required MCUmgr dependencies including:
+	  - Base64 encoding support
+	  - CRC calculation support
+	  - MCUmgr OS group for system management
+	  - UDP transport for network-based management
+	  
+	  Note: ZCBOR is automatically enabled by MCUMGR dependency.
+
+if QCOM_IMG_MGMT
+
+# ============================================
+# ZCBOR Configuration
+# ============================================
+config QCOM_IMG_MGMT_ZCBOR_MAX_STR_LEN
+	int "Maximum ZCBOR string length"
+	default 1024
+	help
+	  Maximum string length for ZCBOR operations.
+	  Increased to support larger binary data transfers.
+
+# Map to standard Zephyr config
+config ZCBOR_MAX_STR_LEN
+	default QCOM_IMG_MGMT_ZCBOR_MAX_STR_LEN
+
+# ============================================
+# MCUmgr Transport Configuration
+# ============================================
+config QCOM_IMG_MGMT_UDP_PORT
+	int "MCUmgr UDP port"
+	default 1337
+	help
+	  UDP port for MCUmgr communication.
+
+config QCOM_IMG_MGMT_UDP_MTU
+	int "MCUmgr UDP MTU size"
+	default 1500
+	help
+	  Maximum transmission unit for UDP transport.
+
+config QCOM_IMG_MGMT_NETBUF_COUNT
+	int "MCUmgr network buffer count"
+	default 4
+	help
+	  Number of network buffers for MCUmgr transport.
+
+config QCOM_IMG_MGMT_NETBUF_SIZE
+	int "MCUmgr network buffer size"
+	default 4096
+	help
+	  Size of each network buffer for MCUmgr transport.
+	  Increased to support larger CBOR payloads (e.g., 512-byte data chunks).
+
+# Map to standard Zephyr configs
+config MCUMGR_TRANSPORT_UDP_PORT
+	default QCOM_IMG_MGMT_UDP_PORT
+
+config MCUMGR_TRANSPORT_UDP_MTU
+	default QCOM_IMG_MGMT_UDP_MTU
+
+config MCUMGR_TRANSPORT_NETBUF_COUNT
+	default QCOM_IMG_MGMT_NETBUF_COUNT
+
+config MCUMGR_TRANSPORT_NETBUF_SIZE
+	default QCOM_IMG_MGMT_NETBUF_SIZE
+
+# ============================================
+# Crypto Configuration
+# ============================================
+config QCOM_IMG_MGMT_SHA256_SUPPORT
+	bool "Enable sha256 support for image verification"
+	default y
+	select MBEDTLS
+	select MBEDTLS_SHA256
+	help
+	  Enable SHA256 support for image verification.
+
+# ============================================
+# Logging Configuration
+# ============================================
+module = QCOM_IMG_MGMT
+module-str = qcom_img_mgmt
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # QCOM_IMG_MGMT

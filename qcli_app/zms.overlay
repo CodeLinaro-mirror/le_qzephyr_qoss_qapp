@@ -1,0 +1,33 @@
+/*
+ * Usage:
+ *   west build -b <board> -s <app> -- \
+ *     -DDTC_OVERLAY_FILE=zms.overlay
+ *
+ * It defines a dedicated flash partition for ITS secure storage with ZMS backend.
+ */
+
+
+/ {
+    chosen {
+        secure_storage_its_partition = &its_partition;
+        zephyr,secure-storage-its-partition = &its_partition;
+    };
+};
+
+    &qspi_nor_flash3 {
+        status = "okay";
+        write-block-size = <256>;
+        erase-block-size = <4096>;
+        partitions {
+            compatible = "fixed-partitions";
+            #address-cells = <1>;
+            #size-cells = <1>;
+            its_partition: its@370000 {
+                label = "its";
+                reg = <0x370000 0x10000>;
+            };
+        };
+    };
+
+
+

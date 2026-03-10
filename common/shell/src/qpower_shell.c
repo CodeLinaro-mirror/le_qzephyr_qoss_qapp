@@ -13,6 +13,8 @@
 #include "wifi_fw_cpr_driver.h"
 #include <zephyr/pm/policy.h>
 #include <zephyr/pm/pm.h>
+#include "qlib_early_printk.h"
+#include "ferm_hkadc_hal.h"
 
 #define TEMPERATUREC_MIN    (-40)
 #define TEMPERATUREC_MAX    (125)
@@ -84,7 +86,6 @@ static void s2ram_timer_cb(struct k_timer *timer)
 
 static int cmd_reg_cb(const struct shell *ctx, size_t argc, char **argv)
 {
-    int err = 0;
 
     pm_notifier_register(&my_notifier);
     shell_print(ctx, "sleep callback registered,sleep entry could not use uart beacuse of zephyr pm");

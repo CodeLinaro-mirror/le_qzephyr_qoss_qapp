@@ -9,6 +9,8 @@
 #include <qwifi_api.h>
 #include <zephyr/net/net_if.h>
 #include <qcom_wifi_mgmt.h>
+#include <stdlib.h>
+#include <zephyr/net/wifi_utils.h>
 
 static int cmd_set_tx_power(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -719,6 +721,137 @@ static int32_t get_op_mode(const struct shell *ctx)
     return 0;
 }
 
+static int cmd_csa(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface;
+    struct qcom_wifi_csa_params csa = {0};
+    enum wifi_frequency_bands check_bands[] = { WIFI_FREQ_BAND_2_4_GHZ, WIFI_FREQ_BAND_5_GHZ };
+
+    unsigned long v = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <mode> (err %d)", err);
+        return -EINVAL;
+    }
+    if (v != 0 && v != 1) {
+        shell_error(ctx, "<mode> should be 0 or 1");
+        return -EINVAL;
+    }
+    csa.switch_mode = v;
+
+    v = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <channel> (err %d)", err);
+        return -EINVAL;
+    }
+
+    bool valid_channel = false;
+    for (int i = 0; i < sizeof(check_bands) / sizeof(check_bands[0]); i++) {
+        if (wifi_utils_validate_chan(check_bands[i], v)) {
+            valid_channel = true;
+            break;
+        }
+    }
+
+    if (!valid_channel) {
+        shell_error(ctx, "<channel> should be valid in 2.4g or 5g.");
+        return -EINVAL;
+    }
+    csa.new_channel = v;
+
+    v = shell_strtoul(argv[3], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <count> (err %d)", err);
+        return -EINVAL;
+    }
+
+    if (v > 255) {
+        shell_error(ctx, "<count> should be less than 255.");
+        return -EINVAL;
+    }
+    csa.switch_count = v;
+
+    if (argc < 5) {
+        iface = net_if_get_wifi_sap();
+    } else {
+         unsigned long iface_index = shell_strtoul(argv[4], 10, &err);
+        if (err) {
+            shell_error(ctx, "Unable to parse iface index (err %d)", err);
+            return -EINVAL;
+        }
+        iface = net_if_get_by_index(iface_index);
+    }
+
+    if (!iface) {
+        shell_error(ctx, "Get SAP iface fail.");
+        return -EINVAL;
+    }
+
+    return net_mgmt(NET_REQUEST_WIFI_QCOM_SET_SAP_CSA, iface, &csa, sizeof(csa));
+}
+
+static int cmd_wifi_set_operation_mode(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_op_mode_params set_op_mode_cfg;
+
+    if(argc < 1) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    if (argc >= 3) {
+        set_op_mode_cfg.hidden_ssid = argv[2];
+    }
+    else {
+        set_op_mode_cfg.hidden_ssid = "0";
+    }
+    set_op_mode_cfg.opmode = argv[1];
+
+    if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface, &set_op_mode_cfg, sizeof(set_op_mode_cfg))) {
+        shell_error(ctx, "Set op mode to %s fail", set_op_mode_cfg.opmode);
+        return -ENOEXEC;
+    } else {
+        shell_print(ctx, "Set op mode to %s", set_op_mode_cfg.opmode);
+    }
+
+    return 0;
+
+}
+
+static int cmd_wifi_set_active_device(const struct shell *ctx, size_t argc, char **argv)
+{
+    uint16_t deviceId;
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+
+    if(argc != 2) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    deviceId = shell_strtoul(argv[1], 10, err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input deviceId (err %d)", err);
+        return err;
+    }
+
+    if (deviceId != 0 && deviceId != 1) {
+        shell_error(ctx, "Invaild device id");
+        return EINVAL;
+    }
+
+    if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_DEVICE_ID, iface, &deviceId, sizeof(uint16_t))) {
+        shell_error(ctx, "Set device id to %s fail", deviceId == 0? "softap":"station");
+        return -ENOEXEC;
+    } else {
+        shell_print(ctx, "Set device id to %s", deviceId == 0? "softap":"station");
+    }
+
+    return 0;
+}
+
+
 static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
 {
     (void)get_device_mac_address(ctx);
@@ -750,7 +883,23 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "  qwifi unit_test 1 4 1 0\n"
                                              "Example: To perform HW readouts\n"
                                              "  qwifi unit_test 1 4 1 12\n"
-                                             "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.", cmd_qwifi_unit_test, 4, 20),
+                                             "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.\n", cmd_qwifi_unit_test, 4, 20),
+                               SHELL_CMD_ARG(set_operation_mode, NULL,
+                                             "Set operation mode.\n"
+                                             "Usage: qwifi set_operation_mode <ap|station|ap_sta> [<hidden|0>] \n"
+                                             "Example: Set operation mode to station\n"
+                                             "  qwifi set_operation_mode station \n"
+                                             "Example: Set operation mode to soft ap \n"
+                                             "  qwifi set_operation_mode ap \n"
+                                             "Example: Enable ap+sta concurrency mode\n"
+                                             "  qwifi set_operation_mode ap_sta \n"
+                                             "Example: To hide ssid \n"
+                                             "  qwifi set_operation_mode ap hidden \n",
+                                             cmd_wifi_set_operation_mode, 2, 1),
+                               SHELL_CMD_ARG(set_device, NULL,
+                                             "Set Active Device.\n"
+                                             "Usage: qwifi set_device [0 : soft ap | 1: station] \n",
+                                             cmd_wifi_set_active_device, 2, 0),
                                SHELL_CMD_ARG(set_rts, NULL,
                                              "Enable/disable RTS/CTS protection.\n"
 					     "Usage: qwifi set_rts <0 | 1>\n",
@@ -836,6 +985,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Show WLAN information: PHY mode, power mode, MAC address, and operation mode.\n"
 					     "Usage: qwifi info\n",
                                              cmd_info, 1, 0),
+                               SHELL_CMD_ARG(set_csa, NULL,
+                                             "Channel Switch Announcement.\n"
+					     "Usage: qwifi set_csa | <mode> <channel> <count> [<iface index>: default is sap iface index.]\n",
+                                             cmd_csa, 4, 1),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);

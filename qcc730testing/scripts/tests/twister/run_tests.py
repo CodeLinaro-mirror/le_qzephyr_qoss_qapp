@@ -421,7 +421,10 @@ class TestRunner:
             instructions = self.config["pre_test_setup"]
             print("\n=== ATTENTION: Pre-test setup required ===")
             print(instructions.strip())
-            input("Press Enter to continue once setup is complete...")
+
+            # User should prepare the setup requirements for testing
+            # Commented out prompt for confirmation to enable automated test execution
+            # input("Press Enter to continue once setup is complete...")
 
     def _handle_post_test_check(self) -> bool:
         """Handles post-test manual verification if required."""

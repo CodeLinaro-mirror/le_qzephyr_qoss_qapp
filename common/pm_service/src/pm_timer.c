@@ -16,6 +16,7 @@
  */
 
 
+#include <stdbool.h>
 #include <zephyr/kernel.h>
 #include <zephyr/sys/slist.h>
 #include <zephyr/sys/dlist.h>
@@ -36,7 +37,44 @@
 #include "qurt_error.h"
 #include "qapi_wlan.h"
 
+#define MAX_TASKS 16
+#define HASH_SIZE 32
+
 LOG_MODULE_REGISTER(pm_timer, LOG_LEVEL_DBG);
+
+typedef struct { 
+    const char *name; 
+} task_entry_t;
+
+static task_entry_t hash_table[HASH_SIZE];
+
+static unsigned int str_hash(const char *s) 
+{ 
+    unsigned int h = 0; 
+    while (*s) { 
+        h = (h * 31) ^ (unsigned char)(*s++); 
+    } 
+    return h % HASH_SIZE; 
+}
+
+static void init_os_default_tasks(void) 
+{ 
+    const char *os_default_tasks[] = { 
+    "mcumgr smp", 
+    "smp_udp4", 
+    "zperf_work_q", 
+    "conn_mgr_monitor", 
+    "net_socket_service", 
+    "rx_q[0]", 
+    "net_mgmt",
+    "tcp_work", 
+    }; 
+
+    for (size_t i = 0; i < ARRAY_SIZE(os_default_tasks); i++) { 
+        unsigned int h = str_hash(os_default_tasks[i]); 
+        hash_table[h].name = os_default_tasks[i]; 
+    } 
+}
 
 struct pm_managed_timer {
     sys_snode_t node;
@@ -89,10 +127,12 @@ int pm_timer_register(struct pm_managed_timer *mt, struct k_timer *timer, bool s
 int pm_timer_unregister(struct k_timer *timer);
 void pm_timer_register_internal(char *pcTimerName,TimerHandle_t k_timer_handle);
 static void pm_service_timer_cb(struct k_timer *timer);
-
-
+void suspend_all_os_default_tasks(void);
+void resume_all_os_default_tasks(void);
+static bool os_default_tasks_suspended = false;
 
 K_TIMER_DEFINE(pm_service_timer, pm_service_timer_cb, NULL);
+struct k_timer dummy_timer;
 
 static void pm_service_timer_cb(struct k_timer *timer)
 {
@@ -369,7 +409,7 @@ void pm_device_dump_all_status(void)
         /* Check if the device has PM configured */
         if (dev->pm_base != NULL) {
             /* Format the PM flags for printing */
-            snprintk(flags_str, sizeof(flags_str), "0x%02x", dev->pm_base->flags);
+            snprintk(flags_str, sizeof(flags_str), "0x%02x", (uint32_t)dev->pm_base->flags);
 
             snprintk(pm_state_str, sizeof(pm_state_str),"%d", dev->pm_base->state);
             
@@ -492,6 +532,8 @@ static void on_idle_pre_sleep(void)
 
     if(!pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM,PM_ALL_SUBSTATES) && !pm_device_is_any_busy())
     {
+        suspend_all_os_default_tasks();
+        
         k_spinlock_key_t key = k_spin_lock(&g_pm_timer_lock);
 
         SYS_SLIST_FOR_EACH_CONTAINER(&g_pm_timer_list, mt, node) {
@@ -530,6 +572,60 @@ static void on_idle_pre_sleep(void)
     }
 }
 
+bool if_os_default_tasks(char *name)
+{    
+    if(!name){
+        return false;
+    }
+
+    unsigned int h = str_hash(name);
+
+    if (hash_table[h].name && strcmp(hash_table[h].name, name) == 0)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+static void suspend_thread_cb(struct k_thread *thread, void *user_data)
+{
+    const char *name = k_thread_name_get(thread);
+
+    if (name) {
+        if (if_os_default_tasks((char *)name)) {
+            /*printk("Suspending task: %s\n", name);*/
+            k_thread_suspend(thread);
+        }
+    }
+    return;
+}
+
+void suspend_all_os_default_tasks(void)
+{
+    k_thread_foreach(suspend_thread_cb, NULL);
+    os_default_tasks_suspended = true;
+}
+
+/* callback for k_thread_foreach */
+static void resume_thread_cb(struct k_thread *thread, void *user_data)
+{
+    const char *name = k_thread_name_get(thread);
+
+    if (name) {
+        if (if_os_default_tasks((char *)name)) {
+            /*printk("Resuming tasks: %s\n", name);*/
+            k_thread_resume(thread);
+        }
+    }
+    return;
+}
+
+void resume_all_os_default_tasks(void)
+{
+    k_thread_foreach(resume_thread_cb, NULL);
+}
+
 static void on_idle_post_sleep(void)
 {
     struct pm_managed_timer *mt;
@@ -544,6 +640,12 @@ static void on_idle_post_sleep(void)
         mt->was_running = false;
     }
     k_spin_unlock(&g_pm_timer_lock, key);
+
+    if(os_default_tasks_suspended){
+        resume_all_os_default_tasks();
+        os_default_tasks_suspended = false;
+    }
+    
 }
 
 /* ============================================================================
@@ -560,7 +662,6 @@ int pm_timer_register(struct pm_managed_timer *mt, struct k_timer *timer, bool s
     mt->auto_restart = auto_restart;
     mt->was_running = false;
     
-    LOG_INF("pm_timer_register: %s", mt->name);
 
     k_spinlock_key_t key = k_spin_lock(&g_pm_timer_lock);
     sys_slist_append(&g_pm_timer_list, &mt->node);
@@ -575,7 +676,6 @@ int pm_timer_unregister(struct k_timer *timer)
 
     SYS_SLIST_FOR_EACH_CONTAINER_SAFE(&g_pm_timer_list, mt, next, node) {
         if (mt->timer == timer) {
-            LOG_INF("pm_timer_unregister: %s", mt->name);
             sys_slist_find_and_remove(&g_pm_timer_list, &mt->node);
             k_free(mt); 
             break;
@@ -657,7 +757,7 @@ int pm_timer_manager_init(void)
      * internal _timeout struct.
      */
     if (g_timer_expiry_handler_fn == NULL) {
-        struct k_timer dummy_timer;
+   
         k_timer_init(&dummy_timer, NULL, NULL);
         /* Start and immediately stop the timer. This is enough for the kernel
          * to populate the internal timeout struct. Using K_MSEC(1) is safe. */
@@ -674,6 +774,7 @@ int pm_timer_manager_init(void)
     idle_hook_register_suspend(&my_pre_sleep_hook_entry, on_idle_pre_sleep);
     idle_hook_register_resume(&my_post_sleep_hook_entry, on_idle_post_sleep);
 
+    init_os_default_tasks();
     // some known timer need to be suspend before enter sleep, they should not as wakeup source
     // pm_timer_register();
 

@@ -19,7 +19,7 @@ hello_world_app=(
     "zephyr/samples/hello_world"
 )
 if [ ! -f SRC-IOE-SDK.tar.gz ]; then
-    tar --exclude=.git --exclude=.gitignore -czpf SRC-IOE-SDK.tar.gz modules/hal/cmsis modules/hal/qcom modules/lib/hostap \
+    tar --exclude=.git --exclude=.gitignore -czpf SRC-IOE-SDK.tar.gz modules/hal/qcom modules/lib/hostap \
     zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6
 fi
 if [ -d prebuilt_HY11 ]; then
