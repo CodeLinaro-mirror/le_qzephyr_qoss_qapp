@@ -1,7 +1,48 @@
 diff --git a/drivers/timer/cortex_m_systick.c b/drivers/timer/cortex_m_systick.c
-index e2563ddd9d7..9a837eac03f 100644
+old mode 100644
+new mode 100755
+index e2563ddd9d7..b8b006e702b
 --- a/drivers/timer/cortex_m_systick.c
 +++ b/drivers/timer/cortex_m_systick.c
+@@ -107,7 +107,7 @@ static cycle_t cycle_pre_idle;
+ 
+ #if defined(CONFIG_CORTEX_M_SYSTICK_LPM_TIMER_COUNTER)
+ /* Idle timer value before entering the idle state. */
+-static uint32_t idle_timer_pre_idle;
++static uint64_t idle_timer_pre_idle;
+ 
+ /* Idle timer used for timer while entering the idle state */
+ static const struct device *idle_timer = DEVICE_DT_GET(DT_CHOSEN(zephyr_cortex_m_idle_timer));
+@@ -124,7 +124,7 @@ void z_cms_lptim_hook_on_lpm_entry(uint64_t max_lpm_time_us)
+ {
+ 	struct counter_alarm_cfg cfg = {
+ 		.callback = NULL,
+-		.ticks = counter_us_to_ticks(idle_timer, max_lpm_time_us),
++		.ticks = counter_us_to_ticks_64(idle_timer, max_lpm_time_us),
+ 		.user_data = NULL,
+ 		.flags = 0,
+ 	};
+@@ -143,7 +143,7 @@ void z_cms_lptim_hook_on_lpm_entry(uint64_t max_lpm_time_us)
+ 	/* Store current value of the selected timer to calculate a
+ 	 * difference in measurements after exiting the idle state.
+ 	 */
+-	counter_get_value(idle_timer, &idle_timer_pre_idle);
++	counter_get_value_64(idle_timer, &idle_timer_pre_idle);
+ }
+ 
+ uint64_t z_cms_lptim_hook_on_lpm_exit(void)
+@@ -151,9 +151,9 @@ uint64_t z_cms_lptim_hook_on_lpm_exit(void)
+ 	/**
+ 	 * Calculate how much time elapsed according to counter.
+ 	 */
+-	uint32_t idle_timer_post, idle_timer_diff;
++	uint64_t idle_timer_post, idle_timer_diff;
+ 
+-	counter_get_value(idle_timer, &idle_timer_post);
++	counter_get_value_64(idle_timer, &idle_timer_post);
+ 
+ 	/**
+ 	 * Check for counter timer overflow
 @@ -461,7 +461,7 @@ void sys_clock_idle_exit(void)
  #if !defined(CONFIG_CORTEX_M_SYSTICK_LPM_TIMER_NONE)
  	if (timeout_idle) {
@@ -11,3 +52,34 @@ index e2563ddd9d7..9a837eac03f 100644
  		uint64_t systick_us, idle_timer_us;
  
  #if !defined(CONFIG_CORTEX_M_SYSTICK_RESET_BY_LPM)
+diff --git a/include/zephyr/drivers/counter.h b/include/zephyr/drivers/counter.h
+old mode 100644
+new mode 100755
+index ca3a35183f4..4c5cc537bd6
+--- a/include/zephyr/drivers/counter.h
++++ b/include/zephyr/drivers/counter.h
+@@ -322,6 +322,24 @@ static inline uint32_t z_impl_counter_us_to_ticks(const struct device *dev,
+ 	return (ticks > (uint64_t)UINT32_MAX) ? UINT32_MAX : ticks;
+ }
+ 
++/**
++ * @brief Function to convert microseconds to ticks.
++ *
++ * @param[in]  dev    Pointer to the device structure for the driver instance.
++ * @param[in]  us     Microseconds.
++ *
++ * @return Converted ticks in u64.
++ */
++__syscall uint64_t counter_us_to_ticks_64(const struct device *dev, uint64_t us);
++
++static inline uint64_t z_impl_counter_us_to_ticks_64(const struct device *dev,
++					       uint64_t us)
++{
++	uint64_t ticks = (us * z_impl_counter_get_frequency(dev)) / USEC_PER_SEC;
++
++	return ticks;
++}
++
+ /**
+  * @brief Function to convert ticks to microseconds.
+  *
