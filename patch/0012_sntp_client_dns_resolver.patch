@@ -1,0 +1,49 @@
+diff --git a/samples/net/sockets/sntp_client/prj.conf b/samples/net/sockets/sntp_client/prj.conf
+index 4b94923895b..1fd2f6498f6 100644
+--- a/samples/net/sockets/sntp_client/prj.conf
++++ b/samples/net/sockets/sntp_client/prj.conf
+@@ -5,7 +5,7 @@ CONFIG_POSIX_API=y
+ # Networking config
+ CONFIG_NETWORKING=y
+ CONFIG_NET_IPV4=y
+-CONFIG_NET_IPV6=y
++CONFIG_NET_IPV6=n
+ CONFIG_NET_UDP=y
+ CONFIG_NET_SHELL=y
+ 
+@@ -17,15 +17,29 @@ CONFIG_ZVFS_POLL_MAX=4
+ # Network driver config
+ CONFIG_TEST_RANDOM_GENERATOR=y
+ 
+-# Network address config
+-CONFIG_NET_CONFIG_SETTINGS=y
+-CONFIG_NET_CONFIG_NEED_IPV4=y
+-CONFIG_NET_CONFIG_NEED_IPV6=y
+-CONFIG_NET_CONFIG_MY_IPV4_ADDR="192.0.2.1"
+-CONFIG_NET_CONFIG_MY_IPV6_ADDR="2001:db8::1"
++# WiFi + DHCP (required for QCC730 hardware)
++CONFIG_NET_CONFIG_AUTO_INIT=n
++CONFIG_NET_CONFIG_SETTINGS=n
++CONFIG_ETH_DRIVER=n
++CONFIG_NET_L2_ETHERNET=y
++CONFIG_WIFI=y
++CONFIG_WIFI_QCOM=y
++CONFIG_NET_L2_WIFI_MGMT=y
++CONFIG_NET_L2_WIFI_SHELL=y
++CONFIG_NET_DHCPV4=y
++CONFIG_WIFI_QCOM_AUTO_DHCPV4=y
++
++# DNS resolver (required for getaddrinfo hostname resolution on WiFi+DHCP)
++CONFIG_DNS_RESOLVER=y
++CONFIG_NET_DHCPV4_OPTION_DNS_ADDRESS=y
++
++# Connection manager (required for wait_for_network() to block until WiFi+DHCP ready)
++CONFIG_NET_CONNECTION_MANAGER=y
++CONFIG_NET_IF_MAX_IPV4_COUNT=2
+ 
+ # SNTP
+ CONFIG_SNTP=y
++CONFIG_NET_SAMPLE_SNTP_SERVER_ADDRESS="192.168.0.102"
+ 
+ CONFIG_MAIN_STACK_SIZE=2048
+ # Network debug config
