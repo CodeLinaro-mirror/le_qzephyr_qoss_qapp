@@ -792,7 +792,7 @@ static int cmd_csa(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_wifi_set_operation_mode(const struct shell *ctx, size_t argc, char **argv)
 {
-    struct net_if *iface = net_if_get_wifi_sta();
+    struct net_if *iface;
     struct qcom_wifi_set_op_mode_params set_op_mode_cfg;
 
     if(argc < 1) {
@@ -807,6 +807,16 @@ static int cmd_wifi_set_operation_mode(const struct shell *ctx, size_t argc, cha
         set_op_mode_cfg.hidden_ssid = "0";
     }
     set_op_mode_cfg.opmode = argv[1];
+    if (strcmp(argv[1], "station") == 0) {
+        iface = net_if_get_wifi_sta();
+    } else {
+        iface = net_if_get_wifi_sap();
+    }
+
+    if (!iface) {
+        shell_error(ctx, "Failed to get wifi iface for mode %s", argv[1]);
+        return -ENODEV;
+    }
 
     if(net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface, &set_op_mode_cfg, sizeof(set_op_mode_cfg))) {
         shell_error(ctx, "Set op mode to %s fail", set_op_mode_cfg.opmode);
