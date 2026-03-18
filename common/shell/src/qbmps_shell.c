@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <stdint.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 #include <zephyr/pm/pm.h>
@@ -38,11 +39,15 @@ uint64_t bmps_start = 0;
 #define WIFI_MAC_HEADER_LEN 24
 #define LLC_SNAP_HEADER_LEN 8
 #define UDP_WHITELIST_LEN     4
+#define UDP_TIMER_TASK_PRIORITY   10
+#define UDP_TIMER_SIGNAL_MASK 0x00000001
+
 uint32_t udp_whitelist_arr[UDP_WHITELIST_LEN] = {7777, 0, 0, 0};
 
 void pm_timer_debug_dump(void);
 uint32_t pm_timer_stop_all_k_timers(void);
-
+TaskHandle_t udp_timer_task_hnd = (TaskHandle_t)NULL;
+static qurt_signal_t *udp_timer_task_signal;
 K_TIMER_DEFINE(bmps_timer, bmps_timer_cb, NULL);
 K_TIMER_DEFINE(period_wakeup_timer, period_wakeup_timer_cb, NULL);
 
@@ -410,19 +415,27 @@ static int cmd_set_period_wakeup(const struct shell *ctx, size_t argc, char **ar
 
 static void udp_timer_handler(struct k_timer *timer)
 {
+    qurt_signal_set(udp_timer_task_signal, UDP_TIMER_SIGNAL_MASK);
+}
+void udp_timer_task(void __attribute__((__unused__))*pvParameters)
+{
     const char *msg = "Hello Gateway";
-
-    if (udp_sock >= 0) {
-        zsock_send(udp_sock, msg, strlen(msg), 0);
+    for (;;)
+	{
+        qurt_signal_wait(udp_timer_task_signal, UDP_TIMER_SIGNAL_MASK, QURT_SIGNAL_ATTR_WAIT_ANY | QURT_SIGNAL_ATTR_CLEAR_MASK);
+    
+        if (udp_sock >= 0) {
+            zsock_send(udp_sock, msg, strlen(msg), 0);
+        }
     }
 }
-
 static int cmd_start_udp_timer(const struct shell *shell, size_t argc, char **argv)
 {
     int err = 0;
     uint32_t period_ms = shell_strtoul(argv[1], 10, &err);
     struct net_if *iface = net_if_get_wifi_sta();
     struct in_addr gw;
+    BaseType_t ret_val;
     char gw_str[NET_IPV4_ADDR_LEN];
 
     if (!iface) { 
@@ -460,6 +473,11 @@ static int cmd_start_udp_timer(const struct shell *shell, size_t argc, char **ar
             udp_sock = -1;
             return -1;
         }
+    }
+    qurt_signal_create(&udp_timer_task_signal);
+
+    if(udp_timer_task_signal != NULL){
+        ret_val = nt_qurt_thread_create(udp_timer_task, "udp_timer_demo", 256, NULL, UDP_TIMER_TASK_PRIORITY, &udp_timer_task_hnd);
     }
 
     k_timer_init(&udp_timer, udp_timer_handler, NULL);
@@ -536,7 +554,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_bmps_cmds,
                                             "set period wakeup\n"
                                             "Usage: set_period_wakeup <period(ms)>\n",
                                             cmd_set_period_wakeup, 2, 0),
-                                            SHELL_CMD_ARG(start_udp_timer, NULL,
+                                SHELL_CMD_ARG(start_udp_timer, NULL,
                                 "set period wakeup and send a udp packet to gateway\n"
                                 "Usage: start_udp_timer <period(ms)>\n",
                                 cmd_start_udp_timer, 2, 0),
