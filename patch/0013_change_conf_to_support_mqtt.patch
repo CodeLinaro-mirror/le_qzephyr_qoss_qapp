@@ -1,0 +1,20 @@
+diff --git a/samples/net/secure_mqtt_sensor_actuator/prj.conf b/samples/net/secure_mqtt_sensor_actuator/prj.conf
+index b87eaa2c348..45c6d16836b 100644
+--- a/samples/net/secure_mqtt_sensor_actuator/prj.conf
++++ b/samples/net/secure_mqtt_sensor_actuator/prj.conf
+@@ -57,3 +57,15 @@ CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=2048
+ 
+ # Increase Rx net buffers
+ CONFIG_NET_BUF_RX_COUNT=100
++
++CONFIG_TEST_RANDOM_GENERATOR=y
++CONFIG_WIFI=y
++CONFIG_WIFI_QCOM=y
++CONFIG_NET_L2_ETHERNET=y
++CONFIG_ETH_DRIVER=y
++CONFIG_NET_MGMT=y
++CONFIG_NET_L2_WIFI_MGMT=y
++CONFIG_NET_SHELL=y
++CONFIG_NET_L2_WIFI_SHELL=y
++# The host name should be set to the certificate's common name
++CONFIG_NET_SAMPLE_MQTT_BROKER_HOSTNAME="Intermediate"

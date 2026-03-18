@@ -1,0 +1,15 @@
+diff --git a/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c b/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c
+index 2d2b4012d4b..90f575be861 100644
+--- a/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c
++++ b/samples/net/secure_mqtt_sensor_actuator/src/mqtt_client.c
+@@ -444,8 +444,8 @@ int app_mqtt_init(struct mqtt_client *client)
+ 	};
+ 
+ 	/* Resolve IP address of MQTT broker */
+-	rc = getaddrinfo(CONFIG_NET_SAMPLE_MQTT_BROKER_HOSTNAME,
+-				CONFIG_NET_SAMPLE_MQTT_BROKER_PORT, &hints, &result);
++	rc = getaddrinfo(CONFIG_NET_SAMPLE_MQTT_BROKER_ADDRESS,CONFIG_NET_SAMPLE_MQTT_BROKER_PORT, &hints, &result);
++
+ 	if (rc != 0) {
+ 		LOG_ERR("Failed to resolve broker hostname [%s]", gai_strerror(rc));
+ 		return -EIO;
