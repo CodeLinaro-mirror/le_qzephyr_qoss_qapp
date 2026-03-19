@@ -6,7 +6,7 @@
 Overview
 ********
 
-QCC730 WiFi APP.
+QCC730 WiFi sample.
 
 Building and Running
 ********************
@@ -14,8 +14,7 @@ Building and Running
 This application can be built and executed on QCC730 as follows:
 
 .. zephyr-app-commands::
-   :zephyr-app: qapp/power_app
-   :host-os: unix
-   :board: qcc730evbx
+   :host-os: unix/windows
+   :board: mqm730i/mqm730x
    :goals: run
    :compact:

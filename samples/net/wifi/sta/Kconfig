@@ -1,0 +1,22 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause
+
+menu "Zephyr"
+source "Kconfig.zephyr"
+endmenu
+
+module = APP
+module-str = Application
+source "subsys/logging/Kconfig.template.log_config"
+
+config WIFI_SAMPLE_SSID
+	string "SSID of the target AP"
+	help
+	  SSID of the access point to connect to in station mode.
+	  For example: "TARGET-AP"
+
+config WIFI_SAMPLE_PSK
+	string "Pre-shared key for target AP"
+	help
+	  WPA2 password used to connect to the target AP.
+	  For example: "PSK"
