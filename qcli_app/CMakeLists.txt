@@ -54,10 +54,28 @@ set(SBL_SIGNED_DIR "${APPLICATION_BINARY_DIR}/modules/hal_qcom/qboot/zephyr_sec_
 set(APP_SIGNED_DIR "${APPLICATION_BINARY_DIR}/zephyr/zephyr_sec_app")
 
 # Output files (based on sectools output structure)
+# Note: sectools creates subdirectories based on sign_id (-g parameter)
 set(SBL_SIGNED_BIN "${SBL_SIGNED_DIR}/qcc730/sbl/${BOARD}_sbl.elf")
+set(SBL_SIGNED_GOLDEN_BIN "${SBL_SIGNED_DIR}/qcc730/sbl_golden/${BOARD}_sbl.elf")
 set(APP_SIGNED_BIN "${APP_SIGNED_DIR}/qcc730/app/zephyr.elf")
+set(APP_SIGNED_GOLDEN_BIN "${APP_SIGNED_DIR}/qcc730/app_golden/zephyr.elf")
 
 # Sign SBL image custom command
+add_custom_command(
+  OUTPUT "${SBL_SIGNED_GOLDEN_BIN}"
+  COMMAND "${Python3_EXECUTABLE}" "${SECTOOLS_SCRIPT}"
+          secimage
+          -i "${SBL_ELF}"
+          -c "${SECTOOLS_CONFIG}"
+          -sa
+          -g sbl_golden
+          -o "${SBL_SIGNED_DIR}"
+  WORKING_DIRECTORY "${SECTOOLS_DIR}"
+  DEPENDS "${SBL_ELF}"
+  COMMENT "Signing SBL image with sectools"
+  VERBATIM
+)
+
 add_custom_command(
   OUTPUT "${SBL_SIGNED_BIN}"
   COMMAND "${Python3_EXECUTABLE}" "${SECTOOLS_SCRIPT}"
@@ -89,10 +107,26 @@ add_custom_command(
   VERBATIM
 )
 
+# Sign application golden image custom command
+add_custom_command(
+  OUTPUT "${APP_SIGNED_GOLDEN_BIN}"
+  COMMAND "${Python3_EXECUTABLE}" "${SECTOOLS_SCRIPT}"
+          secimage
+          -i "${APP_ELF}"
+          -c "${SECTOOLS_CONFIG}"
+          -sa
+          -g app_golden
+          -o "${APP_SIGNED_DIR}"
+  WORKING_DIRECTORY "${SECTOOLS_DIR}"
+  DEPENDS "${APP_ELF}"
+  COMMENT "Signing application golden image with sectools"
+  VERBATIM
+)
+
 # Define "sign" target that triggers signing
 # NOT added to ALL, so it won't run by default
 add_custom_target(sign
-  DEPENDS "${SBL_SIGNED_BIN}" "${APP_SIGNED_BIN}"
+  DEPENDS "${SBL_SIGNED_BIN}" "${SBL_SIGNED_GOLDEN_BIN}" "${APP_SIGNED_BIN}" "${APP_SIGNED_GOLDEN_BIN}"
   COMMAND ${CMAKE_COMMAND} -E echo "========================================================================"
   COMMAND ${CMAKE_COMMAND} -E echo "✓ Signing completed successfully!"
   COMMAND ${CMAKE_COMMAND} -E echo "========================================================================"
