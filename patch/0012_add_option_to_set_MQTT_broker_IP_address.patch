@@ -1,0 +1,14 @@
+diff --git a/samples/net/secure_mqtt_sensor_actuator/Kconfig b/samples/net/secure_mqtt_sensor_actuator/Kconfig
+index 19d15187acf..9179d27e8f3 100644
+--- a/samples/net/secure_mqtt_sensor_actuator/Kconfig
++++ b/samples/net/secure_mqtt_sensor_actuator/Kconfig
+@@ -56,3 +56,9 @@ config NET_SAMPLE_MQTT_PAYLOAD_SIZE
+ 	default 128
+ 
+ source "Kconfig.zephyr"
++
++config NET_SAMPLE_MQTT_BROKER_ADDRESS
++    string "IP address of MQTT broker"
++    default "192.168.3.1"
++    help
++    	MQTT broker's IP address.
