@@ -15,6 +15,20 @@ logger = logging.getLogger(__name__)
 class CustomHardwareAdapter(HardwareAdapter):
     """Custom hardware adapter that handles garbage data for QCC730 better"""
 
+    def launch_without_flash(self) -> None:
+        """Launch adapter session without invoking west flash."""
+        self.close()
+        self._clear_internal_resources()
+
+        if not self.command:
+            self.generate_command()
+            if self.device_config.extra_test_args:
+                self.command.extend(self.device_config.extra_test_args.split())
+
+        self._device_run.set()
+        self._start_reader_thread()
+        self.connect(retry_s=10)
+
     def enter_raw_mode(self) -> None:
         """Stop background output handler to allow direct serial access"""
         logger.info("Entering raw mode - stopping output handler")
