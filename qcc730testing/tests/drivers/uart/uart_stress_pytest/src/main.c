@@ -17,6 +17,7 @@ LOG_MODULE_REGISTER(uart_stress, LOG_LEVEL_INF);
 #define RX_TEST_SIZE      (CONFIG_RX_TEST_SIZE_KB * 1024)
 #define TX_TEST_SIZE      (CONFIG_TX_TEST_SIZE_KB * 1024)
 #define PROGRESS_INTERVAL (CONFIG_PROGRESS_INTERVAL_KB * 1024)
+#define READY_RETRY_MS    1000
 
 static const struct device *const uart_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));
 
@@ -41,6 +42,7 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 	printk("RX_TEST_READY\n");
 
 	start_time = k_uptime_get();
+	int64_t last_ready_announce = start_time;
 	last_log_time = start_time;
 	printk("RX loop enter\r\n");
 	while (bytes_received < RX_TEST_SIZE) {
@@ -76,7 +78,16 @@ ZTEST(uart_large_transfer, test_1_rx_1mb_from_host)
 		} else {
 			k_usleep(1);
 		}
-        
+
+		/* In skip-flash mode host can attach late; re-announce readiness until first RX byte arrives. */
+		if (bytes_received == 0U) {
+			int64_t now = k_uptime_get();
+			if ((now - last_ready_announce) >= READY_RETRY_MS) {
+				printk("RX_TEST_READY\n");
+				last_ready_announce = now;
+			}
+		}
+
 		if (k_uptime_get() - start_time > 1200000) {
 			LOG_ERR("RX timeout: bytes_received=%u, expected=%u",
                 bytes_received, RX_TEST_SIZE);
@@ -168,6 +179,7 @@ ZTEST(uart_large_transfer, test_2_tx_1mb_to_host)
 	LOG_INF("Waiting for host START signal...");
 	const char expected[] = "START";
 	uint8_t match_idx = 0U;
+	int64_t last_ready_announce = k_uptime_get();
 
 	while (match_idx < 5) {
 		ret = uart_poll_in(uart_dev, &byte);
@@ -176,12 +188,23 @@ ZTEST(uart_large_transfer, test_2_tx_1mb_to_host)
 		} else {
 			k_usleep(10);
 		}
+
+		/* Keep emitting READY banner while waiting for START in skip-flash sessions. */
+		if (match_idx == 0U) {
+			int64_t now = k_uptime_get();
+			if ((now - last_ready_announce) >= READY_RETRY_MS) {
+				printk("TX_TEST_READY\n");
+				last_ready_announce = now;
+			}
+		}
 	}
 
 	/* Give host time to enter raw mode */
 	k_msleep(400);
 
 	start_time = k_uptime_get();
+	/* 20-minute hard deadline: well above expected ~15 min for 10 MB @ 115200 baud */
+	const int64_t tx_deadline = start_time + (int64_t)20 * 60 * 1000;
 	while (bytes_sent < TX_TEST_SIZE) {
 		byte = (unsigned char)(bytes_sent & 0xFFU);
 		uart_poll_out(uart_dev, byte);
@@ -190,6 +213,10 @@ ZTEST(uart_large_transfer, test_2_tx_1mb_to_host)
 
 		if ((bytes_sent % 1024) == 0) {
 			k_yield();
+			if (k_uptime_get() > tx_deadline) {
+				LOG_ERR("TX hard timeout at %u/%u bytes", bytes_sent, TX_TEST_SIZE);
+				break;
+			}
 		}
 	}
 	end_time = k_uptime_get();
@@ -225,6 +252,9 @@ ZTEST(uart_large_transfer, test_2_tx_1mb_to_host)
 	LOG_INF("  TX Throughput: %u bytes/sec", throughput);
 	LOG_INF("  Effective TX rate: %u bps", throughput * 8);
 
+	/* bytes_sent equals TX_TEST_SIZE only on full completion; if TX hard timeout
+	 * is triggered above, this assertion fails and the test reports explicit error.
+	 */
 	zassert_equal(bytes_sent, TX_TEST_SIZE, "Incomplete TX transfer: %u/%u bytes", bytes_sent,
 		      TX_TEST_SIZE);
 }

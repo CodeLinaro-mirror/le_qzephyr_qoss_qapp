@@ -156,38 +156,38 @@ def test_2_uart_tx_stress(dut, zephyr_config: dict):
     found_ready = any("TX_TEST_READY" in line for line in lines)
     assert found_ready, f"TX_TEST_READY not found. Got: {lines}"
 
+    logger.info("Entering raw mode before sending START...")
+    dut.enter_raw_mode()
+    time.sleep(0.1)
+
     logger.info("Sending START signal...")
     serial_conn = dut._serial_connection
     serial_conn.write(b"START")
     serial_conn.flush()
-
-    # Give device time to process START and print confirmation message
-    time.sleep(0.3)
-
-    logger.info("Entering raw mode to receive binary data...")
-    dut.enter_raw_mode()
-    time.sleep(0.5)
+    time.sleep(0.1)
 
     logger.info(f"Receiving {TX_TEST_SIZE} bytes from device...")
     received_data = bytearray()
-    timeout_count = 0
-    max_timeout_iterations = 5000
-
     start_time = time.time()
+    # Derive a realistic timeout from payload size and UART baud.
+    # UART transfers 1 byte with ~10 bits on the wire (8N1 framing).
+    baud = getattr(serial_conn, "baudrate", 115200) or 115200
+    expected_seconds = TX_TEST_SIZE / (float(baud) / 10.0)
+    rx_timeout_s = max(30.0, expected_seconds * 3.0 + 5.0)
+    rx_deadline = start_time + rx_timeout_s
+    logger.info(f"TX receive deadline: {rx_timeout_s:.1f}s (expected ~{expected_seconds:.1f}s)")
     while len(received_data) < TX_TEST_SIZE:
         if serial_conn.in_waiting > 0:
             chunk = serial_conn.read(min(4096, TX_TEST_SIZE - len(received_data)))
             if chunk:
                 received_data.extend(chunk)
-                timeout_count = 0
 
                 if len(received_data) % PROGRESS_INTERVAL_KB == 0:
                     percent = (len(received_data) * 100) // TX_TEST_SIZE
                     logger.info(f"RX Progress: {percent}% ({len(received_data)} bytes)")
         else:
             time.sleep(0.001)
-            timeout_count += 1
-            if timeout_count > max_timeout_iterations:
+            if time.time() > rx_deadline:
                 logger.error(f"Timeout waiting for data. Received {len(received_data)}/{TX_TEST_SIZE} bytes")
                 break
 
