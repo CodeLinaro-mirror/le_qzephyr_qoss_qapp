@@ -169,6 +169,26 @@ static int parse_url(const char *url,
 	return 0;
 }
 
+static sa_family_t detect_literal_host_family(const char *host)
+{
+	struct in_addr addr4;
+	struct in6_addr addr6;
+
+	if (!host || host[0] == '\0') {
+		return AF_UNSPEC;
+	}
+
+	if (zsock_inet_pton(AF_INET, host, &addr4) == 1) {
+		return AF_INET;
+	}
+
+	if (zsock_inet_pton(AF_INET6, host, &addr6) == 1) {
+		return AF_INET6;
+	}
+
+	return AF_UNSPEC;
+}
+
 /**
  * @brief Create and configure a TCP or TLS socket.
  *
@@ -295,7 +315,44 @@ static int resolve_and_connect(int sock, const char *host, int port, sa_family_t
 	char port_str[8];
 	struct zsock_addrinfo hints;
 	struct zsock_addrinfo *res = NULL;
+	struct sockaddr_in addr4;
+	struct sockaddr_in6 addr6;
 	int ret;
+
+	memset(&addr4, 0, sizeof(addr4));
+	memset(&addr6, 0, sizeof(addr6));
+
+	if (zsock_inet_pton(AF_INET, host, &addr4.sin_addr) == 1) {
+		addr4.sin_family = AF_INET;
+		addr4.sin_port = htons((uint16_t)port);
+
+		ret = zsock_connect(sock, (struct sockaddr *)&addr4, sizeof(addr4));
+		if (ret < 0) {
+			int err = errno;
+
+			LOG_ERR("zsock_connect() to IPv4 literal %s:%d failed: %d", host, port, err);
+			return -err;
+		}
+
+		LOG_DBG("Connected to IPv4 literal %s:%d", host, port);
+		return 0;
+	}
+
+	if (zsock_inet_pton(AF_INET6, host, &addr6.sin6_addr) == 1) {
+		addr6.sin6_family = AF_INET6;
+		addr6.sin6_port = htons((uint16_t)port);
+
+		ret = zsock_connect(sock, (struct sockaddr *)&addr6, sizeof(addr6));
+		if (ret < 0) {
+			int err = errno;
+
+			LOG_ERR("zsock_connect() to IPv6 literal [%s]:%d failed: %d", host, port, err);
+			return -err;
+		}
+
+		LOG_DBG("Connected to IPv6 literal [%s]:%d", host, port);
+		return 0;
+	}
 
 	snprintf(port_str, sizeof(port_str), "%d", port);
 
@@ -624,6 +681,15 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	LOG_DBG("URL parsed: host=%s path=%s port=%d https=%d",
 		host, path, port, (int)is_https);
 
+	sa_family_t connect_family = ip_family;
+	sa_family_t literal_family = detect_literal_host_family(host);
+
+	if (literal_family != AF_UNSPEC) {
+		connect_family = literal_family;
+		LOG_DBG("Host %s is a numeric IP literal, using family=%d and bypassing DNS",
+			host, connect_family);
+	}
+
 	/*
 	 * TLS credential ownership model:
 	 * - caller loads credentials before calling httpc_at_execute()
@@ -667,13 +733,13 @@ int httpc_at_execute(const struct httpc_at_request *req,
 		int _attempt;
 
 		for (_attempt = 0; _attempt < 10; _attempt++) {
-			sock = create_http_socket(is_https, ip_family, req->auth_type, host);
+			sock = create_http_socket(is_https, connect_family, req->auth_type, host);
 			if (sock < 0) {
 				LOG_ERR("Failed to create socket: %d", sock);
 				return sock;
 			}
 
-			ret = resolve_and_connect(sock, host, port, ip_family);
+			ret = resolve_and_connect(sock, host, port, connect_family);
 			if (ret == 0) {
 				break; /* Connected successfully */
 			}
@@ -840,14 +906,23 @@ int httpc_at_stream_begin(const struct httpc_at_request *req,
 		return ret;
 	}
 
+	sa_family_t connect_family = ip_family;
+	sa_family_t literal_family = detect_literal_host_family(host);
+
+	if (literal_family != AF_UNSPEC) {
+		connect_family = literal_family;
+		LOG_DBG("Host %s is a numeric IP literal, using family=%d and bypassing DNS",
+			host, connect_family);
+	}
+
 	timeout_ms = (req->timeout_ms > 0) ? req->timeout_ms : HTTPC_AT_DEFAULT_TIMEOUT_MS;
 
-	sock = create_http_socket(is_https, ip_family, req->auth_type, host);
+	sock = create_http_socket(is_https, connect_family, req->auth_type, host);
 	if (sock < 0) {
 		return sock;
 	}
 
-	ret = resolve_and_connect(sock, host, port, ip_family);
+	ret = resolve_and_connect(sock, host, port, connect_family);
 	if (ret < 0) {
 		zsock_close(sock);
 		return ret;

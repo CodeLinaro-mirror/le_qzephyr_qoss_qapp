@@ -5,6 +5,21 @@
  */
 
 / {
+	fstab {
+		compatible = "zephyr,fstab";
+		lfs1: lfs1 {
+			compatible = "zephyr,fstab,littlefs";
+			mount-point = "/lfs";
+			partition = <&storage_partition>;
+			automount;
+			read-size = <16>;
+			prog-size = <16>;
+			cache-size = <64>;
+			lookahead-size = <32>;
+			block-cycles = <512>;
+		};
+	};
+
 	ring_ctrl_ram: memory@9FF00 {
 		compatible = "zephyr,memory-region", "mmio-sram";
 		reg = <0x9FC00 0x400>;
@@ -27,6 +42,20 @@
 
 &qcspi {
 	status = "okay";
+};
+
+&qspi_nor_flash3 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		storage_partition: partition@3000 {
+			label = "storage";
+			/* Starts at 12KB offset to protect the FDT, size is 64KB. */
+			reg = <0x00003000 0x00010000>;
+		};
+	};
 };
 
 &frame0 {
