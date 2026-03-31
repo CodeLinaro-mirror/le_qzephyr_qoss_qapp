@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "../../qc_port_config.h"
 
@@ -233,7 +234,7 @@ void qc_osal_usleep(uint32_t us)
      */
     if (us >= 1000) {
         vTaskDelay(pdMS_TO_TICKS(us / 1000));
-        us = us % 1000;  // Handle remaining microseconds
+        us = us % 1000; // Handle remaining microseconds
     }
 
     if (us > 0) {

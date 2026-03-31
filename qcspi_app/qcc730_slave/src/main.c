@@ -52,15 +52,15 @@ static void ring_event_callback(uint8_t ring_id, void *user_data)
         if (ret > 0) {
             packet_count++;
             switch (ring_id) {
-            case RING_CONFIG:
+            case RING_0:
                 break;
-            case RING_DATA:
+            case RING_1:
                 break;
-            case RING_LOOPBACK:
+            case RING_2:
                 memcpy(loop_buffer, recv_buffer, ret);
                 ring_send(ring_id, loop_buffer, ret, K_MSEC(1000));
                 break;
-            case RING_ERROR:
+            default:
                 break;
             }
         } else if (ret < 0) {

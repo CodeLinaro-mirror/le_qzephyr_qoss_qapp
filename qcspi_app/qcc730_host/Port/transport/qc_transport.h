@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef QC_TRANSPORT_H_
@@ -94,8 +95,7 @@ int qc_transport_deinit(qc_transport_t transport);
  *                If false, deassert CS after transfer
  * @return 0 on success, negative error code on failure
  */
-int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uint8_t *rx_buf, size_t len,
-                             bool hold_cs);
+int qc_transport_transceive(qc_transport_t transport, const uint8_t *tx_buf, uint8_t *rx_buf, size_t len, bool hold_cs);
 
 /**
  * @brief Send data (transmit only)

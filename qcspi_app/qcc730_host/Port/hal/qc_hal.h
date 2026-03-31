@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef QC_HAL_H_
@@ -82,10 +83,10 @@ typedef void *qc_hal_gpio_t;
  * @brief GPIO configuration
  */
 struct qc_hal_gpio_config {
-    uint32_t pin;           /* GPIO pin number */
-    bool output;            /* true = output, false = input */
-    bool active_low;        /* true = active low, false = active high */
-    bool initial_value;     /* Initial value for output pins */
+    uint32_t pin;       /* GPIO pin number */
+    bool output;        /* true = output, false = input */
+    bool active_low;    /* true = active low, false = active high */
+    bool initial_value; /* Initial value for output pins */
 };
 
 /**
@@ -145,9 +146,9 @@ typedef void *qc_hal_spi_t;
  * @brief SPI configuration
  */
 struct qc_hal_spi_config {
-    uint32_t frequency;     /* SPI frequency in Hz */
-    uint8_t mode;           /* SPI mode (0-3) */
-    uint8_t bits_per_word;  /* Bits per word (typically 8) */
+    uint32_t frequency;    /* SPI frequency in Hz */
+    uint8_t mode;          /* SPI mode (0-3) */
+    uint8_t bits_per_word; /* Bits per word (typically 8) */
 };
 
 /**

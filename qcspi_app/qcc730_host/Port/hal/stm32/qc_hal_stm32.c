@@ -1,14 +1,12 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include "../../qc_port_config.h"
+#include "qc_port.h"
 
 #if defined(QC_PLATFORM_STM32)
-
-#include "../qc_hal.h"
-#include "../../osal/qc_osal.h"
 
 #if defined(QC_OS_ZEPHYR)
 #include <zephyr/kernel.h>
@@ -332,6 +330,9 @@ int qc_hal_spi_deinit(qc_hal_spi_t spi)
 
 /* External SPI handle from CubeMX generated code */
 extern SPI_HandleTypeDef hspi1;
+
+/* External UART handle from CubeMX generated code */
+extern UART_HandleTypeDef huart1;
 
 /* GPIO Port A base address */
 #define GPIOA_BASE_ADDR GPIOA

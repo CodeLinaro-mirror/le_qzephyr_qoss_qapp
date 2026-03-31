@@ -1,9 +1,9 @@
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 #include "shell.h"
-#include "qc_osal.h"
 
 typedef struct {
     char *cmd;
@@ -16,7 +16,7 @@ typedef struct {
 #define SHELL_ARGC_MAX 8
 #define SHELL_BUFFER_SIZE 1500
 
-UART_HandleTypeDef *shell_huart = NULL;
+QC_HAL_UART_HandleTypeDef *shell_huart = NULL;
 
 char starting[] = "\r\n\r\n==== command Shell ====\r\n";
 char prompt[] = "STM32 >> ";
@@ -71,7 +71,7 @@ uint8_t cmd_shell_init(UART_HandleTypeDef *huart)
 
     qc_osal_queue_init(&qShell, 10, sizeof(char));
 
-    if (QC_PLAT_OK != QC_HAL_UART_Receive_IT(shell_huart, (uint8_t *)&c, 1)) {
+    if (QC_HAL_EOK != QC_HAL_UART_Receive_IT(shell_huart, (uint8_t *)&c, 1)) {
         return 1;
     }
 
@@ -104,12 +104,18 @@ uint8_t cmd_shell_char_received()
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "parser", 6) == 0) {
             cmd_shell_exec(buf);
+#ifdef QCC730_DFU_SUPPORT
         } else if (is_dfu_cmd(buf) == 0) {
             int dfu_status = -1;
             dfu_status = dfu_hook(buf);
+#endif
         } else if (strncmp(buf, "qatperf", 7) == 0) {
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "tx", 2) == 0) {
+            cmd_shell_exec(buf);
+        } else if (strncmp(buf, "at_send", 7) == 0) {
+            cmd_shell_exec(buf);
+        } else if (strncmp(buf, "bmps_enable", 11) == 0) {
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "rx_mqtt", 2) == 0) {
             cmd_shell_exec(buf);

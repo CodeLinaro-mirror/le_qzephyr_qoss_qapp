@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause-Clear
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef QC_PORT_CONFIG_H_
@@ -67,7 +68,8 @@
 /* User Macro */
 #define CONFIG_RING_SERVICE
 #define SHELL_FEATURE
-#define SPI_DEMO_ENABLE
+//#define QCC730_SPI_ENABLE
+#define QCC730_ATCMD_ENABLE
 
 /* ============================================================================
  * Configuration Validation
@@ -101,6 +103,16 @@
 /* Check for multiple Transport selections */
 #if (defined(QC_TRANSPORT_SPI) + defined(QC_TRANSPORT_SDIO)) > 1
 #error "Multiple transport interfaces selected! Please define only ONE transport."
+#endif
+
+/* Validate Demo selection */
+#if !defined(QCC730_SPI_ENABLE) && !defined(QCC730_ATCMD_ENABLE)
+#error "No demo selected! Please define one of: QCC730_SPI_ENABLE, QCC730_ATCMD_ENABLE"
+#endif
+
+/* Check for multiple Demo selections */
+#if (defined(QCC730_SPI_ENABLE) + defined(QCC730_ATCMD_ENABLE)) > 1
+#error "Multiple demo selected! QCC730_SPI_ENABLE and QCC730_ATCMD_ENABLE cannot be enabled at the same time."
 #endif
 
 /* ============================================================================
