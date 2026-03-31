@@ -477,7 +477,7 @@ static int cmd_start_udp_timer(const struct shell *shell, size_t argc, char **ar
     qurt_signal_create(&udp_timer_task_signal);
 
     if(udp_timer_task_signal != NULL){
-        ret_val = nt_qurt_thread_create(udp_timer_task, "udp_timer_demo", 256, NULL, UDP_TIMER_TASK_PRIORITY, &udp_timer_task_hnd);
+        ret_val = nt_qurt_thread_create(udp_timer_task, "udp_timer_demo", 1024, NULL, UDP_TIMER_TASK_PRIORITY, &udp_timer_task_hnd);
     }
 
     k_timer_init(&udp_timer, udp_timer_handler, NULL);
