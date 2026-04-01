@@ -1,0 +1,13 @@
+diff --git a/subsys/net/lib/zperf/zperf_tcp_uploader.c b/subsys/net/lib/zperf/zperf_tcp_uploader.c
+index a115a4597fe..590bb603ace 100644
+--- a/subsys/net/lib/zperf/zperf_tcp_uploader.c
++++ b/subsys/net/lib/zperf/zperf_tcp_uploader.c
+@@ -90,7 +90,7 @@ static int tcp_upload(int sock,
+ 
+ 			nb_errors++;
+ 
+-			if (errno == -ENOMEM) {
++			if (errno == -ENOMEM || errno == ENOBUFS) {
+ 				/* Ignore memory errors as we just run out of
+ 				 * buffers which is kind of expected if the
+ 				 * buffer count is not optimized for the test
