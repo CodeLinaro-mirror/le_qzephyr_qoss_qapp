@@ -231,6 +231,7 @@ static fw_upgrade_status_code_t fw_upgrade_session_fin(void)
             fw_upgrade_sess_cxt->partition_hdl = NULL;
         }
         if (fw_upgrade_sess_cxt->digest_ctx != NULL) {
+            mbedtls_sha256_free(fw_upgrade_sess_cxt->digest_ctx);
             k_free((void *)(fw_upgrade_sess_cxt->digest_ctx));
             fw_upgrade_sess_cxt->digest_ctx = NULL;
         }
@@ -276,10 +277,14 @@ static fw_upgrade_status_code_t fw_upgrade_session_init(void)
         LOG_WRN("fw_upgrade_sess_cxt already allocated, reusing existing context");
         /* Clear all data but preserve allocated pointers */
         void *tmp_buffer_backup = fw_upgrade_sess_cxt->tmp_buffer;
-        void *digest_ctx_backup = fw_upgrade_sess_cxt->digest_ctx;
+        
+        if (fw_upgrade_sess_cxt->digest_ctx != NULL) {
+            mbedtls_sha256_free(fw_upgrade_sess_cxt->digest_ctx);
+            memset((void *)(fw_upgrade_sess_cxt->digest_ctx), 0, sizeof(mbedtls_sha256_context));
+        }
+        
         memset(fw_upgrade_sess_cxt, '\0', sizeof(fw_upgrade_context_t));
         fw_upgrade_sess_cxt->tmp_buffer = tmp_buffer_backup;
-        fw_upgrade_sess_cxt->digest_ctx = digest_ctx_backup;
     }
 
 	
@@ -357,7 +362,8 @@ static fw_upgrade_status_code_t fw_upgrade_session_prepare_suspend(void)
 
         /*  free crypto */
         if (fw_upgrade_sess_cxt->digest_ctx != NULL) {
-            free((void *)(fw_upgrade_sess_cxt->digest_ctx));
+            mbedtls_sha256_free(fw_upgrade_sess_cxt->digest_ctx);
+            k_free((void *)(fw_upgrade_sess_cxt->digest_ctx));
             fw_upgrade_sess_cxt->digest_ctx = NULL;
         }
     }
