@@ -20,7 +20,7 @@ hello_world_app=(
 )
 if [ ! -f SRC-IOE-SDK.tar.gz ]; then
     tar --exclude=.git --exclude=.gitignore -czpf SRC-IOE-SDK.tar.gz modules/hal/qcom modules/lib/hostap \
-    zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6
+    zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6 modules/lib/cAT
 fi
 if [ -d prebuilt_HY11 ]; then
     echo "It is HY11 build,copy lib to folder modules\hal\qcom\zephyr\blobs"
