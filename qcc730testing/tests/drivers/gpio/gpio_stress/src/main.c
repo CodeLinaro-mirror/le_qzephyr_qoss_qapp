@@ -24,6 +24,8 @@ LOG_MODULE_REGISTER(gpio_qcc730_test, LOG_LEVEL_INF);
 #define TEST_PIN_IN_2  5
 #define TEST_PIN_OUT_3 6
 #define TEST_PIN_IN_3  7
+#define TEST_PIN_IN_INTERRUPT  2
+
 #define MAX_GPIO_PIN   14
 
 /* Stress test configuration */
@@ -368,7 +370,7 @@ static bool ztress_interrupt_generator(void *user_data, uint32_t cnt, bool last,
 ZTEST_F(gpio_stress, test_ztress_interrupt_storm)
 {
 	struct ztress_context gen_ctx = {.dev = fixture->dev,
-					 .pin = TEST_PIN_OUT_3,
+					 .pin = TEST_PIN_OUT_0,
 					 .counter = &interrupt_counter,
 					 .errors = &error_counter,
 					 .operations = 0};
@@ -380,16 +382,16 @@ ZTEST_F(gpio_stress, test_ztress_interrupt_storm)
 
 	LOG_INF("Starting interrupt storm stress test");
 
-	ret = gpio_pin_configure(fixture->dev, TEST_PIN_OUT_3, GPIO_OUTPUT_LOW);
+	ret = gpio_pin_configure(fixture->dev, TEST_PIN_OUT_0, GPIO_OUTPUT_LOW);
 	zassert_equal(ret, 0, "Failed to configure output pin");
 
-	ret = gpio_pin_configure(fixture->dev, TEST_PIN_IN_2, GPIO_INPUT);
+	ret = gpio_pin_configure(fixture->dev, TEST_PIN_IN_INTERRUPT, GPIO_INPUT);
 	zassert_equal(ret, 0, "Failed to configure input pin");
 
-	ret = gpio_pin_interrupt_configure(fixture->dev, TEST_PIN_IN_2, GPIO_INT_EDGE_RISING);
+	ret = gpio_pin_interrupt_configure(fixture->dev, TEST_PIN_IN_INTERRUPT, GPIO_INT_EDGE_RISING);
 	zassert_equal(ret, 0, "Failed to configure interrupt");
 
-	gpio_init_callback(&gpio_cb_data, gpio_interrupt_callback, BIT(TEST_PIN_IN_2));
+	gpio_init_callback(&gpio_cb_data, gpio_interrupt_callback, BIT(TEST_PIN_IN_INTERRUPT));
 	ret = gpio_add_callback(fixture->dev, &gpio_cb_data);
 	zassert_equal(ret, 0, "Failed to add callback");
 
@@ -399,7 +401,7 @@ ZTEST_F(gpio_stress, test_ztress_interrupt_storm)
 				     ZTRESS_NO_PREEMPTION, Z_TIMEOUT_TICKS(1)));
 
 	gpio_remove_callback(fixture->dev, &gpio_cb_data);
-	gpio_pin_interrupt_configure(fixture->dev, TEST_PIN_IN_2, GPIO_INT_DISABLE);
+	gpio_pin_interrupt_configure(fixture->dev, TEST_PIN_IN_INTERRUPT, GPIO_INT_DISABLE);
 
 	toggles = gen_ctx.operations;
 	expected_interrupts = toggles / 2;
