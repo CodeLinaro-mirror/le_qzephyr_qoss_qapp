@@ -39,8 +39,16 @@ static void qat_httpc_output_cb(const char *data, size_t len, void *user_data)
         return;
     }
 
-    if (QAT_Output((uint32_t)len, data) < 0) {
-        LOG_ERR("QAT_Output failed while sending HTTPC response");
+    /* Ring buffer has a per-packet size limit; send in chunks. */
+    while (len > 0) {
+        size_t chunk = MIN(len, CONFIG_RING0_BUF_SIZE);
+
+        if (QAT_Output((uint32_t)chunk, data) < 0) {
+            LOG_ERR("QAT_Output failed while sending HTTPC response");
+            return;
+        }
+        data += chunk;
+        len -= chunk;
     }
 }
 
