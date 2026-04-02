@@ -156,6 +156,15 @@ char test_buf_end1[] = "111";
 char test_buf_end2[] = "222";
 char test_buf_end3[] = "333";
 
+/* If the board does not define a dedicated WKUP GPIO, fall back to the INT
+ * GPIO so the file compiles.  Override these in your board header if needed. */
+#ifndef QCC730_WKUP_GPIO_Port
+#define QCC730_WKUP_GPIO_Port QCC730_INT_GPIO_Port
+#endif
+#ifndef QCC730_WKUP_Pin
+#define QCC730_WKUP_Pin QCC730_INT_Pin
+#endif
+
 void qcc730_wkup()
 {
     qc_hal_gpio_write(QCC730_WKUP_GPIO_Port, QCC730_WKUP_Pin, QC_HAL_GPIO_PIN_RESET);
@@ -412,12 +421,12 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
     int arg_start = 0;
     int flag = QAT_RESP_TYPE;
 
-    /* Validate input parameters */
-    if (!cmd || buf_len == 0 || buf_len >= AT_RESPONSE_MAX) {
-        return -1;
-    }
-
-    /* Separate header and arguments */
+    /* Separate header and arguments.
+     * IMPORTANT: header[] is only AT_CMD_MAX_SIZE (16) bytes.
+     * Guard against buffer overflow when processing large non-AT payloads
+     * (e.g. HTTP response body HTML).  If the header candidate grows beyond
+     * AT_CMD_MAX_SIZE-1 bytes without finding ':', it cannot be a valid AT
+     * command prefix — break early and let the find-command step fail. */
     for (i = 0; i < buf_len; i++) {
         if (cmd[i] == '\r' || cmd[i] == '\0' || cmd[i] == '\n') {
             continue;
@@ -428,8 +437,10 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
             } else
                 break;
         }
-        if (h >= AT_CMD_MAX_SIZE - 1) {  /* Prevent header buffer overflow */
-            return -1;
+        if (h >= AT_CMD_MAX_SIZE - 1) {
+            /* Header too long — not a recognised AT command prefix */
+            h = 0;
+            break;
         }
         header[h] = cmd[i];
         h++;
@@ -475,7 +486,7 @@ void print_atcmd_resp(uint8_t *data, uint32_t len)
     if (!strncmp((char *)&data[2], "+CMD:", 5)) {
         /* Work around for UART and SPI conflict on STM32 platform */
         // qc_osal_msleep(1000);
-        printf("%s", data);
+        printf("%.*s", (int)len, (char *)data);
         return;
     }
     if (!strncmp((char *)&data[0], "+IPDHEX:", 8)) {
@@ -489,7 +500,9 @@ void print_atcmd_resp(uint8_t *data, uint32_t len)
         return;
     }
 
-    printf("%s", data);
+    /* Use length-bounded print to avoid reading beyond rx_buf when packet
+     * is exactly ATCMD_BUF_LEN bytes and has no null terminator. */
+    printf("%.*s", (int)len, (char *)data);
 }
 
 /**
@@ -499,6 +512,7 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
 {
     int ret;
     int packet_count = 0;
+    int error_count = 0;
 
     /* Loop to read all available data packets */
     do {
@@ -527,20 +541,21 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
                 break;
             }
         } else if (ret < 0) {
-            QC_OSAL_LOG_ERR("Failed to receive data: %d", ret);
-            break; /* Exit on error */
+            error_count++;
+            if (error_count >= 8) {
+                break;
+            }
+            qc_osal_msleep(1);
+            ret = 1; /* retry a few times in case a later packet becomes available */
+            continue;
+        } else {
+            error_count = 0;
         }
         if (packet_count > 0 && packet_count % 10 == 0)
             qc_osal_msleep(1);
 
         /* ret == 0 means no more data available, loop will exit */
     } while (ret > 0);
-
-    if (packet_count > 0) {
-        // QC_OSAL_LOG_INF("Total processed %d data packets from ring %d", packet_count, ring_id);
-    } else {
-        QC_OSAL_LOG_INF("No data available from ring %d", ring_id);
-    }
 }
 
 /* ============================================================================

@@ -76,6 +76,7 @@ void ring_rx_handler(void)
         /* Submit work item for this ring */
         if (g_ring_service.callback) {
             qc_osal_work_submit(ring_host_work_q, rx_works[i].work);
+            /* NOTE: printf is NOT safe in ISR context - do not add logging here */
         }
     }
 }
@@ -205,6 +206,15 @@ static void rx_work_handler(qc_osal_work_t work)
 
     /* Call the registered callback in thread context with ring_id */
     if (g_ring_service.callback) {
+        g_ring_service.callback(ctx->ring_id, g_ring_service.callback_data);
+    }
+
+    /* After callback drains the ring, check once more.
+     * If new data arrived while callback was running and the work item
+     * could not be re-queued (queue full), drain it here to avoid a
+     * missed-wakeup where the last tail packet is never consumed. */
+    rx_avail = ring_get_rx_available(ctx->ring_id);
+    if (rx_avail > 0 && g_ring_service.callback) {
         g_ring_service.callback(ctx->ring_id, g_ring_service.callback_data);
     }
 }
