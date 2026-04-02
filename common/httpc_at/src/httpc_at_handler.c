@@ -634,8 +634,8 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
                     (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT",
                     ret, resp.status_code);
             httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                            (stream_ctx.prefix_emitted ? "\r\n+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPOST:SEND FAIL\r\n") :
-                            (stream_ctx.prefix_emitted ? "\r\n+HTTPCPUT:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n"));
+                            "+HTTPCPOST:SEND FAIL\r\n" :
+                            "+HTTPCPUT:SEND FAIL\r\n");
             if (ret >= 0) {
                 ret = -EIO;
             }
@@ -727,8 +727,8 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
                 (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT",
                 ret, resp.status_code);
         httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        (stream_ctx.prefix_emitted ? "\r\n+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPOST:SEND FAIL\r\n") :
-                        (stream_ctx.prefix_emitted ? "\r\n+HTTPCPUT:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n"));
+                        "+HTTPCPOST:SEND FAIL\r\n" :
+                        "+HTTPCPUT:SEND FAIL\r\n");
         if (ret >= 0) {
             ret = -EIO;
         }
@@ -898,6 +898,8 @@ int httpc_at_handle_httpclient(uint32_t op_type,
         .ip_family          = g_cfg.ip_family,
     };
 
+    k_mutex_unlock(&g_mutex);
+
     struct httpc_at_response resp = {0};
 
     if (method == HTTPC_AT_METHOD_HEAD) {
@@ -930,7 +932,7 @@ int httpc_at_handle_httpclient(uint32_t op_type,
             if (ret >= 0) {
                 ret = -EIO;
             }
-            httpc_at_output(stream_ctx.prefix_emitted ? "\r\n+HTTPC:ERROR\r\n" : "+HTTPC:ERROR\r\n");
+            httpc_at_output("+HTTPC:ERROR\r\n");
         } else {
             if (!stream_ctx.prefix_emitted) {
                 httpc_at_output("+HTTPC:");
@@ -952,10 +954,13 @@ int httpc_at_handle_httpclient(uint32_t op_type,
         }
     }
 
-    release_ssl_if_needed(url);
+    if (httpc_at_is_https(url)) {
+        k_mutex_lock(&g_mutex, K_FOREVER);
+        release_ssl_if_needed(url);
+        k_mutex_unlock(&g_mutex);
+    }
 
     reset_temp_resources();
-    k_mutex_unlock(&g_mutex);
     return ret;
 }
 
@@ -1031,13 +1036,17 @@ int httpc_at_handle_httpgetsize(uint32_t op_type,
         .ip_family          = g_cfg.ip_family,
     };
 
+    k_mutex_unlock(&g_mutex);
+
     struct httpc_at_response resp = {0};
 
     ret = httpc_at_execute(&req, &resp, NULL, NULL);
 
-    release_ssl_if_needed(url);
-
-    k_mutex_unlock(&g_mutex);
+    if (httpc_at_is_https(url)) {
+        k_mutex_lock(&g_mutex, K_FOREVER);
+        release_ssl_if_needed(url);
+        k_mutex_unlock(&g_mutex);
+    }
 
     if (ret < 0 || resp.status_code < 200 || resp.status_code >= 300) {
         LOG_ERR("HTTPGETSIZE failed: ret=%d status=%d", ret, resp.status_code);
@@ -1121,7 +1130,6 @@ int httpc_at_handle_httpget(uint32_t op_type,
         .ip_family          = g_cfg.ip_family,
     };
 
-    struct httpc_at_response resp = {0};
     struct body_stream_ctx stream_ctx = {
         .output_cb      = g_cfg.output_cb,
         .user_data      = g_cfg.output_user_data,
@@ -1130,11 +1138,17 @@ int httpc_at_handle_httpget(uint32_t op_type,
         .prefix_emitted = false,
     };
 
+    k_mutex_unlock(&g_mutex);
+
+    struct httpc_at_response resp = {0};
+
     ret = httpc_at_execute(&req, &resp, body_stream_cb, &stream_ctx);
 
-    release_ssl_if_needed(url);
-
-    k_mutex_unlock(&g_mutex);
+    if (httpc_at_is_https(url)) {
+        k_mutex_lock(&g_mutex, K_FOREVER);
+        release_ssl_if_needed(url);
+        k_mutex_unlock(&g_mutex);
+    }
 
     if (ret < 0 || resp.status_code < 200 || resp.status_code >= 300) {
         LOG_ERR("HTTPGET failed: ret=%d status=%d", ret, resp.status_code);
