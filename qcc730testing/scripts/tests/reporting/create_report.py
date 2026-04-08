@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # Copyright (c) 2025 Qualcomm Technologies, Inc. and/or its subsidiaries
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: BSD-3-Clause-Clear
 
 """
 Aggregate Zephyr test result JSON files and generates a consolidated HTML

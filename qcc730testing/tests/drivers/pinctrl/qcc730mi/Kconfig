@@ -1,5 +1,5 @@
 # Copyright (c) 2025 Qualcomm Technologies, Inc. and/or its subsidiaries
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: BSD-3-Clause-Clear
 
 mainmenu "pinctrl qcc730mi DT Test"
 

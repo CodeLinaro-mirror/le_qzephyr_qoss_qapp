@@ -1,7 +1,7 @@
 /*
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
- * SPDX-License-Identifier: BSD-3-Clause
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 #include "qc_port_config.h"
 #if defined(QC_OS_ZEPHYR) && defined(SPI_DEMO_ENABLE)

@@ -1,5 +1,5 @@
 # Copyright (c) 2024 Qualcomm Technologies, Inc.
-# SPDX-License-Identifier: BSD-3-Clause
+# SPDX-License-Identifier: BSD-3-Clause-Clear
 
 menuconfig QCOM_IMG_MGMT
 	bool "Qualcomm Custom Image Management"

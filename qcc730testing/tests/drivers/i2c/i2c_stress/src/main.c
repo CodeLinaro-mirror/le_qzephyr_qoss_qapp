@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2025 Qualcomm Technologies, Inc.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
  * I2C Stress Test Suite for QCC730.
  * Uses ztress framework for robustness validation.

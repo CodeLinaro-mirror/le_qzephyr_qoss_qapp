@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-Copyright (c) 2025 Qualcomm Technologies, Inc.
-SPDX-License-Identifier: BSD-3-Clause
+Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+SPDX-License-Identifier: BSD-3-Clause-Clear
 
 UART RX/TX stress tests using pytest and twister_harness
 Tests both directions without requiring loopback

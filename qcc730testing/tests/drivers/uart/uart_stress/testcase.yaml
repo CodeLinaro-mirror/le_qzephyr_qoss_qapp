@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: BSD-3-Clause
-# Copyright (c) 2025 Qualcomm Technologies, Inc.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 
 common:
   tags:
