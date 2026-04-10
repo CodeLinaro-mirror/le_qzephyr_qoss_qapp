@@ -582,6 +582,39 @@ int qcspi_IRW(uint8_t reg_addr, uint32_t reg_val)
     return 0;
 }
 
+int qcspi_adapter_notify_rx_done(void)
+{
+    uint32_t config_value = 0;
+    int ret;
+
+    QC_OSAL_LOG_DBG("Triggering Slave INT1 interrupt");
+
+    ret = qcspi_IRR(SPI_SLAVE_CONFIG, &config_value);
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("Failed to read SPI_SLAVE_CONFIG: %d", ret);
+        return ret;
+    }
+
+    /* Check if INT1 interrupt already set */
+    if (config_value & QCSPI_CONFIG_HOST_IRQ_INT1_EN(1)) {
+        qc_osal_msleep(10);
+        ret = qcspi_IRR(SPI_SLAVE_CONFIG, &config_value);
+        if (ret == 0 && (config_value & QCSPI_CONFIG_HOST_IRQ_INT1_EN(1))) {
+            QC_OSAL_LOG_DBG("INT1 already set, config=0x%x", config_value);
+            return 0;
+        }
+    }
+
+    config_value |= QCSPI_CONFIG_HOST_IRQ_INT1_EN(1);
+    ret = qcspi_IRW(SPI_SLAVE_CONFIG, config_value);
+    if (ret < 0) {
+        QC_OSAL_LOG_ERR("Failed to write SPI_SLAVE_CONFIG: %d", ret);
+        return ret;
+    }
+
+    return 0;
+}
+
 /* ========== ring_adapter_ops implementation ========== */
 
 static const struct ring_adapter_ops qcspi_adapter_ops = {
@@ -589,7 +622,8 @@ static const struct ring_adapter_ops qcspi_adapter_ops = {
     .deinit = qcspi_adapter_deinit,
     .mem_read = qcspi_adapter_mem_read,
     .mem_write = qcspi_adapter_mem_write,
-    .trigger_irq = qcspi_adapter_trigger_irq,
+    .notify_tx_done = qcspi_adapter_trigger_irq,
+    .notify_rx_done = qcspi_adapter_notify_rx_done,
 };
 
 const struct ring_adapter_ops *ring_adapter_get_qcspi(void) { return &qcspi_adapter_ops; }

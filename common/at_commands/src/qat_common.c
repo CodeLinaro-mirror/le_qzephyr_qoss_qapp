@@ -583,6 +583,10 @@ static struct pm_notifier qat_pm_notifier;
 static void qat_notify_pm_state_entry(enum pm_state state)
 {
     ARG_UNUSED(state);
+    if (spi_is_ext_wakeup()) {
+        spi_clear_ext_wakeup_flag();
+    }
+    
     return;
 }
 
@@ -607,13 +611,13 @@ static void qat_notify_pm_state_exit(enum pm_state state)
                 pm_device_busy_set(spi_dev);
                 LOG_DBG("QAT: SPI busy set after external pin wakeup");
             }
-            spi_clear_ext_wakeup_flag();
             
             /* Notify Host that device has woken up */
             QAT_Response_Str(QAT_RC_QUIET, "+EVT:wakeup\r\n");
 
         } else {
             LOG_DBG("QAT: Wakeup not from external pin, skip notification");
+            //QAT_Response_Str(QAT_RC_QUIET, "Wakeup not from external\r\n");
         }
         break;
     default:

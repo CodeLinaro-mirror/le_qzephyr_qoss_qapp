@@ -440,7 +440,7 @@ int ring_send(uint8_t ring_id, const uint8_t *data, size_t len, uint32_t timeout
     qc_osal_mutex_unlock(g_ring_service.rings[ring_id].tx_lock);
 
     /* Trigger Slave interrupt */
-    ret = g_ring_service.adapter->trigger_irq();
+    ret = g_ring_service.adapter->notify_tx_done();
     if (ret < 0) {
         QC_OSAL_LOG_ERR("Failed to trigger interrupt: %d", ret);
     }
@@ -563,7 +563,7 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     /* Get data length */
     data_len = desc.length;
     if (data_len > max_len) {
-        QC_OSAL_LOG_ERR("Buffer too small: %u > %zu", data_len, max_len);
+        QC_OSAL_LOG_ERR("Buffer too small: %u > %u", data_len, max_len);
         g_ring_service.rings[ring_id].stats.rx_errors++;
         qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
         return -QC_OSAL_EMSGSIZE;
@@ -610,6 +610,11 @@ int ring_recv(uint8_t ring_id, uint8_t *data, size_t max_len, uint32_t timeout)
     g_ring_service.rings[ring_id].stats.rx_count++;
 
     qc_osal_mutex_unlock(g_ring_service.rings[ring_id].rx_lock);
+
+    /* Notify slave that host has read data (HOST_INT1) */
+    if (g_ring_service.adapter->notify_rx_done) {
+        g_ring_service.adapter->notify_rx_done();
+    }
 
     return data_len;
 }

@@ -46,6 +46,7 @@
 
 /* Helper macros */
 #define QCSPI_CONFIG_HOST_IRQ_INT0_EN(s) ((s) << 5)
+#define QCSPI_CONFIG_HOST_IRQ_INT1_EN(s) ((s) << 6)
 #define BIT_CHECK(var, pos) (((var) & (1 << (pos))) != 0)
 
 /* Status register bits */
