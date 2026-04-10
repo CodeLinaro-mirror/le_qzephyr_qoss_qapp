@@ -59,10 +59,16 @@ struct ring_adapter_ops {
     int (*mem_write)(uint32_t addr, const void *buf, size_t len);
 
     /**
-     * @brief Trigger interrupt on remote device
+     * @brief Notify slave that host has written data to ring (tx done)
      * @return 0 on success, negative errno on failure
      */
-    int (*trigger_irq)(void);
+    int (*notify_tx_done)(void);
+
+    /**
+     * @brief Notify slave that host has read data from ring (rx done)
+     * @return 0 on success, negative errno on failure
+     */
+    int (*notify_rx_done)(void);
 };
 
 /**

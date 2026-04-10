@@ -62,6 +62,13 @@ int qcspi_adapter_mem_write(uint32_t addr, const void *buf, size_t len);
 int qcspi_adapter_trigger_irq(void);
 
 /**
+ * @brief Trigger INT1 on Slave to notify that host has read data
+ *
+ * @return 0 on success, negative errno on failure
+ */
+int qcspi_adapter_notify_rx_done(void);
+
+/**
  * @brief Check if QCSPI adapter is initialized
  *
  * @return true if initialized, false otherwise
