@@ -11,6 +11,7 @@
 #include <qcom_wifi_mgmt.h>
 #include <stdlib.h>
 #include <zephyr/net/wifi_utils.h>
+#include <wlan_lib_version.h>
 
 static int cmd_set_tx_power(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -865,7 +866,7 @@ static int cmd_wifi_set_active_device(const struct shell *ctx, size_t argc, char
         return -EINVAL;
     }
 
-    deviceId = shell_strtoul(argv[1], 10, err);
+    deviceId = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse input deviceId (err %d)", err);
         return err;
@@ -886,6 +887,19 @@ static int cmd_wifi_set_active_device(const struct shell *ctx, size_t argc, char
     return 0;
 }
 
+static int cmd_version(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct qwifi_wlan_lib_version ver;
+
+    if (qwifi_get_wlan_lib_version(&ver) != 0) {
+        shell_error(ctx, "Failed to get WLAN lib version");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "WLAN lib version: %u.%u.%u.%u",
+                ver.major, ver.minor, ver.patch, ver.build);
+    return 0;
+}
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
@@ -1014,6 +1028,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Channel Switch Announcement.\n"
 					     "Usage: qwifi set_csa | <mode> <channel> <count> [<iface index>: default is sap iface index.]\n",
                                              cmd_csa, 4, 1),
+                               SHELL_CMD_ARG(version, NULL,
+                                             "Show WLAN lib version.\n"
+					     "Usage: qwifi version\n",
+                                             cmd_version, 1, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
