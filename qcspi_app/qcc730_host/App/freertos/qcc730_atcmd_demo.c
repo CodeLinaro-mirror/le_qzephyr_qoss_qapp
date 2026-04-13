@@ -156,14 +156,6 @@ char test_buf_end1[] = "111";
 char test_buf_end2[] = "222";
 char test_buf_end3[] = "333";
 
-/* If the board does not define a dedicated WKUP GPIO, fall back to the INT
- * GPIO so the file compiles.  Override these in your board header if needed. */
-#ifndef QCC730_WKUP_GPIO_Port
-#define QCC730_WKUP_GPIO_Port QCC730_INT_GPIO_Port
-#endif
-#ifndef QCC730_WKUP_Pin
-#define QCC730_WKUP_Pin QCC730_INT_Pin
-#endif
 
 void qcc730_wkup()
 {
@@ -516,6 +508,8 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
 
     /* Loop to read all available data packets */
     do {
+        if (packet_count > 0 && packet_count % 10 == 0)
+            qc_osal_msleep(1);
         /* Use rx_buf from qcc730_atcmd structure */
         memset(qcc730_atcmd->rx_buf, 0, ATCMD_BUF_LEN);
         ret = ring_recv(ring_id, qcc730_atcmd->rx_buf, sizeof(qcc730_atcmd->rx_buf), 0);
@@ -541,18 +535,11 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
                 break;
             }
         } else if (ret < 0) {
-            error_count++;
-            if (error_count >= 8) {
-                break;
-            }
-            qc_osal_msleep(1);
-            ret = 1; /* retry a few times in case a later packet becomes available */
-            continue;
+            QC_OSAL_LOG_ERR("Failed to receive data: %d", ret);
+            break; /* Exit on error */ 
         } else {
             error_count = 0;
         }
-        if (packet_count > 0 && packet_count % 10 == 0)
-            qc_osal_msleep(1);
 
         /* ret == 0 means no more data available, loop will exit */
     } while (ret > 0);
