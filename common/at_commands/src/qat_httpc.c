@@ -254,8 +254,6 @@ static int qat_httpc_parse_args(const uint8_t *data, size_t data_size, struct qa
 static int qat_httpc_data_mode_callback(const uint8_t *data, size_t len)
 {
     int ret;
-    struct cat_object *cat_obj;
-    cat_status hold_status;
 
     ret = httpc_at_data_mode_input(data, len);
     if (ret < 0) {
@@ -263,33 +261,17 @@ static int qat_httpc_data_mode_callback(const uint8_t *data, size_t len)
         if (QAT_Transfer_Mode_set(QAT_Transfer_Mode_AT_COMMAND_E, NULL) < 0) {
             LOG_ERR("Failed to exit online data mode after error");
         }
-
-        cat_obj = qat_get_cat_object();
-        hold_status = cat_hold_exit(cat_obj, CAT_STATUS_ERROR);
-        if (hold_status != CAT_STATUS_OK) {
-            LOG_ERR("cat_hold_exit(ERROR) failed: %d", hold_status);
-        }
-
+        QAT_Output(9, "\r\nERROR\r\n");
         return ret;
     }
 
     if (!httpc_at_is_in_data_mode()) {
         if (QAT_Transfer_Mode_set(QAT_Transfer_Mode_AT_COMMAND_E, NULL) < 0) {
             LOG_ERR("Failed to exit online data mode");
-            cat_obj = qat_get_cat_object();
-            hold_status = cat_hold_exit(cat_obj, CAT_STATUS_ERROR);
-            if (hold_status != CAT_STATUS_OK) {
-                LOG_ERR("cat_hold_exit(ERROR) failed: %d", hold_status);
-            }
+            QAT_Output(9, "\r\nERROR\r\n");
             return -EIO;
         }
-
-        cat_obj = qat_get_cat_object();
-        hold_status = cat_hold_exit(cat_obj, CAT_STATUS_OK);
-        if (hold_status != CAT_STATUS_OK) {
-            LOG_ERR("cat_hold_exit(OK) failed: %d", hold_status);
-            return -EIO;
-        }
+        QAT_Output(6, "\r\nOK\r\n");
     }
 
     return (int)len;
@@ -336,7 +318,7 @@ static cat_return_state qat_httpc_dispatch(qat_httpc_handler_t handler, uint32_t
             }
         }
 
-        return CAT_RETURN_STATE_HOLD;
+        return CAT_RETURN_STATE_OK;
     }
 
     return CAT_RETURN_STATE_OK;
@@ -572,9 +554,6 @@ static struct cat_command_group qat_httpc_cmd_group = {
     .cmd_num = ARRAY_SIZE(qat_httpc_cmds),
 };
 
-static struct cat_command_group *qat_httpc_get_command_group(void)
-{
-    return &qat_httpc_cmd_group;
-}
+static struct cat_command_group *qat_httpc_get_command_group(void) { return &qat_httpc_cmd_group; }
 
 QAT_REGISTER_CMD_GROUP(qat_httpc_get_command_group, "HTTPC");

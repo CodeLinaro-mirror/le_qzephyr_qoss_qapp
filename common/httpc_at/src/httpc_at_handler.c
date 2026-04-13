@@ -81,10 +81,7 @@ static void httpc_at_output_str(const char *str)
 /**
  * @brief Thin wrapper kept for internal call-site compatibility.
  */
-static void httpc_at_output(const char *str)
-{
-    httpc_at_output_str(str);
-}
+static void httpc_at_output(const char *str) { httpc_at_output_str(str); }
 
 /**
  * @brief Write a formatted string via httpc_at_output_str.
@@ -127,7 +124,7 @@ static void reset_temp_resources(void)
     for (int i = 0; i < g_cfg.header_field_num; i++) {
         k_free(g_cfg.header_fields[i].name);
         k_free(g_cfg.header_fields[i].value);
-        g_cfg.header_fields[i].name  = NULL;
+        g_cfg.header_fields[i].name = NULL;
         g_cfg.header_fields[i].value = NULL;
     }
     g_cfg.header_field_num = 0;
@@ -147,8 +144,8 @@ static void reset_temp_resources(void)
     }
 
     /* Reset data mode */
-    g_cfg.in_data_mode   = false;
-    g_cfg.data_mode_cmd  = HTTPC_AT_DATA_MODE_NONE;
+    g_cfg.in_data_mode = false;
+    g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
 }
 
 /**
@@ -183,7 +180,7 @@ static int add_header_field(const char *header_str)
         return -EINVAL;
     }
 
-    name_len  = (size_t)(colon - header_str);
+    name_len = (size_t)(colon - header_str);
     val_start = colon + 1;
 
     /* Skip leading whitespace in value */
@@ -204,7 +201,7 @@ static int add_header_field(const char *header_str)
         return -ENOMEM;
     }
 
-    g_cfg.header_fields[g_cfg.header_field_num].name  = name_copy;
+    g_cfg.header_fields[g_cfg.header_field_num].name = name_copy;
     g_cfg.header_fields[g_cfg.header_field_num].value = val_copy;
     g_cfg.header_field_num++;
 
@@ -219,8 +216,7 @@ static int add_content_type_header(int content_type)
 {
     char header_str[128];
 
-    snprintf(header_str, sizeof(header_str),
-             "Content-Type: %s", httpc_at_get_content_type_str(content_type));
+    snprintf(header_str, sizeof(header_str), "Content-Type: %s", httpc_at_get_content_type_str(content_type));
     return add_header_field(header_str);
 }
 
@@ -239,7 +235,7 @@ static int build_header_strings(const char ***out_headers, uint8_t *out_count)
 
     if (n == 0) {
         *out_headers = NULL;
-        *out_count   = 0;
+        *out_count = 0;
         return 0;
     }
 
@@ -251,8 +247,7 @@ static int build_header_strings(const char ***out_headers, uint8_t *out_count)
 
     for (uint8_t i = 0; i < n; i++) {
         /* Build "Name: Value" string */
-        size_t len = strlen(g_cfg.header_fields[i].name) +
-                     2 + /* ": " */
+        size_t len = strlen(g_cfg.header_fields[i].name) + 2 + /* ": " */
                      strlen(g_cfg.header_fields[i].value) + 1;
         char *s = k_malloc(len);
 
@@ -264,14 +259,12 @@ static int build_header_strings(const char ***out_headers, uint8_t *out_count)
             k_free(arr);
             return -ENOMEM;
         }
-        snprintf(s, len, "%s: %s",
-                 g_cfg.header_fields[i].name,
-                 g_cfg.header_fields[i].value);
+        snprintf(s, len, "%s: %s", g_cfg.header_fields[i].name, g_cfg.header_fields[i].value);
         arr[i] = s;
     }
 
     *out_headers = arr;
-    *out_count   = n;
+    *out_count = n;
     return 0;
 }
 
@@ -331,10 +324,7 @@ static int prepare_ssl_if_needed(const char *url)
         return 0;
     }
 
-    ret = httpc_at_ssl_load_certs(g_cfg.https_auth_type,
-                                  g_cfg.ca_file,
-                                  g_cfg.cert_file,
-                                  g_cfg.key_file);
+    ret = httpc_at_ssl_load_certs(g_cfg.https_auth_type, g_cfg.ca_file, g_cfg.cert_file, g_cfg.key_file);
     if (ret < 0) {
         g_cfg.tls_creds_loaded = false;
         return ret;
@@ -369,10 +359,10 @@ static void release_ssl_if_needed(const char *url)
 
 struct body_stream_ctx {
     httpc_at_output_cb_t output_cb;
-    void                *user_data;
-    size_t               bytes_written;
-    const char          *prefix;
-    bool                 prefix_emitted;
+    void *user_data;
+    size_t bytes_written;
+    const char *prefix;
+    bool prefix_emitted;
 };
 
 static void body_stream_cb(const char *data, size_t len, void *user_data)
@@ -414,14 +404,14 @@ int httpc_at_init(httpc_at_output_cb_t output_cb, void *user_data)
     g_stream_ssl_prepared = false;
 
     /* Set defaults */
-    g_cfg.http_port  = HTTPC_AT_DEFAULT_HTTP_PORT;
+    g_cfg.http_port = HTTPC_AT_DEFAULT_HTTP_PORT;
     g_cfg.https_port = HTTPC_AT_DEFAULT_HTTPS_PORT;
-    g_cfg.ip_family  = AF_INET;
+    g_cfg.ip_family = AF_INET;
     g_cfg.prealloc_ssl_buf = 0;
     g_cfg.data_cache = 1;
     g_cfg.https_auth_type = HTTPC_AT_AUTH_NONE;
 
-    g_cfg.output_cb        = output_cb;
+    g_cfg.output_cb = output_cb;
     g_cfg.output_user_data = user_data;
 
     ret = httpc_at_core_init();
@@ -450,7 +440,7 @@ void httpc_at_deinit(void)
 
     if (g_cfg.url) {
         k_free(g_cfg.url);
-        g_cfg.url     = NULL;
+        g_cfg.url = NULL;
         g_cfg.url_len = 0;
     }
 
@@ -468,10 +458,7 @@ void httpc_at_deinit(void)
  * Data mode interface
  *-----------------------------------------------------------------------*/
 
-bool httpc_at_is_in_data_mode(void)
-{
-    return g_cfg.in_data_mode;
-}
+bool httpc_at_is_in_data_mode(void) { return g_cfg.in_data_mode; }
 
 int httpc_at_data_mode_input(const uint8_t *data, size_t len)
 {
@@ -488,8 +475,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     }
 
     /* Strip trailing '\r' from partial AT packets */
-    size_t valid_len = httpc_at_get_valid_data_len((const char *)data, len,
-                                                    HTTPC_AT_CHUNK_SIZE);
+    size_t valid_len = httpc_at_get_valid_data_len((const char *)data, len, HTTPC_AT_CHUNK_SIZE);
 
     /* Clamp to remaining space */
     size_t space = g_cfg.data_len - g_cfg.send_buf_offset;
@@ -506,11 +492,9 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
 
         if (!url) {
             LOG_ERR("No URL for data mode command");
-            g_cfg.in_data_mode  = false;
+            g_cfg.in_data_mode = false;
             g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
-            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                            "+HTTPCPOST:SEND FAIL\r\n" :
-                            "+HTTPCPUT:SEND FAIL\r\n");
+            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
             reset_temp_resources();
             return -EINVAL;
         }
@@ -522,11 +506,10 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
             ret = build_header_strings(&headers, &header_count);
             if (ret < 0) {
                 LOG_ERR("build_header_strings failed: %d", ret);
-                g_cfg.in_data_mode  = false;
+                g_cfg.in_data_mode = false;
                 g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
-                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                                "+HTTPCPOST:SEND FAIL\r\n" :
-                                "+HTTPCPUT:SEND FAIL\r\n");
+                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n"
+                                                                 : "+HTTPCPUT:SEND FAIL\r\n");
                 reset_temp_resources();
                 return ret;
             }
@@ -535,40 +518,37 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
             if (ret < 0) {
                 LOG_ERR("SSL preparation failed: %d", ret);
                 free_header_strings(headers, header_count);
-                g_cfg.in_data_mode  = false;
+                g_cfg.in_data_mode = false;
                 g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
-                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                                "+HTTPCPOST:SEND FAIL\r\n" :
-                                "+HTTPCPUT:SEND FAIL\r\n");
+                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n"
+                                                                 : "+HTTPCPUT:SEND FAIL\r\n");
                 reset_temp_resources();
                 return ret;
             }
             g_stream_ssl_prepared = true;
 
             struct httpc_at_request req = {
-                .url                = url,
-                .method             = (cmd == HTTPC_AT_DATA_MODE_POST) ?
-                                      HTTPC_AT_METHOD_POST : HTTPC_AT_METHOD_PUT,
-                .body               = NULL,
-                .body_len           = g_cfg.data_len,
-                .timeout_ms         = HTTPC_AT_DEFAULT_TIMEOUT_MS,
-                .extra_headers      = headers,
+                .url = url,
+                .method = (cmd == HTTPC_AT_DATA_MODE_POST) ? HTTPC_AT_METHOD_POST : HTTPC_AT_METHOD_PUT,
+                .body = NULL,
+                .body_len = g_cfg.data_len,
+                .timeout_ms = HTTPC_AT_DEFAULT_TIMEOUT_MS,
+                .extra_headers = headers,
                 .extra_header_count = header_count,
-                .auth_type          = g_cfg.https_auth_type,
-                .http_port          = g_cfg.http_port,
-                .https_port         = g_cfg.https_port,
-                .ip_family          = g_cfg.ip_family,
+                .auth_type = g_cfg.https_auth_type,
+                .http_port = g_cfg.http_port,
+                .https_port = g_cfg.https_port,
+                .ip_family = g_cfg.ip_family,
             };
 
             ret = httpc_at_stream_begin(&req, &g_stream_ctx);
             free_header_strings(headers, header_count);
             if (ret < 0) {
                 LOG_ERR("stream_begin failed: %d", ret);
-                g_cfg.in_data_mode  = false;
+                g_cfg.in_data_mode = false;
                 g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
-                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                                "+HTTPCPOST:SEND FAIL\r\n" :
-                                "+HTTPCPUT:SEND FAIL\r\n");
+                httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n"
+                                                                 : "+HTTPCPUT:SEND FAIL\r\n");
                 reset_temp_resources();
                 return ret;
             }
@@ -577,11 +557,9 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
         ret = httpc_at_stream_send(&g_stream_ctx, data, valid_len);
         if (ret < 0) {
             LOG_ERR("stream_send failed: %d", ret);
-            g_cfg.in_data_mode  = false;
+            g_cfg.in_data_mode = false;
             g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
-            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                            "+HTTPCPOST:SEND FAIL\r\n" :
-                            "+HTTPCPUT:SEND FAIL\r\n");
+            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
             reset_temp_resources();
             return ret;
         }
@@ -599,7 +577,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     /* All data received — execute the pending command */
     cmd = g_cfg.data_mode_cmd;
 
-    g_cfg.in_data_mode  = false;
+    g_cfg.in_data_mode = false;
     g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
 
     if (cmd == HTTPC_AT_DATA_MODE_URLCFG) {
@@ -609,7 +587,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
         if (g_cfg.url) {
             k_free(g_cfg.url);
         }
-        g_cfg.url     = g_cfg.send_buf;
+        g_cfg.url = g_cfg.send_buf;
         g_cfg.url_len = g_cfg.send_buf_offset;
         g_cfg.send_buf = NULL; /* Ownership transferred to g_cfg.url */
 
@@ -621,21 +599,18 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     if (!use_cache) {
         struct httpc_at_response resp = {0};
         struct body_stream_ctx stream_ctx = {
-            .output_cb      = g_cfg.output_cb,
-            .user_data      = g_cfg.output_user_data,
-            .bytes_written  = 0,
-            .prefix         = "+HTTPC:",
+            .output_cb = g_cfg.output_cb,
+            .user_data = g_cfg.output_user_data,
+            .bytes_written = 0,
+            .prefix = "+HTTPC:",
             .prefix_emitted = false,
         };
         int ret = httpc_at_stream_finish(&g_stream_ctx, &resp, body_stream_cb, &stream_ctx);
 
         if (ret < 0 || resp.status_code < 200 || resp.status_code >= 300) {
-            LOG_ERR("HTTP %s failed: ret=%d status=%d",
-                    (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT",
-                    ret, resp.status_code);
-            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                            "+HTTPCPOST:SEND FAIL\r\n" :
-                            "+HTTPCPUT:SEND FAIL\r\n");
+            LOG_ERR("HTTP %s failed: ret=%d status=%d", (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT", ret,
+                    resp.status_code);
+            httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
             if (ret >= 0) {
                 ret = -EIO;
             }
@@ -647,9 +622,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
             httpc_at_output("+HTTPC:");
         }
         httpc_at_output_fmt(",%zu\r\n", stream_ctx.bytes_written);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND OK\r\n" :
-                        "+HTTPCPUT:SEND OK\r\n");
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND OK\r\n" : "+HTTPCPUT:SEND OK\r\n");
 
         reset_temp_resources();
         return 0;
@@ -663,9 +636,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     ret = build_header_strings(&headers, &header_count);
     if (ret < 0) {
         LOG_ERR("build_header_strings failed: %d", ret);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND FAIL\r\n" :
-                        "+HTTPCPUT:SEND FAIL\r\n");
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
         reset_temp_resources();
         return ret;
     }
@@ -675,9 +646,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     if (!url) {
         LOG_ERR("No URL for data mode command");
         free_header_strings(headers, header_count);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND FAIL\r\n" :
-                        "+HTTPCPUT:SEND FAIL\r\n");
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
         reset_temp_resources();
         return -EINVAL;
     }
@@ -686,35 +655,32 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     if (ret < 0) {
         LOG_ERR("SSL preparation failed: %d", ret);
         free_header_strings(headers, header_count);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND FAIL\r\n" :
-                        "+HTTPCPUT:SEND FAIL\r\n");
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
         reset_temp_resources();
         return ret;
     }
 
     struct httpc_at_request req = {
-        .url               = url,
-        .method            = (cmd == HTTPC_AT_DATA_MODE_POST) ?
-                             HTTPC_AT_METHOD_POST : HTTPC_AT_METHOD_PUT,
-        .body              = (const uint8_t *)g_cfg.send_buf,
-        .body_len          = g_cfg.send_buf_offset,
-        .timeout_ms        = HTTPC_AT_DEFAULT_TIMEOUT_MS,
-        .extra_headers     = headers,
+        .url = url,
+        .method = (cmd == HTTPC_AT_DATA_MODE_POST) ? HTTPC_AT_METHOD_POST : HTTPC_AT_METHOD_PUT,
+        .body = (const uint8_t *)g_cfg.send_buf,
+        .body_len = g_cfg.send_buf_offset,
+        .timeout_ms = HTTPC_AT_DEFAULT_TIMEOUT_MS,
+        .extra_headers = headers,
         .extra_header_count = header_count,
-        .auth_type         = g_cfg.https_auth_type,
-        .http_port         = g_cfg.http_port,
-        .https_port        = g_cfg.https_port,
-        .ip_family         = g_cfg.ip_family,
+        .auth_type = g_cfg.https_auth_type,
+        .http_port = g_cfg.http_port,
+        .https_port = g_cfg.https_port,
+        .ip_family = g_cfg.ip_family,
     };
 
     struct httpc_at_response resp = {0};
 
     struct body_stream_ctx stream_ctx = {
-        .output_cb      = g_cfg.output_cb,
-        .user_data      = g_cfg.output_user_data,
-        .bytes_written  = 0,
-        .prefix         = "+HTTPC:",
+        .output_cb = g_cfg.output_cb,
+        .user_data = g_cfg.output_user_data,
+        .bytes_written = 0,
+        .prefix = "+HTTPC:",
         .prefix_emitted = false,
     };
 
@@ -723,12 +689,9 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
     free_header_strings(headers, header_count);
 
     if (ret < 0 || resp.status_code < 200 || resp.status_code >= 300) {
-        LOG_ERR("HTTP %s failed: ret=%d status=%d",
-                (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT",
-                ret, resp.status_code);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND FAIL\r\n" :
-                        "+HTTPCPUT:SEND FAIL\r\n");
+        LOG_ERR("HTTP %s failed: ret=%d status=%d", (cmd == HTTPC_AT_DATA_MODE_POST) ? "POST" : "PUT", ret,
+                resp.status_code);
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND FAIL\r\n" : "+HTTPCPUT:SEND FAIL\r\n");
         if (ret >= 0) {
             ret = -EIO;
         }
@@ -737,9 +700,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
             httpc_at_output("+HTTPC:");
         }
         httpc_at_output_fmt(",%zu\r\n", stream_ctx.bytes_written);
-        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ?
-                        "+HTTPCPOST:SEND OK\r\n" :
-                        "+HTTPCPUT:SEND OK\r\n");
+        httpc_at_output((cmd == HTTPC_AT_DATA_MODE_POST) ? "+HTTPCPOST:SEND OK\r\n" : "+HTTPCPUT:SEND OK\r\n");
     }
 
     release_ssl_if_needed(url);
@@ -752,9 +713,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
  * AT+HTTPCLIENT handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpclient(uint32_t op_type,
-                               uint32_t param_count,
-                               httpc_at_param_t *params)
+int httpc_at_handle_httpclient(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type == HTTPC_AT_OP_EXEC) {
         /* Template query: print usage */
@@ -821,9 +780,9 @@ int httpc_at_handle_httpclient(uint32_t op_type,
     size_t inline_data_len = 0;
     uint32_t header_start_idx = 3;
 
-    if ((method == HTTPC_AT_METHOD_POST || method == HTTPC_AT_METHOD_PUT) &&
-        param_count >= 4 && params[3].str_val && strlen(params[3].str_val) > 0) {
-        inline_data     = params[3].str_val;
+    if ((method == HTTPC_AT_METHOD_POST || method == HTTPC_AT_METHOD_PUT) && param_count >= 4 && params[3].str_val &&
+        strlen(params[3].str_val) > 0) {
+        inline_data = params[3].str_val;
         inline_data_len = strlen(inline_data);
         header_start_idx = 4;
     }
@@ -885,17 +844,17 @@ int httpc_at_handle_httpclient(uint32_t op_type,
     }
 
     struct httpc_at_request req = {
-        .url                = url,
-        .method             = method,
-        .body               = (const uint8_t *)inline_data,
-        .body_len           = inline_data_len,
-        .timeout_ms         = HTTPC_AT_DEFAULT_TIMEOUT_MS,
-        .extra_headers      = headers,
+        .url = url,
+        .method = method,
+        .body = (const uint8_t *)inline_data,
+        .body_len = inline_data_len,
+        .timeout_ms = HTTPC_AT_DEFAULT_TIMEOUT_MS,
+        .extra_headers = headers,
         .extra_header_count = header_count,
-        .auth_type          = g_cfg.https_auth_type,
-        .http_port          = g_cfg.http_port,
-        .https_port         = g_cfg.https_port,
-        .ip_family          = g_cfg.ip_family,
+        .auth_type = g_cfg.https_auth_type,
+        .http_port = g_cfg.http_port,
+        .https_port = g_cfg.https_port,
+        .ip_family = g_cfg.ip_family,
     };
 
     k_mutex_unlock(&g_mutex);
@@ -918,10 +877,10 @@ int httpc_at_handle_httpclient(uint32_t op_type,
     } else if (method == HTTPC_AT_METHOD_GET) {
         /* GET: stream body, report data+size */
         struct body_stream_ctx stream_ctx = {
-            .output_cb    = g_cfg.output_cb,
-            .user_data    = g_cfg.output_user_data,
+            .output_cb = g_cfg.output_cb,
+            .user_data = g_cfg.output_user_data,
             .bytes_written = 0,
-            .prefix        = "+HTTPC:",
+            .prefix = "+HTTPC:",
             .prefix_emitted = false,
         };
 
@@ -968,9 +927,7 @@ int httpc_at_handle_httpclient(uint32_t op_type,
  * AT+HTTPGETSIZE handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpgetsize(uint32_t op_type,
-                                uint32_t param_count,
-                                httpc_at_param_t *params)
+int httpc_at_handle_httpgetsize(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type != HTTPC_AT_OP_EXEC_W_PARAM || param_count < 1 || param_count > 2) {
         httpc_at_output("+HTTPGETSIZE:ERROR\r\n");
@@ -1023,17 +980,17 @@ int httpc_at_handle_httpgetsize(uint32_t op_type,
     }
 
     struct httpc_at_request req = {
-        .url                = url,
-        .method             = HTTPC_AT_METHOD_HEAD,
-        .body               = NULL,
-        .body_len           = 0,
-        .timeout_ms         = timeout_ms,
-        .extra_headers      = NULL,
+        .url = url,
+        .method = HTTPC_AT_METHOD_HEAD,
+        .body = NULL,
+        .body_len = 0,
+        .timeout_ms = timeout_ms,
+        .extra_headers = NULL,
         .extra_header_count = 0,
-        .auth_type          = g_cfg.https_auth_type,
-        .http_port          = g_cfg.http_port,
-        .https_port         = g_cfg.https_port,
-        .ip_family          = g_cfg.ip_family,
+        .auth_type = g_cfg.https_auth_type,
+        .http_port = g_cfg.http_port,
+        .https_port = g_cfg.https_port,
+        .ip_family = g_cfg.ip_family,
     };
 
     k_mutex_unlock(&g_mutex);
@@ -1062,9 +1019,7 @@ int httpc_at_handle_httpgetsize(uint32_t op_type,
  * AT+HTTPGET handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpget(uint32_t op_type,
-                            uint32_t param_count,
-                            httpc_at_param_t *params)
+int httpc_at_handle_httpget(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type != HTTPC_AT_OP_EXEC_W_PARAM || param_count < 1 || param_count > 2) {
         httpc_at_output("+HTTPGET:ERROR\r\n");
@@ -1117,24 +1072,24 @@ int httpc_at_handle_httpget(uint32_t op_type,
     }
 
     struct httpc_at_request req = {
-        .url                = url,
-        .method             = HTTPC_AT_METHOD_GET,
-        .body               = NULL,
-        .body_len           = 0,
-        .timeout_ms         = timeout_ms,
-        .extra_headers      = NULL,
+        .url = url,
+        .method = HTTPC_AT_METHOD_GET,
+        .body = NULL,
+        .body_len = 0,
+        .timeout_ms = timeout_ms,
+        .extra_headers = NULL,
         .extra_header_count = 0,
-        .auth_type          = g_cfg.https_auth_type,
-        .http_port          = g_cfg.http_port,
-        .https_port         = g_cfg.https_port,
-        .ip_family          = g_cfg.ip_family,
+        .auth_type = g_cfg.https_auth_type,
+        .http_port = g_cfg.http_port,
+        .https_port = g_cfg.https_port,
+        .ip_family = g_cfg.ip_family,
     };
 
     struct body_stream_ctx stream_ctx = {
-        .output_cb      = g_cfg.output_cb,
-        .user_data      = g_cfg.output_user_data,
-        .bytes_written  = 0,
-        .prefix         = "+HTTPGET:",
+        .output_cb = g_cfg.output_cb,
+        .user_data = g_cfg.output_user_data,
+        .bytes_written = 0,
+        .prefix = "+HTTPGET:",
         .prefix_emitted = false,
     };
 
@@ -1167,9 +1122,7 @@ int httpc_at_handle_httpget(uint32_t op_type,
  * AT+HTTPPOST handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httppost(uint32_t op_type,
-                             uint32_t param_count,
-                             httpc_at_param_t *params)
+int httpc_at_handle_httppost(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type != HTTPC_AT_OP_EXEC_W_PARAM || param_count < 2) {
         return -EINVAL;
@@ -1238,15 +1191,15 @@ int httpc_at_handle_httppost(uint32_t op_type,
         }
     }
 
-    g_cfg.data_len        = (size_t)data_len;
+    g_cfg.data_len = (size_t)data_len;
     g_cfg.send_buf_offset = 0;
-    g_cfg.in_data_mode    = true;
-    g_cfg.data_mode_cmd   = HTTPC_AT_DATA_MODE_POST;
+    g_cfg.in_data_mode = true;
+    g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_POST;
 
     k_mutex_unlock(&g_mutex);
 
     /* Phase 1 response: ready to receive data */
-    httpc_at_output("\r\nOK\r\n>\r\n");
+    httpc_at_output(">\r\n");
     return 0;
 }
 
@@ -1254,9 +1207,7 @@ int httpc_at_handle_httppost(uint32_t op_type,
  * AT+HTTPPUT handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpput(uint32_t op_type,
-                            uint32_t param_count,
-                            httpc_at_param_t *params)
+int httpc_at_handle_httpput(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type != HTTPC_AT_OP_EXEC_W_PARAM || param_count < 3) {
         return -EINVAL;
@@ -1337,15 +1288,15 @@ int httpc_at_handle_httpput(uint32_t op_type,
         }
     }
 
-    g_cfg.data_len        = (size_t)data_len;
+    g_cfg.data_len = (size_t)data_len;
     g_cfg.send_buf_offset = 0;
-    g_cfg.in_data_mode    = true;
-    g_cfg.data_mode_cmd   = HTTPC_AT_DATA_MODE_PUT;
+    g_cfg.in_data_mode = true;
+    g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_PUT;
 
     k_mutex_unlock(&g_mutex);
 
     /* Phase 1 response */
-    httpc_at_output("\r\nOK\r\n>\r\n");
+    httpc_at_output(">\r\n");
     return 0;
 }
 
@@ -1353,17 +1304,14 @@ int httpc_at_handle_httpput(uint32_t op_type,
  * AT+HTTPURLCFG handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpurlcfg(uint32_t op_type,
-                               uint32_t param_count,
-                               httpc_at_param_t *params)
+int httpc_at_handle_httpurlcfg(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type == HTTPC_AT_OP_QUERY) {
         /* Query: return stored URL */
         k_mutex_lock(&g_mutex, K_FOREVER);
 
         if (g_cfg.url && g_cfg.url_len > 0) {
-            httpc_at_output_fmt("+HTTPURLCFG:%zu,%s\r\n",
-                                g_cfg.url_len, g_cfg.url);
+            httpc_at_output_fmt("+HTTPURLCFG:%zu,%s\r\n", g_cfg.url_len, g_cfg.url);
         } else {
             httpc_at_output("+HTTPURLCFG:0,null\r\n");
         }
@@ -1389,7 +1337,7 @@ int httpc_at_handle_httpurlcfg(uint32_t op_type,
         /* Clear stored URL */
         if (g_cfg.url) {
             k_free(g_cfg.url);
-            g_cfg.url     = NULL;
+            g_cfg.url = NULL;
             g_cfg.url_len = 0;
         }
         k_mutex_unlock(&g_mutex);
@@ -1397,8 +1345,7 @@ int httpc_at_handle_httpurlcfg(uint32_t op_type,
     }
 
     if (url_length < 8 || url_length > HTTPC_AT_MAX_URL_LEN) {
-        LOG_ERR("HTTPURLCFG: invalid url_length=%d (must be 0 or [8,%d])",
-                url_length, HTTPC_AT_MAX_URL_LEN);
+        LOG_ERR("HTTPURLCFG: invalid url_length=%d (must be 0 or [8,%d])", url_length, HTTPC_AT_MAX_URL_LEN);
         k_mutex_unlock(&g_mutex);
         return -EINVAL;
     }
@@ -1412,15 +1359,15 @@ int httpc_at_handle_httpurlcfg(uint32_t op_type,
         return -ENOMEM;
     }
 
-    g_cfg.data_len        = (size_t)url_length;
+    g_cfg.data_len = (size_t)url_length;
     g_cfg.send_buf_offset = 0;
-    g_cfg.in_data_mode    = true;
-    g_cfg.data_mode_cmd   = HTTPC_AT_DATA_MODE_URLCFG;
+    g_cfg.in_data_mode = true;
+    g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_URLCFG;
 
     k_mutex_unlock(&g_mutex);
 
     /* Phase 1 response */
-    httpc_at_output("\r\nOK\r\n>\r\n");
+    httpc_at_output(">\r\n");
     return 0;
 }
 
@@ -1428,19 +1375,14 @@ int httpc_at_handle_httpurlcfg(uint32_t op_type,
  * AT+HTTPSSLCFG handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpsslcfg(uint32_t op_type,
-                               uint32_t param_count,
-                               httpc_at_param_t *params)
+int httpc_at_handle_httpsslcfg(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type == HTTPC_AT_OP_QUERY) {
         /* Query: return current SSL configuration */
         k_mutex_lock(&g_mutex, K_FOREVER);
 
-        httpc_at_output_fmt("+HTTPSSLCFG:%d,\"%s\",\"%s\",\"%s\"\r\n",
-                            (int)g_cfg.https_auth_type,
-                            g_cfg.cert_file,
-                            g_cfg.key_file,
-                            g_cfg.ca_file);
+        httpc_at_output_fmt("+HTTPSSLCFG:%d,\"%s\",\"%s\",\"%s\"\r\n", (int)g_cfg.https_auth_type, g_cfg.cert_file,
+                            g_cfg.key_file, g_cfg.ca_file);
 
         k_mutex_unlock(&g_mutex);
         return 0;
@@ -1474,8 +1416,8 @@ int httpc_at_handle_httpsslcfg(uint32_t op_type,
 
     /* Clear existing file paths */
     memset(g_cfg.cert_file, 0, sizeof(g_cfg.cert_file));
-    memset(g_cfg.key_file,  0, sizeof(g_cfg.key_file));
-    memset(g_cfg.ca_file,   0, sizeof(g_cfg.ca_file));
+    memset(g_cfg.key_file, 0, sizeof(g_cfg.key_file));
+    memset(g_cfg.ca_file, 0, sizeof(g_cfg.ca_file));
 
     /* Parse optional file paths */
     if (param_count >= 2 && params[1].str_val && strlen(params[1].str_val) > 0) {
@@ -1488,8 +1430,7 @@ int httpc_at_handle_httpsslcfg(uint32_t op_type,
         strlcpy(g_cfg.ca_file, params[3].str_val, sizeof(g_cfg.ca_file));
     }
 
-    LOG_DBG("HTTPSSLCFG: scheme=%d cert=%s key=%s ca=%s",
-            scheme, g_cfg.cert_file, g_cfg.key_file, g_cfg.ca_file);
+    LOG_DBG("HTTPSSLCFG: scheme=%d cert=%s key=%s ca=%s", scheme, g_cfg.cert_file, g_cfg.key_file, g_cfg.ca_file);
 
     k_mutex_unlock(&g_mutex);
 
@@ -1500,9 +1441,7 @@ int httpc_at_handle_httpsslcfg(uint32_t op_type,
  * AT+HTTPNETCFG handler
  *-----------------------------------------------------------------------*/
 
-int httpc_at_handle_httpnetcfg(uint32_t op_type,
-                               uint32_t param_count,
-                               httpc_at_param_t *params)
+int httpc_at_handle_httpnetcfg(uint32_t op_type, uint32_t param_count, httpc_at_param_t *params)
 {
     if (op_type == HTTPC_AT_OP_EXEC) {
         httpc_at_output("+HTTPNETCFG=<netcfg_type>,<value>\r\n");
@@ -1586,7 +1525,4 @@ int httpc_at_handle_httpnetcfg(uint32_t op_type,
  * Utility
  *-----------------------------------------------------------------------*/
 
-const struct httpc_at_global_cfg *httpc_at_get_config(void)
-{
-    return &g_cfg;
-}
+const struct httpc_at_global_cfg *httpc_at_get_config(void) { return &g_cfg; }
