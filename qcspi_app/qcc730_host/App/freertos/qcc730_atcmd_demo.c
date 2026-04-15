@@ -37,6 +37,11 @@
 
 #define demo_print printf
 
+/* Control whether received AT responses are printed.
+ * Use shell command "resp_print 0" to disable and "resp_print 1" to enable.
+ */
+static int g_resp_print_enable = 1;
+
 /* ============================================================================
  * Global Variables
  * ============================================================================ */
@@ -188,7 +193,12 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
     uint32_t sent = 0;
     while (sent < len) {
         uint32_t chunk = (len - sent) > ATCMD_BUF_LEN ? ATCMD_BUF_LEN : (len - sent);
-        int ret = ring_send(RING_AT, cmd + sent, chunk, 1000);
+        int ret;
+        do {
+            ret = ring_send(RING_AT, cmd + sent, chunk, 1000);
+            if (ret == -QC_OSAL_EAGAIN)
+                qc_osal_msleep(1);
+        } while (ret == -QC_OSAL_EAGAIN);
         if (ret < 0) {
             demo_print("ring_send error: %d\r\n", ret);
             return ret;
@@ -309,18 +319,27 @@ void atcmd_response_parser_IPDHEX(int argc, uint32_t **argv, char *orig_cmd)
         buf_len = atoi(argv[3]);
         if (buf_len != 0) {
             buf = (uint8_t *)qc_osal_malloc(buf_len);
+            if (!buf) {
+                printf("IPDHEX: malloc fail\r\n");
+                return;
+            }
+
             memset(buf, 0, buf_len);
             memcpy(buf, argv[4], buf_len);
 
             printf("+IPDHEX:%s,%s,%d,%d,", argv[0], argv[1], atoi(argv[2]), atoi(argv[3]));
 
-            for (i = 0; i < buf_len; i++)
-                printf("%x", *buf++);
+            for (i = 0; i < buf_len; i++) {
+                printf("%02x", buf[i]);
+            }
+
+            printf("\r\n");
 
             qc_osal_free(buf);
         }
-    } else
+    } else {
         printf("%s", orig_cmd);
+    }
 }
 
 void atcmd_response_parser_RST(int argc, uint32_t **argv, char *orig_cmd)
@@ -449,9 +468,11 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
         cmd += arg_start + 1;
         argv[0] = (uint32_t *)cmd;
 
-        for (p = cmd; *p != '\0' && argc < AT_ARGC_MAX; p++) {
+        char *cmd_end = cmd + (buf_len - (arg_start + 1));
+
+        for (p = cmd; p < cmd_end && argc < AT_ARGC_MAX; p++) {
             if (*p == '\r') {
-                if (*(p + 1) == '\n') {
+                if ((p + 1) < cmd_end && *(p + 1) == '\n') {
                     *p = '\0';
                     p++;
                 }
@@ -462,6 +483,10 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
                 argv[argc] = (uint32_t *)(p + 1);
                 argc++;
             }
+        }
+
+        if (!strcmp(header, "+IPDHEX") && argc == 4) {
+            argc++;
         }
 
         return atcmd_parser_exec_function_by_index(argc, (char *)argv, original_cmd, i, flag);
@@ -475,25 +500,28 @@ void test_http_process(uint8_t *data, uint32_t len);
 
 void print_atcmd_resp(uint8_t *data, uint32_t len)
 {
-    if (!strncmp((char *)&data[2], "+CMD:", 5)) {
-        /* Work around for UART and SPI conflict on STM32 platform */
-        // qc_osal_msleep(1000);
+    if (len >= 7 && !strncmp((char *)&data[2], "+CMD:", 5)) {
         printf("%.*s", (int)len, (char *)data);
         return;
     }
-    if (!strncmp((char *)&data[0], "+IPDHEX:", 8)) {
+
+    if (len >= 8 && !strncmp((char *)&data[0], "+IPDHEX:", 8)) {
         return;
     }
-    if (!strncmp((char *)&data[0], "+EVT:MQTT_SUBRECVHEX", 20)) {
+
+    if (len >= 20 && !strncmp((char *)&data[0], "+EVT:MQTT_SUBRECVHEX", 20)) {
         return;
     }
+
     if (http_mode != -1) {
         test_http_process(data, len);
         return;
     }
 
-    /* Use length-bounded print to avoid reading beyond rx_buf when packet
-     * is exactly ATCMD_BUF_LEN bytes and has no null terminator. */
+    if (len >= 5 && !strncmp((char *)&data[0], "+IPD:", 5)) {
+        return;
+    }
+
     printf("%.*s", (int)len, (char *)data);
 }
 
@@ -746,6 +774,124 @@ static void atcmd_demo_tx_loop(void)
     qc_osal_thread_delete(NULL);
 }
 
+static void atcmd_demo_net_tx_loop(void)
+{
+    uint8_t *write_buf = NULL;
+    uint32_t j = 0, packets_num_gb = 0, packets_num_b = 0, packets_num_per_10s = 0, runtime = 0, runtime_per_10s = 0,
+             count_per_10s = 0;
+    uint32_t is_test_done = 0;
+    uint32_t start, start_per_10s;
+    uint32_t end, end_per_10s;
+
+    if (tx_test_param->len == 0 || tx_test_param->len > ATCMD_BUF_LEN) {
+        printf("net_tx_loop: invalid len %u, must be 1..%d\r\n", tx_test_param->len, ATCMD_BUF_LEN);
+        qc_osal_thread_delete(NULL);
+        return;
+    }
+
+    write_buf = qc_osal_malloc(tx_test_param->len);
+    if (!write_buf) {
+        printf("net_tx_loop: failed to allocate %u bytes\r\n", tx_test_param->len);
+        qc_osal_thread_delete(NULL);
+        return;
+    }
+
+    tx_quit = 0;
+    tx_test_start = 1;
+
+    srand(time(NULL));
+
+    for (j = 0; j < tx_test_param->len; j++) {
+        write_buf[j] = 'A' + (j % 26);
+    }
+
+    printf("net_tx_loop start: len=%u interval=%u(ms) time=%u(ms) target=%uG %uB\r\n",
+           tx_test_param->len, tx_test_param->interval, tx_test_param->time,
+           tx_test_param->g_bytes, tx_test_param->bytes);
+    printf("NOTE: run AT+CIPSTART and AT+CIPSEND=<id>,0 before net_tx_loop\r\n");
+
+    start = qc_osal_uptime_get_ms();
+    start_per_10s = qc_osal_uptime_get_ms();
+
+    while (!is_test_done) {
+        if (tx_quit) {
+            is_test_done = 1;
+            break;
+        }
+
+        end = qc_osal_uptime_get_ms();
+        runtime = (end - start) / 1000;
+        if ((tx_test_param->time > 0) && ((end - start) >= tx_test_param->time)) {
+            is_test_done = 1;
+            break;
+        }
+
+        qcc730_atcmd_send_handler(write_buf, tx_test_param->len);
+        packets_num_b += tx_test_param->len;
+        packets_num_per_10s += tx_test_param->len;
+
+        if (packets_num_b >= ONE_GB_BYTES) {
+            packets_num_gb++;
+            packets_num_b -= ONE_GB_BYTES;
+        }
+
+        if (tx_test_param->g_bytes > 0 || tx_test_param->bytes > 0) {
+            if (packets_num_gb > tx_test_param->g_bytes) {
+                is_test_done = 1;
+                break;
+            } else if (packets_num_gb == tx_test_param->g_bytes) {
+                if (packets_num_b >= tx_test_param->bytes) {
+                    is_test_done = 1;
+                    break;
+                }
+            }
+        }
+
+        end_per_10s = qc_osal_uptime_get_ms();
+        runtime_per_10s = (end_per_10s - start_per_10s) / 1000;
+
+        if (runtime_per_10s >= 10) {
+            printf("net tx speed = %d(bits/sec) for %ds-%ds\r\n",
+                   (packets_num_per_10s * 8) / runtime_per_10s,
+                   count_per_10s, count_per_10s + 10);
+            printf("net total bytes = %dG, %dB\r\n", packets_num_gb, packets_num_b);
+            count_per_10s += 10;
+            runtime_per_10s = 0;
+            packets_num_per_10s = 0;
+            end_per_10s = qc_osal_uptime_get_ms();
+            start_per_10s = qc_osal_uptime_get_ms();
+        }
+
+        if (tx_test_param->interval) {
+            qc_osal_msleep(tx_test_param->interval);
+        }
+    }
+
+    qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
+
+    tx_test_start = 0;
+
+    if (runtime_per_10s == 0) {
+        uint32_t total_ms = qc_osal_uptime_get_ms() - start;
+        if (total_ms == 0) {
+            total_ms = 1;
+        }
+        printf("net tx avg speed = %lu(bits/sec)\r\n",
+               (unsigned long)(((uint64_t)(packets_num_gb * ONE_GB_BYTES + packets_num_b) * 8 * 1000) / total_ms));
+    } else {
+        printf("net tx speed = %d(bits/sec) for %ds-%ds\r\n",
+               (packets_num_per_10s * 8) / runtime_per_10s,
+               count_per_10s, count_per_10s + runtime_per_10s);
+    }
+
+    printf("net_tx_loop done, total bytes = %dG, %dB\r\n", packets_num_gb, packets_num_b);
+
+    memset(tx_test_param, 0, sizeof(atcmd_tx_test_t));
+    qc_osal_free(write_buf);
+
+    qc_osal_thread_delete(NULL);
+}
+
 void atcmd_qat_perf(int argc, char **argv)
 {
     uint8_t index = 0;
@@ -919,6 +1065,73 @@ int test_atcmd_tx_loop(int argc, char **argv)
     return 0;
 }
 
+int test_net_tx_loop(int argc, char **argv)
+{
+    qc_osal_thread_t xHandle = NULL;
+    int index = 1;
+
+    if (argc < 2) {
+        demo_print("\nUsage: net_tx_loop [options]\r\n");
+        demo_print("  prerequisite: DUT must already be in AT+CIPSEND=<link_id>,0 online data mode\r\n");
+        demo_print("  -i = interval time in ms between transmissions\r\n");
+        demo_print("  -l = payload length to send each time (1..1400)\r\n");
+        demo_print("  -t = time in seconds to transmit for\r\n");
+        demo_print("  -m = MB number to transmit, no more than 1024MB\r\n");
+        demo_print("  -g = GB number to transmit\r\n");
+        demo_print("  stop = stop the transmit test\r\n");
+        return 0;
+    }
+
+    memset(tx_test_param, 0, sizeof(atcmd_tx_test_t));
+
+    while (index < argc) {
+        if (0 == strcmp(argv[index], "-i")) {
+            sscanf(argv[++index], "%d", &tx_test_param->interval);
+            index++;
+        } else if (0 == strcmp(argv[index], "-l")) {
+            sscanf(argv[++index], "%d", &tx_test_param->len);
+            index++;
+        } else if (0 == strcmp(argv[index], "-t")) {
+            sscanf(argv[++index], "%d", &tx_test_param->time);
+            tx_test_param->time = tx_test_param->time * 1000;
+            index++;
+        } else if (0 == strcmp(argv[index], "-m")) {
+            sscanf(argv[++index], "%d", &tx_test_param->bytes);
+            if (tx_test_param->bytes >= 1024) {
+                demo_print("value larger than 1024 is not allowed -m, please use -g instead \r\n");
+                return 0;
+            }
+            tx_test_param->bytes = tx_test_param->bytes * 1024 * 1024;
+            index++;
+        } else if (0 == strcmp(argv[index], "-g")) {
+            sscanf(argv[++index], "%d", &tx_test_param->g_bytes);
+            index++;
+        } else if (0 == strcmp(argv[index], "stop")) {
+            tx_quit = 1;
+            return 0;
+        } else {
+            index++;
+        }
+    }
+
+    if (tx_test_param->len == 0) {
+        tx_test_param->len = 1400;
+    }
+
+    struct qc_osal_thread_config config = {.name = "atcmd_demo_net_tx_loop",
+                                           .stack_size = 1024,
+                                           .priority = 6,
+                                           .entry = (qc_osal_thread_entry_t)atcmd_demo_net_tx_loop,
+                                           .arg = NULL};
+
+    int ret = qc_osal_thread_create(&xHandle, &config);
+    if (ret != 0) {
+        printf("Task creation error: Could not allocate required memory\r\n");
+    }
+
+    return 0;
+}
+
 /* HTTP test functions - placeholder for now */
 int test_send_http_cmd(int index)
 {
@@ -1039,6 +1252,7 @@ void atcmd_demo_register_commands(void)
     cmd_shell_add("tx", (void *)test_atcmd_tx, "tx");
     cmd_shell_add("rx_mqtt", (void *)test_atcmd_rx_mqtt, "rx_mqtt");
     cmd_shell_add("tx_loop", (void *)test_atcmd_tx_loop, "tx stress test");
+    cmd_shell_add("net_tx_loop", (void *)test_net_tx_loop, "network online-data throughput test");
     cmd_shell_add("httptest", (void *)test_http, "http test");
     cmd_shell_add("bmps_enable", (void *)cmd_bmps_enable, "Enable/disable BMPS (0=disable/wakeup, 1=enable)");
 }
