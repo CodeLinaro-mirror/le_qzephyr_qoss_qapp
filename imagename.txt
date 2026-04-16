@@ -2,10 +2,6 @@
 ./qcli_app/build/qcc730mx/zephyr/zephyr.elf
 ./qcli_app/build/qcc730evbi/zephyr/zephyr.elf
 ./qcli_app/build/qcc730evbx/zephyr/zephyr.elf
-./bmps_app/build/qcc730mi/zephyr/zephyr.elf
-./bmps_app/build/qcc730mx/zephyr/zephyr.elf
-./bmps_app/build/qcc730evbi/zephyr/zephyr.elf
-./bmps_app/build/qcc730evbx/zephyr/zephyr.elf
 ./power_app/build/qcc730mi/zephyr/zephyr.elf
 ./power_app/build/qcc730mx/zephyr/zephyr.elf
 ./power_app/build/qcc730evbi/zephyr/zephyr.elf
