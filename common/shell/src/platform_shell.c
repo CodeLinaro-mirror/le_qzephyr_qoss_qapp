@@ -18,6 +18,10 @@
 #include <zephyr/net/wifi_mgmt.h>
 #endif
 
+#define OTP_MAC_ADDR                    0x1a01c0
+#define OTP_MANUFACTURING_YEAR_WEEK     0x1a0260
+#define OTP_MODULE_PART_NUMBER          0x1a0264
+
 #if 0
 #define NT_LOG_LVL_INFO 0
 /*! @warning condition priority. */
@@ -180,7 +184,21 @@ static int cmd_info(const struct shell *ctx, size_t argc, char **argv)
 
 static int cmd_version(const struct shell *ctx, size_t argc, char **argv)
 {
+    volatile unsigned char *mac_addr = (unsigned char *)OTP_MAC_ADDR;
+    unsigned int manufacturing_year_week = *(unsigned int*)OTP_MANUFACTURING_YEAR_WEEK;
+    volatile unsigned char *module_part_number = (unsigned char*)OTP_MODULE_PART_NUMBER;
+
     shell_print(ctx, "CRM Number: %s", CONFIG_QCC730_CRM_NUMBER);
+    shell_print(ctx, "MAC address: %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    shell_fprintf_normal(ctx, "Module Part Number: ");
+    uint8_t i = 0;
+    while (module_part_number[i] && module_part_number[i] != 0x03) {
+        shell_fprintf_normal(ctx, "%c", module_part_number[i]);
+        i++;
+    }
+    shell_print(ctx, "");
+    shell_print(ctx, "Manufacturing year: %d, week: %d", (manufacturing_year_week >> 8) & 0xff, manufacturing_year_week & 0xff);
+    shell_print(ctx, "BOM configuration: %d", (manufacturing_year_week >> 16) & 0xffff);
 
     return 0;
 }
