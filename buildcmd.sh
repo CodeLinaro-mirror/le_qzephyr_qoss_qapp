@@ -10,7 +10,6 @@ echo $ws1
 cd ../
 basedirs="$(pwd)"
 subdirs=(
-    "bmps_app"
     "power_app"
     "qcli_app"
     "ftm_app"
