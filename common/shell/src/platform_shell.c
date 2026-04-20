@@ -17,6 +17,7 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/wifi_mgmt.h>
 #endif
+#include <qapi_rram.h>
 
 #define OTP_MAC_ADDR                    0x1a01c0
 #define OTP_MANUFACTURING_YEAR_WEEK     0x1a0260
@@ -276,6 +277,103 @@ static int cmd_setdbg(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_rram_read(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = -ENOTSUP;
+
+#if CONFIG_WIFI
+
+    uint32_t partition_id = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse partition_id (err %d)", err);
+        return err;
+    }
+
+    uint32_t address = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input address (err %d)", err);
+        return err;
+    }
+
+    uint32_t length = shell_strtoul(argv[3], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input length (err %d)", err);
+        return err;
+    }
+
+    uint8_t *buffer = calloc(sizeof(uint8_t), length);
+    if (!buffer) {
+        shell_error(ctx, "calloc fail. (err %d)", err);
+        return -ENOMEM;
+    }
+
+    qapi_Status_t ret = qapi_rram_read(partition_id, address, buffer, length);
+    if (ret != QAPI_OK) {
+        err = -EINVAL;
+        shell_error(ctx, "qapi_rram_read. (ret %d)", ret);
+        goto free_buffer;
+    }
+
+    shell_hexdump(ctx, buffer, length);
+
+free_buffer:
+    free(buffer);
+
+#endif /* CONFIG_WIFI */
+
+    return err;
+}
+
+static int cmd_rram_write(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = -ENOTSUP;
+
+#if CONFIG_WIFI
+
+    uint32_t partition_id = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse partition_id (err %d)", err);
+        return err;
+    }
+
+    uint32_t address = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input address (err %d)", err);
+        return err;
+    }
+
+    char *buf = argv[3];
+    size_t buf_length = strlen(buf);
+    size_t hex_length = (buf_length + 1) / 2;
+
+    uint8_t *buffer = calloc(sizeof(uint8_t), hex_length);
+    if (!buffer) {
+        shell_error(ctx, "calloc fail. (err %d)", err);
+        return -ENOMEM;
+    }
+
+    size_t n = hex2bin(buf, buf_length, buffer, hex_length);
+    if (n == 0) {
+        shell_error(ctx, "invalid contents");
+        err = -EINVAL;
+        goto free_buffer;
+    }
+
+    qapi_Status_t ret = qapi_rram_write(partition_id, address, buffer, hex_length);
+    if (ret != QAPI_OK) {
+        err = -EINVAL;
+        shell_error(ctx, "qapi_rram_write. (ret %d)", ret);
+        goto free_buffer;
+    }
+
+free_buffer:
+    free(buffer);
+
+#endif /* CONFIG_WIFI */
+
+    return err;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     sub_uart_cmds,
     SHELL_CMD_ARG(version, NULL,
@@ -310,6 +408,18 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
                   "setdbg 1 0   # disable dead_loop_cond1()\n"
                   "setdbg 2 1   # enable dead_loop_cond2()\n",
                   cmd_setdbg, 3, 0),
+    SHELL_CMD_ARG(rram_read, NULL,
+                  "rram_read\n"
+                  "Usage: rram_read [partition_id:uint32_t] [address:uint32_t] [length:uint32_t]\n"
+                  "Examples:\n"
+                  "\trram_read 4 0 4\n",
+                  cmd_rram_read, 4, 0),
+    SHELL_CMD_ARG(rram_write, NULL,
+                  "rram_write\n"
+                  "Usage: rram_write [partition_id:uint32_t] [address:uint32_t] [contents:hex format string]\n"
+                  "Examples:\n"
+                  "\trram_write 4 0 \"deadbeef\"\n",
+                  cmd_rram_write, 4, 0),
     SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(platform, &sub_uart_cmds, "platform commands", NULL);
