@@ -1,0 +1,2399 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_event.h>
+#include <zephyr/net/dhcpv4.h>
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/policy.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <cat.h>
+#include "qat_api.h"
+#include <qcom_wifi_mgmt.h>
+#include <zephyr/net/net_ip.h>
+
+LOG_MODULE_REGISTER(qat_wlan, LOG_LEVEL_DBG);
+
+/*-------------------------------------------------------------------------
+ * Definitions
+ *-----------------------------------------------------------------------*/
+#define WLAN_RESPONSE_BUFFER_LENGTH 128
+#define WLAN_STR_BUFFER_LENGTH      1500
+
+/* Device ID definitions (matching reference implementation) */
+#define QAT_DEV_AP_ID           0  /* AP interface */
+#define QAT_DEV_STA_ID          1  /* STA interface */
+#define QAT_DEFAULT_HAL_STA_ID  2  /* STA in concurrent mode */
+#define QAT_DEV_INV_ID          3  /* Invalid device ID */
+
+/* BCMC filter configuration (AT command managed) */
+#define AT_BCMC_WHITELIST_LEN   4
+#define AT_WIFI_MAC_HDR_LEN     24
+#define AT_LLC_SNAP_HDR_LEN     8
+
+/**
+@ingroup qapi_wlan
+Enumeration that identifies the device concurrency mode.
+*/
+typedef enum {
+    DEV_MODE_STATION_E = 0x01, /**< Station mode */
+    DEV_MODE_AP_E = 0x10,      /**< SoftAP mode */
+    DEV_MODE_AP_STA_E = 0x11,  /**< AP_STA Concurrency */
+    DEV_MODE_NO_CONC_E,        /**< Concurrency Off. */
+} qapi_WLAN_DEV_Mode_e;
+
+
+typedef struct {
+    struct k_mutex mutex;
+    bool connected;
+    bool wlan_enabled;
+    char ssid[WIFI_SSID_MAX_LEN + 1];
+    uint8_t ssid_len;
+    uint16_t channel;
+    struct net_if *iface;
+    uint8_t active_device;  /* Current active device ID */
+    /* Scan tracking */
+    uint16_t scan_result_count;
+    bool scan_in_progress;
+    /* Security parameters - stored from +CWWPA and +CWPWD */
+    uint32_t auth_mode;  /* From +CWWPA */
+    uint32_t cipher;     /* From +CWWPA */
+    char passphrase[65]; /* From +CWPWD */
+    uint8_t passphrase_len;
+    bool security_set;   /* Flag to indicate if security params are set */
+} wifi_context_t;
+
+/*-------------------------------------------------------------------------
+ * Global Variables
+ *-----------------------------------------------------------------------*/
+static wifi_context_t g_wifi_ctx;
+static bool enable_event_reporting = true;
+static uint32_t at_udp_whitelist_arr[AT_BCMC_WHITELIST_LEN] = {7777, 0, 0, 0};
+
+/*-------------------------------------------------------------------------
+ * Forward Declarations
+ *-----------------------------------------------------------------------*/
+static cat_return_state cmd_wlan_enable_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_disable_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_scan_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_scan_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_connect_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_connect_set(const struct cat_command *cmd, const uint8_t *data,
+                                             const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_connect_query(const struct cat_command *cmd, uint8_t *data,
+                                               size_t *data_size, const size_t max_data_size);
+static cat_return_state cmd_wlan_disconnect_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_status_query(const struct cat_command *cmd, uint8_t *data,
+                                              size_t *data_size, const size_t max_data_size);
+static cat_return_state cmd_wlan_ap_enable_set(const struct cat_command *cmd, const uint8_t *data,
+                                               const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_ap_enable_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_ap_disable_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_reg_domain_set(const struct cat_command *cmd, const uint8_t *data,
+                                                const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_reg_domain_query(const struct cat_command *cmd, uint8_t *data,
+                                                  size_t *data_size, const size_t max_data_size);
+static cat_return_state cmd_wlan_wpa_params_set(const struct cat_command *cmd, const uint8_t *data,
+                                                const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_wpa_params_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_wpa_passphrase_set(const struct cat_command *cmd, const uint8_t *data,
+                                                    const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_wpa_passphrase_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_mode_query(const struct cat_command *cmd, uint8_t *data,
+                                            size_t *data_size, const size_t max_data_size);
+static cat_return_state cmd_wlan_mode_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_phy_mode_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_antiinf_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_edca_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_edcca_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bmiss_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_wps_config_set(const struct cat_command *cmd, const uint8_t *data,
+                                                const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bmps_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bmps_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bmps_idletime_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bmps_idletime_set(const struct cat_command *cmd, const uint8_t *data,
+                                                   const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bmps_ignore_bcmc_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bmps_ignore_bcmc_set(const struct cat_command *cmd, const uint8_t *data,
+                                                      const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bcmc_filter_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bcmc_filter_set(const struct cat_command *cmd, const uint8_t *data,
+                                                 const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bcmc_list_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_bcmc_list_set(const struct cat_command *cmd, const uint8_t *data,
+                                               const size_t data_size, const size_t args_num);
+static cat_return_state cmd_wlan_bcmc_list_query(const struct cat_command *cmd, uint8_t *data,
+                                                 size_t *data_size, const size_t max_data_size);
+
+/*-------------------------------------------------------------------------
+ * WiFi Event Handler
+ *-----------------------------------------------------------------------*/
+static struct net_mgmt_event_callback wifi_mgmt_cb;
+static struct net_mgmt_event_callback net_mgmt_cb;
+static bool callbacks_registered = false;
+
+/* Work queue for delayed scan complete event */
+static struct k_work_delayable scan_complete_work;
+
+/*
+ * DHCP work contexts - each embeds the target iface so that start and stop
+ * always operate on the same interface and there is no shared global state.
+ * This is important in concurrent (STA+AP) mode where two interfaces exist.
+ */
+struct dhcp_start_ctx {
+	struct k_work_delayable work;
+	struct net_if *iface;
+};
+
+struct dhcp_stop_ctx {
+	struct k_work work;
+	struct net_if *iface;
+};
+
+static struct dhcp_start_ctx dhcp_start_work;
+static struct dhcp_stop_ctx  dhcp_stop_work;
+
+/* BMPS timeout timer */
+static void bmps_timeout_callback(struct k_timer *timer);
+K_TIMER_DEFINE(bmps_timeout_timer, bmps_timeout_callback, NULL);
+
+/**
+ * @brief BMPS timeout callback - disables BMPS and acquires PM lock
+ * 
+ * This callback is invoked when the BMPS timeout timer expires. It:
+ * 1. Disables BMPS power save mode
+ * 2. Acquires the PM lock to prevent system from entering low power state
+ * 3. Stops the timer
+ */
+static void bmps_timeout_callback(struct k_timer *timer)
+{
+    struct qcom_wifi_pm_bmps_params bmps_params;
+    int ret;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    
+    LOG_INF("BMPS timer expired, disabling BMPS");
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return;
+    }
+    
+    /* Disable BMPS */
+    bmps_params.enable = 0;
+    ret = net_mgmt(NET_REQUEST_WIFI_PM_QCOM_SET_BMPS_ENABLE, g_wifi_ctx.iface,
+                   &bmps_params, sizeof(bmps_params));
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    if (ret) {
+        LOG_ERR("Failed to disable BMPS on timeout: %d", ret);
+    }
+    
+    /* Acquire PM lock to prevent low power state */
+    pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES);
+    LOG_INF("PM_STATE_SUSPEND_TO_RAM lock acquired after BMPS timeout");
+    
+    /* Stop the timer */
+    k_timer_stop(&bmps_timeout_timer);
+
+    snprintf(buffer, sizeof(buffer), "+QBMPS: exit.");
+        
+    QAT_Response_Str(QAT_RC_QUIET, buffer);
+}
+
+static void dhcp_start_work_handler(struct k_work *work)
+{
+	struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+	struct dhcp_start_ctx *ctx = CONTAINER_OF(dwork, struct dhcp_start_ctx, work);
+	struct net_if *iface = ctx->iface;
+	struct wifi_iface_status status = {0};
+
+	if (!iface) {
+		LOG_ERR("No interface available for DHCP start");
+		return;
+	}
+
+	/* SoftAP interface uses a static IP - do not run DHCP client on it */
+	if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &status, sizeof(status)) == 0) {
+		if (status.iface_mode == WIFI_MODE_AP) {
+			LOG_DBG("SoftAP mode active, skipping DHCP client start (static IP)");
+			return;
+		}
+	}
+
+	LOG_INF("Starting DHCP client (delayed)");
+	net_dhcpv4_start(iface);
+}
+
+static void dhcp_stop_work_handler(struct k_work *work)
+{
+	struct dhcp_stop_ctx *ctx = CONTAINER_OF(work, struct dhcp_stop_ctx, work);
+	struct net_if *iface = ctx->iface;
+	struct wifi_iface_status status = {0};
+
+	if (!iface) {
+		LOG_ERR("No interface available for DHCP stop");
+		return;
+	}
+
+	/* SoftAP interface uses a static IP - do not run DHCP client on it */
+	if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &status, sizeof(status)) == 0) {
+		if (status.iface_mode == WIFI_MODE_AP) {
+			LOG_DBG("SoftAP mode active, skipping DHCP client stop (static IP)");
+			return;
+		}
+	}
+
+	LOG_INF("Stopping DHCP client (delayed)");
+	net_dhcpv4_stop(iface);
+}
+
+static void scan_complete_work_handler(struct k_work *work)
+{
+    /* Send scan complete event */
+    QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_scancmplt");
+    LOG_INF("Scan complete event sent (delayed)");
+    
+    /* Reset scan tracking */
+    g_wifi_ctx.scan_result_count = 0;
+    g_wifi_ctx.scan_in_progress = false;
+}
+
+static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
+                                   uint64_t mgmt_event, struct net_if *iface)
+{
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    
+    /* Debug: Log all events received */
+    LOG_DBG("wifi_mgmt_event_handler: event=0x%llx, enable_reporting=%d", 
+            mgmt_event, enable_event_reporting);
+    
+    if (!enable_event_reporting) {
+        LOG_WRN("Event reporting disabled, ignoring event 0x%llx", mgmt_event);
+        return;
+    }
+
+    switch (mgmt_event) {
+    case NET_EVENT_WIFI_SCAN_RESULT: {
+        const struct wifi_scan_result *entry = (const struct wifi_scan_result *)cb->info;
+        
+        LOG_DBG("SCAN_RESULT received: count=%d", g_wifi_ctx.scan_result_count + 1);
+        
+        /* First result - send scan result start event */
+        if (g_wifi_ctx.scan_result_count == 0) {
+            /* Note: We don't know total count yet, so we'll send it in SCAN_DONE */
+            g_wifi_ctx.scan_in_progress = true;
+            LOG_INF("First scan result, marking scan in progress");
+        }
+        
+        g_wifi_ctx.scan_result_count++;
+        
+        snprintf(buffer, sizeof(buffer),
+                "+CWLAP:\"%s\",%02x:%02x:%02x:%02x:%02x:%02x,%d,%d",
+                entry->ssid,
+                entry->mac[0], entry->mac[1], entry->mac[2],
+                entry->mac[3], entry->mac[4], entry->mac[5],
+                entry->channel, entry->rssi);
+        
+        QAT_Response_Str(QAT_RC_QUIET, buffer);
+        
+        /* Add small delay to prevent UART buffer overflow when many APs are found */
+        k_msleep(10);
+        break;
+    }
+    
+    case NET_EVENT_WIFI_SCAN_DONE:
+        LOG_INF("SCAN_DONE received: scan_in_progress=%d, count=%d", 
+                g_wifi_ctx.scan_in_progress, g_wifi_ctx.scan_result_count);
+        
+        /* Schedule scan complete event with delay to ensure all scan results are output
+         * Use work queue to avoid blocking the event handler
+         * Delay = 10ms per result + 50ms buffer
+         */
+        if (g_wifi_ctx.scan_result_count > 0) {
+            k_work_schedule(&scan_complete_work, 
+                           K_MSEC(g_wifi_ctx.scan_result_count * 10 + 50));
+        } else {
+            /* No results, send immediately */
+            k_work_schedule(&scan_complete_work, K_NO_WAIT);
+        }
+        break;
+        
+    case NET_EVENT_WIFI_CONNECT_RESULT: {
+        const struct wifi_status *status = (const struct wifi_status *)cb->info;
+        
+        if (status->status == 0) {
+            struct wifi_iface_status iface_status = {0};
+            int ret;
+            
+            k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+            g_wifi_ctx.connected = true;
+            /* Update iface from callback parameter */
+            if (!g_wifi_ctx.iface) {
+                g_wifi_ctx.iface = iface;
+            }
+            k_mutex_unlock(&g_wifi_ctx.mutex);
+            
+            /* Get interface status to retrieve BSSID */
+            ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &iface_status, 
+                          sizeof(iface_status));
+            if (ret == 0) {
+                snprintf(buffer, sizeof(buffer),
+                        "+EVT:wlan_conned:%02x:%02x:%02x:%02x:%02x:%02x",
+                        (uint8_t)iface_status.bssid[0], (uint8_t)iface_status.bssid[1], 
+                        (uint8_t)iface_status.bssid[2], (uint8_t)iface_status.bssid[3], 
+                        (uint8_t)iface_status.bssid[4], (uint8_t)iface_status.bssid[5]);
+            } else {
+                snprintf(buffer, sizeof(buffer), "+EVT:wlan_conned");
+            }
+            QAT_Response_Str(QAT_RC_QUIET, buffer);
+            
+            /* DHCP start is now driven by NET_EVENT_IF_UP in if_event_handler */
+        } else {
+            snprintf(buffer, sizeof(buffer), "+EVT:wlan_conn_failed:%d", status->status);
+            QAT_Response_Str(QAT_RC_QUIET, buffer);
+        }
+        break;
+    }
+    
+    case NET_EVENT_WIFI_DISCONNECT_RESULT: {
+        k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+        g_wifi_ctx.connected = false;
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        
+        QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_disconn");
+        
+        /* DHCP stop is now driven by NET_EVENT_IF_DOWN in if_event_handler */
+        break;
+    }
+    
+    case NET_EVENT_WIFI_AP_ENABLE_RESULT: {
+        const struct wifi_status *status = (const struct wifi_status *)cb->info;
+        
+        if (status && status->status == 0) {
+            char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+            struct wifi_iface_status iface_status = {0};
+            int ret;
+            int freq = 0;
+            
+            /* Try to get interface status for complete information */
+            ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &iface_status, 
+                          sizeof(iface_status));
+            
+            /* Calculate frequency from channel */
+            k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+            if (ret == 0 && iface_status.channel > 0) {
+                /* Use channel from iface_status if available */
+                if (iface_status.channel >= 1 && iface_status.channel <= 14) {
+                    /* 2.4GHz: channel 1-14 */
+                    freq = 2407 + iface_status.channel * 5;
+                } else if (iface_status.channel >= 36) {
+                    /* 5GHz: channel 36+ */
+                    freq = 5000 + iface_status.channel * 5;
+                }
+            } else if (g_wifi_ctx.channel > 0) {
+                /* Fallback to saved channel */
+                if (g_wifi_ctx.channel >= 1 && g_wifi_ctx.channel <= 14) {
+                    freq = 2407 + g_wifi_ctx.channel * 5;
+                } else if (g_wifi_ctx.channel >= 36) {
+                    freq = 5000 + g_wifi_ctx.channel * 5;
+                }
+            }
+            
+            if (g_wifi_ctx.ssid_len > 0) {
+                snprintf(buffer, sizeof(buffer),
+                        "+EVT:wlan_switchchan:1,%d,%s",
+                        freq,
+                        g_wifi_ctx.ssid);
+                k_mutex_unlock(&g_wifi_ctx.mutex);
+                QAT_Response_Str(QAT_RC_QUIET, buffer);
+                
+                LOG_INF("AP enabled on freq %d MHz, SSID: %s", freq, g_wifi_ctx.ssid);
+            } else {
+                k_mutex_unlock(&g_wifi_ctx.mutex);
+                QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_ap_enabled");
+            }
+        } else {
+            LOG_ERR("AP enable failed: status=%d", status ? status->status : -1);
+        }
+        break;
+    }
+    
+    case NET_EVENT_WIFI_AP_STA_CONNECTED: {
+        const struct wifi_ap_sta_info *sta_info = (const struct wifi_ap_sta_info *)cb->info;
+        char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+        struct wifi_iface_status iface_status = {0};
+        int ret;
+        int freq = 0;
+        
+        if (sta_info) {
+            /* Get interface status for SSID and channel */
+            ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &iface_status, 
+                          sizeof(iface_status));
+            
+            /* Calculate frequency from channel */
+            if (ret == 0 && iface_status.channel > 0) {
+                if (iface_status.channel >= 1 && iface_status.channel <= 14) {
+                    freq = 2407 + iface_status.channel * 5;
+                } else if (iface_status.channel >= 36) {
+                    freq = 5000 + iface_status.channel * 5;
+                }
+            }
+            
+            /* Send station connected event */
+            if (ret == 0 && freq > 0) {
+                snprintf(buffer, sizeof(buffer),
+                        "+EVT:wlan_conned:1,%02x:%02x:%02x:%02x:%02x:%02x,%d,%s,%d,0",
+                        sta_info->mac[0], sta_info->mac[1], sta_info->mac[2],
+                        sta_info->mac[3], sta_info->mac[4], sta_info->mac[5],
+                        freq,
+                        iface_status.ssid,
+                        sta_info->link_mode);  /* Using link_mode as assoc_id */
+            } else {
+                /* Fallback if we can't get full info */
+                k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+                if (g_wifi_ctx.channel > 0) {
+                    if (g_wifi_ctx.channel >= 1 && g_wifi_ctx.channel <= 14) {
+                        freq = 2407 + g_wifi_ctx.channel * 5;
+                    } else if (g_wifi_ctx.channel >= 36) {
+                        freq = 5000 + g_wifi_ctx.channel * 5;
+                    }
+                }
+                snprintf(buffer, sizeof(buffer),
+                        "+EVT:wlan_conned:1,%02x:%02x:%02x:%02x:%02x:%02x,%d,%s,0,0",
+                        sta_info->mac[0], sta_info->mac[1], sta_info->mac[2],
+                        sta_info->mac[3], sta_info->mac[4], sta_info->mac[5],
+                        freq,
+                        g_wifi_ctx.ssid_len > 0 ? g_wifi_ctx.ssid : "unknown");
+                k_mutex_unlock(&g_wifi_ctx.mutex);
+            }
+            QAT_Response_Str(QAT_RC_QUIET, buffer);
+            
+            LOG_INF("Station connected to AP: %02x:%02x:%02x:%02x:%02x:%02x at %d MHz",
+                    sta_info->mac[0], sta_info->mac[1], sta_info->mac[2],
+                    sta_info->mac[3], sta_info->mac[4], sta_info->mac[5], freq);
+        }
+        break;
+    }
+    
+    case NET_EVENT_WIFI_AP_STA_DISCONNECTED: {
+        const struct wifi_ap_sta_info *sta_info = (const struct wifi_ap_sta_info *)cb->info;
+        char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+        
+        if (sta_info) {
+            snprintf(buffer, sizeof(buffer),
+                    "+EVT:wlan_disconn:1,%02x:%02x:%02x:%02x:%02x:%02x",
+                    sta_info->mac[0], sta_info->mac[1], sta_info->mac[2],
+                    sta_info->mac[3], sta_info->mac[4], sta_info->mac[5]);
+            QAT_Response_Str(QAT_RC_QUIET, buffer);
+            
+            LOG_INF("Station disconnected from AP: %02x:%02x:%02x:%02x:%02x:%02x",
+                    sta_info->mac[0], sta_info->mac[1], sta_info->mac[2],
+                    sta_info->mac[3], sta_info->mac[4], sta_info->mac[5]);
+        }
+        break;
+    }
+    
+    default:
+        LOG_DBG("Unhandled wifi_mgmt event: 0x%llx", mgmt_event);
+        break;
+    }
+}
+
+static void net_mgmt_event_handler(struct net_mgmt_event_callback *cb,
+                                  uint64_t mgmt_event, struct net_if *iface)
+{
+    LOG_DBG("net_mgmt_event_handler called: event=0x%llx", mgmt_event);
+
+    switch (mgmt_event) {
+#if 0 //def CONFIG_WIFI_QCOM_AUTO_DHCPV4
+    case NET_EVENT_IF_UP: {
+        /*
+         * Interface carrier came on (WiFi STA connected or AP enabled).
+         * Start DHCP client only for STA interfaces; SoftAP uses a
+         * static IP so skip it.
+         */
+        struct wifi_iface_status status = {0};
+
+        if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface,
+                     &status, sizeof(status)) == 0) {
+            if (status.iface_mode == WIFI_MODE_AP) {
+                LOG_DBG("IF_UP on SoftAP iface, skipping DHCP client start");
+                break;
+            }
+        }
+        LOG_DBG("IF_UP on STA iface, scheduling DHCP client start");
+        dhcp_start_work.iface = iface;
+        k_work_schedule(&dhcp_start_work.work, K_MSEC(100));
+        break;
+    }
+
+    case NET_EVENT_IF_DOWN:
+        /* Interface carrier lost - stop DHCP client */
+        LOG_DBG("IF_DOWN, scheduling DHCP client stop");
+        dhcp_stop_work.iface = iface;
+        k_work_submit(&dhcp_stop_work.work);
+        break;
+#endif /* CONFIG_WIFI_QCOM_AUTO_DHCPV4 */
+
+    case NET_EVENT_IPV4_DHCP_BOUND: {
+        char ip_buffer[128];
+        struct net_if_config *cfg;
+        
+        LOG_INF("DHCP bound event received, sending +EVT:dhcp_bound");
+        
+        if (enable_event_reporting) {
+            /* Get IP address using net_if API */
+            cfg = net_if_get_config(iface);
+            if (cfg && cfg->ip.ipv4) {
+                struct in_addr *addr = &cfg->ip.ipv4->unicast[0].ipv4.address.in_addr;
+                if (addr->s_addr != 0) {
+                    char ip_str[NET_IPV4_ADDR_LEN];
+                    net_addr_ntop(AF_INET, addr, ip_str, sizeof(ip_str));
+                    
+                    snprintf(ip_buffer, sizeof(ip_buffer), 
+                            "+EVT:dhcp_bound,ip=%s\r\n", ip_str);
+                    QAT_Response_Str(QAT_RC_QUIET, ip_buffer);
+                } else {
+                    QAT_Response_Str(QAT_RC_QUIET, "+EVT:dhcp_bound");
+                }
+            } else {
+                QAT_Response_Str(QAT_RC_QUIET, "+EVT:dhcp_bound");
+            }
+        }
+        break;
+    }
+
+    default:
+        LOG_DBG("Unhandled net_mgmt event: 0x%llx", mgmt_event);
+        break;
+    }
+}
+
+/*-------------------------------------------------------------------------
+ * Command Implementations
+ *-----------------------------------------------------------------------*/
+
+/* AT+CWENABLE - Enable WiFi */
+static cat_return_state cmd_wlan_enable_exec(const struct cat_command *cmd)
+{
+    struct qcom_wifi_set_op_mode_params params;
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (g_wifi_ctx.wlan_enabled) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_OK, NULL);
+    }
+    
+    /* Get default WiFi interface */
+    g_wifi_ctx.iface = net_if_get_first_wifi();
+    if (!g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWENABLE:No WiFi interface found");
+    }
+    
+    /* Register event callbacks (similar to qapi_WLAN_Set_Callback) */
+    if (!callbacks_registered) {
+        /* Register WiFi management event callbacks */
+        net_mgmt_init_event_callback(&wifi_mgmt_cb, wifi_mgmt_event_handler,
+                                    NET_EVENT_WIFI_SCAN_RESULT |
+                                    NET_EVENT_WIFI_SCAN_DONE |
+                                    NET_EVENT_WIFI_CONNECT_RESULT |
+                                    NET_EVENT_WIFI_DISCONNECT_RESULT |
+                                    NET_EVENT_WIFI_AP_ENABLE_RESULT |
+                                    NET_EVENT_WIFI_AP_STA_CONNECTED |
+                                    NET_EVENT_WIFI_AP_STA_DISCONNECTED);
+        net_mgmt_add_event_callback(&wifi_mgmt_cb);
+        
+        /* Register network management event callbacks.
+         * NET_EVENT_IF_UP/DOWN drive DHCP client start/stop; the handler
+         * checks the interface mode so SoftAP interfaces are skipped.
+         */
+        net_mgmt_init_event_callback(&net_mgmt_cb, net_mgmt_event_handler,
+                                    NET_EVENT_IPV4_DHCP_BOUND
+#if 0 //def CONFIG_WIFI_QCOM_AUTO_DHCPV4
+                                    | NET_EVENT_IF_UP | NET_EVENT_IF_DOWN
+#endif
+                                    );
+        net_mgmt_add_event_callback(&net_mgmt_cb);
+
+        callbacks_registered = true;
+        LOG_INF("Event callbacks registered successfully");
+        LOG_INF("Registered events: SCAN_RESULT=0x%llx, SCAN_DONE=0x%llx", 
+                (uint64_t)NET_EVENT_WIFI_SCAN_RESULT, (uint64_t)NET_EVENT_WIFI_SCAN_DONE);
+    } else {
+        LOG_DBG("Event callbacks already registered");
+    }
+    
+    /* Bring up the interface */
+    net_if_up(g_wifi_ctx.iface);
+    
+    g_wifi_ctx.wlan_enabled = true;
+    /* Set default active device to STA */
+    g_wifi_ctx.active_device = QAT_DEV_STA_ID;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Set default operation mode to station (similar to reference code) */
+    params.opmode = "station";
+    params.hidden_ssid = "";
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        LOG_WRN("Failed to set default station mode: %d", ret);
+        /* Don't fail enable if mode setting fails */
+    } else {
+        LOG_INF("Active device set to STA (ID=%d)", g_wifi_ctx.active_device);
+    }
+    
+    LOG_INF("WiFi enabled");
+    
+    /* Send enable event (similar to QAPI_WLAN_ENABLE_CB_E) */
+    if (enable_event_reporting) {
+        QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_enable");
+    }
+    
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWQABLE - Disable WiFi */
+static cat_return_state cmd_wlan_disable_exec(const struct cat_command *cmd)
+{
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_OK, "+CWQABLE:WiFi already disabled");
+    }
+    
+    if (g_wifi_ctx.iface) {
+        net_if_down(g_wifi_ctx.iface);
+    }
+    
+    g_wifi_ctx.wlan_enabled = false;
+    g_wifi_ctx.connected = false;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Unregister event callbacks when disabling WiFi */
+    if (callbacks_registered) {
+        net_mgmt_del_event_callback(&wifi_mgmt_cb);
+        net_mgmt_del_event_callback(&net_mgmt_cb);
+        callbacks_registered = false;
+        LOG_INF("Event callbacks unregistered");
+    }
+    
+    LOG_INF("WiFi disabled");
+    
+    /* Send disable event (similar to QAPI_WLAN_DISABLE_CB_E) */
+    if (enable_event_reporting) {
+        QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_disabled");
+    }
+    
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWLAP - Scan for WiFi networks */
+static cat_return_state cmd_wlan_scan_exec(const struct cat_command *cmd)
+{
+    struct wifi_scan_params params = {0};
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLAP:Enable WiFi first");
+    }
+    
+    /* Reset scan tracking */
+    g_wifi_ctx.scan_result_count = 0;
+    g_wifi_ctx.scan_in_progress = false;
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Send scan start event (similar to QAPI_WLAN_SCAN_START_CB_E) */
+    if (enable_event_reporting) {
+        QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_scanstart");
+        LOG_INF("Scan start event sent, callbacks_registered=%d", callbacks_registered);
+    }
+    
+    /* Set scan_type to ACTIVE (required by qcom driver) */
+    params.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+    /* Leave bands = 0 (driver will scan all bands) */
+    
+    /* Start scan with params (not NULL) */
+    ret = net_mgmt(NET_REQUEST_WIFI_SCAN, g_wifi_ctx.iface, &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Scan request failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLAP:Scan failed");
+    }
+    
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWLAP=<ssid> - Scan for specific SSID */
+static cat_return_state cmd_wlan_scan_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num)
+{
+    struct wifi_scan_params params = {0};
+    static char ssid_filter[WIFI_SSID_MAX_LEN + 1];
+    int ret;
+    bool has_ssid_filter = false;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLAP:Enable WiFi first");
+    }
+    
+    /* Reset scan tracking */
+    g_wifi_ctx.scan_result_count = 0;
+    g_wifi_ctx.scan_in_progress = false;
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Send scan start event (similar to QAPI_WLAN_SCAN_START_CB_E) */
+    if (enable_event_reporting) {
+        QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_scanstart");
+    }
+    
+    /* Parse SSID from data */
+    if (data_size > 0 && data_size <= WIFI_SSID_MAX_LEN) {
+        memcpy(ssid_filter, data, data_size);
+        ssid_filter[data_size] = '\0';
+        params.ssids[0] = ssid_filter;
+        has_ssid_filter = true;
+    }
+    
+    /* Note: Qcom driver doesn't support bands/dwell_time/max_bss_cnt/band_chan parameters
+     * The driver will scan all bands (2.4G and 5G) automatically
+     * Only SSID filter is supported via params.ssids[0] */
+    
+    /* Start scan - pass params only if we have SSID filter, otherwise pass NULL */
+    if (has_ssid_filter) {
+        /* Set scan_type to ACTIVE to avoid driver check failure */
+        params.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+        ret = net_mgmt(NET_REQUEST_WIFI_SCAN, g_wifi_ctx.iface, &params, sizeof(params));
+    } else {
+        /* No filter - pass NULL for full scan */
+        ret = net_mgmt(NET_REQUEST_WIFI_SCAN, g_wifi_ctx.iface, NULL, 0);
+    }
+    
+    if (ret) {
+        LOG_ERR("Scan request failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLAP:Scan failed");
+    }
+    
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWJAP=<ssid>[,<bssid>] - Connect to WiFi */
+static cat_return_state cmd_wlan_connect_set(const struct cat_command *cmd, const uint8_t *data,
+                                             const size_t data_size, const size_t args_num)
+{
+    char ssid[WIFI_SSID_MAX_LEN + 1] = {0};
+    char bssid_str[18] = {0};  /* Format: xx:xx:xx:xx:xx:xx */
+    uint8_t bssid[6] = {0};
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    int ret;
+    char *comma;
+    size_t ssid_len;
+    bool has_bssid = false;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse SSID and optional BSSID: AT+CWJAP=<ssid>[,<bssid>] */
+    comma = strchr((const char *)data, ',');
+    if (!comma) {
+        /* Only SSID provided */
+        if (data_size > WIFI_SSID_MAX_LEN) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:SSID too long");
+        }
+        memcpy(ssid, data, data_size);
+        ssid[data_size] = '\0';
+        ssid_len = data_size;
+    } else {
+        /* SSID and BSSID provided */
+        ssid_len = comma - (const char *)data;
+        size_t bssid_len = data_size - ssid_len - 1;
+        
+        if (ssid_len > WIFI_SSID_MAX_LEN) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:SSID too long");
+        }
+        if (bssid_len > sizeof(bssid_str) - 1) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:BSSID too long");
+        }
+        
+        memcpy(ssid, data, ssid_len);
+        ssid[ssid_len] = '\0';
+        memcpy(bssid_str, comma + 1, bssid_len);
+        bssid_str[bssid_len] = '\0';
+        
+        /* Parse BSSID string (format: xx:xx:xx:xx:xx:xx or xx-xx-xx-xx-xx-xx) */
+        if (sscanf(bssid_str, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                   &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]) == 6 ||
+            sscanf(bssid_str, "%hhx-%hhx-%hhx-%hhx-%hhx-%hhx",
+                   &bssid[0], &bssid[1], &bssid[2], &bssid[3], &bssid[4], &bssid[5]) == 6) {
+            has_bssid = true;
+        } else {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:Invalid BSSID format");
+        }
+    }
+    
+    /* Set SSID using net_mgmt (similar to qapi_WLAN_Set_Param for SSID) */
+    struct qcom_wifi_set_op_mode_params mode_params;
+    mode_params.opmode = "station";
+    mode_params.hidden_ssid = "";
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, g_wifi_ctx.iface,
+                   &mode_params, sizeof(mode_params));
+    if (ret) {
+        LOG_WRN("Failed to ensure station mode: %d", ret);
+    }
+    
+    /* Now use standard WiFi connect with SSID */
+    struct wifi_connect_req_params params = {0};
+    params.ssid = ssid;
+    params.ssid_length = ssid_len;
+    params.channel = WIFI_CHANNEL_ANY;
+    params.timeout = SYS_FOREVER_MS;
+    
+    /* Set BSSID if provided (driver checks if bssid is non-zero) */
+    if (has_bssid) {
+        memcpy(params.bssid, bssid, 6);
+    } else {
+        /* Clear BSSID to indicate it's not set */
+        memset(params.bssid, 0, 6);
+    }
+    
+    /* Use security parameters from context (set by +CWWPA and +CWPWD) */
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    if (g_wifi_ctx.security_set && g_wifi_ctx.passphrase_len > 0) {
+        /* Map auth_mode to security type */
+        if (g_wifi_ctx.auth_mode == 0x02) {
+            /* WPA-PSK */
+            params.security = WIFI_SECURITY_TYPE_WPA_PSK;
+        } else if (g_wifi_ctx.auth_mode == 0x04) {
+            /* WPA2-PSK */
+            params.security = WIFI_SECURITY_TYPE_PSK;
+        } else if (g_wifi_ctx.auth_mode == 0x400) {
+            /* WPA3-SAE */
+            params.security = WIFI_SECURITY_TYPE_SAE;
+        } else if (g_wifi_ctx.auth_mode == 0x404 || g_wifi_ctx.auth_mode == 0x406) {
+            /* WPA2/WPA3 mixed - use PSK_SHA256 or SAE */
+            params.security = WIFI_SECURITY_TYPE_PSK_SHA256;
+        } else {
+            /* Default to WPA2-PSK */
+            params.security = WIFI_SECURITY_TYPE_PSK;
+        }
+        
+        /* Set passphrase */
+        params.psk = (const uint8_t *)g_wifi_ctx.passphrase;
+        params.psk_length = g_wifi_ctx.passphrase_len;
+        
+        LOG_INF("Using stored security: auth_mode=0x%x, security=%d, psk_len=%d",
+                g_wifi_ctx.auth_mode, params.security, params.psk_length);
+    } else {
+        /* No security parameters set, assume open network */
+        params.security = WIFI_SECURITY_TYPE_NONE;
+        LOG_INF("No security parameters set, using open network");
+    }
+    
+    /* Save SSID to context */
+    memcpy(g_wifi_ctx.ssid, ssid, ssid_len);
+    g_wifi_ctx.ssid[ssid_len] = '\0';
+    g_wifi_ctx.ssid_len = ssid_len;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    snprintf(buffer, sizeof(buffer), "+CWJAP:connecting to ssid %s", ssid);
+    QAT_Response_Str(QAT_RC_QUIET, buffer);
+    
+    /* Connect using qapi_WLAN_Commit equivalent (net_mgmt CONNECT) */
+    ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, g_wifi_ctx.iface, &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Connection request failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:Connect failed");
+    }
+    
+    LOG_INF("Connecting to %s with security type %d", ssid, params.security);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWJAP - Show usage */
+static cat_return_state cmd_wlan_connect_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, "+CWJAP=<ssid>[,<bssid>]");
+}
+
+/* AT+CWJAP? - Query connection status */
+static cat_return_state cmd_wlan_connect_query(const struct cat_command *cmd, uint8_t *data,
+                                               size_t *data_size, const size_t max_data_size)
+{
+    char buffer[WLAN_STR_BUFFER_LENGTH];
+    struct wifi_iface_status status = {0};
+    struct qcom_wifi_get_operation_mode_params mode_params;
+    struct qcom_wifi_get_phy_mode_params phy_params;
+    int ret;
+    int offset = 0;
+    const char *mode_str;
+    const char *phy_str;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:WiFi not enabled");
+    }
+    
+    /* Format: +CWJAP:<ssid>,<channel>,<rssi>,<power_mode>,<mac>,<op_mode>,<phy_mode> */
+    
+    if (g_wifi_ctx.connected) {
+        /* Get WiFi status */
+        ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, g_wifi_ctx.iface, &status, sizeof(status));
+        if (ret) {
+            k_mutex_unlock(&g_wifi_ctx.mutex);
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:Failed to get status");
+        }
+        
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "+CWJAP:%s,%d,",
+                          g_wifi_ctx.ssid, status.channel);
+    } else {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "+CWJAP:NA,NA,");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get RSSI */
+    if (g_wifi_ctx.connected) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%d,", status.rssi);
+    } else {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "NA,");
+    }
+    
+    /* Power mode - simplified, just report "Max Perf" for now */
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "Max Perf,");
+    
+    /* Get MAC address from BSSID */
+    if (g_wifi_ctx.connected) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, 
+                          "%02x-%02x-%02x-%02x-%02x-%02x,",
+                          (uint8_t)status.bssid[0], (uint8_t)status.bssid[1], (uint8_t)status.bssid[2],
+                          (uint8_t)status.bssid[3], (uint8_t)status.bssid[4], (uint8_t)status.bssid[5]);
+    } else {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "NA,");
+    }
+    
+    /* Get operating mode */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_OPERATION_MODE, g_wifi_ctx.iface,
+                   &mode_params, sizeof(mode_params));
+    if (ret == 0) {
+        switch (mode_params.opmode) {
+        case DEV_MODE_STATION_E:
+            mode_str = "station";
+            break;
+        case DEV_MODE_AP_E:
+            mode_str = "softap";
+            break;
+        case DEV_MODE_AP_STA_E:
+            mode_str = "concurrency mode";
+            break;
+        case DEV_MODE_NO_CONC_E:
+            mode_str = "non_softap+station";
+            break;
+        default:
+            mode_str = "unknown";
+            break;
+        }
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s,", mode_str);
+    } else {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "NA,");
+    }
+    
+    /* Get PHY mode */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_PHY_MODE, g_wifi_ctx.iface,
+                   &phy_params, sizeof(phy_params));
+    if (ret == 0) {
+        /* Map phy_mode to string - correct enum values from wlan_base.h */
+        switch (phy_params.phy_mode) {
+        case 0: /* QAPI_WLAN_11B_MODE_E = 0x0 */
+            phy_str = "b";
+            break;
+        case 1: /* QAPI_WLAN_11G_MODE_E = 0x1 */
+            phy_str = "g";
+            break;
+        case 2: /* QAPI_WLAN_11NG_HT20_MODE_E = 0x2 */
+            phy_str = "ng";
+            break;
+        case 3: /* QAPI_WLAN_11A_MODE_E = 0x3 */
+            phy_str = "a";
+            break;
+        case 4: /* QAPI_WLAN_11A_HT20_MODE_E = 0x4 */
+            phy_str = "a_ht20";
+            break;
+        case 5: /* QAPI_WLAN_11ABGN_HT20_MODE_E = 0x5 */
+            phy_str = "abgn";
+            break;
+        default:
+            phy_str = "unknown";
+            break;
+        }
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", phy_str);
+    } else {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, "NA");
+    }
+    
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+CWQAP - Disconnect from WiFi */
+static cat_return_state cmd_wlan_disconnect_exec(const struct cat_command *cmd)
+{
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWQAP:WiFi not enabled");
+    }
+    
+    if (!g_wifi_ctx.connected) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_OK, "+CWQAP:Not connected");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Disconnect */
+    ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, g_wifi_ctx.iface, NULL, 0);
+    if (ret) {
+        LOG_ERR("Disconnect request failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWQAP:Disconnect failed");
+    }
+    
+    LOG_INF("Disconnected");
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+WIFIST? - Query WiFi status */
+static cat_return_state cmd_wlan_status_query(const struct cat_command *cmd, uint8_t *data,
+                                              size_t *data_size, const size_t max_data_size)
+{
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    snprintf(buffer, sizeof(buffer),
+            "+WIFIST:enabled=%d,connected=%d,ssid=%s",
+            g_wifi_ctx.wlan_enabled,
+            g_wifi_ctx.connected,
+            g_wifi_ctx.connected ? g_wifi_ctx.ssid : "N/A");
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+CWSOFTAP=<ht_config>,<channel>,<ssid> - Enable AP mode */
+static cat_return_state cmd_wlan_ap_enable_set(const struct cat_command *cmd, const uint8_t *data,
+                                               const size_t data_size, const size_t args_num)
+{
+    struct wifi_connect_req_params params = {0};
+    struct net_if *ap_iface = NULL;
+    char *token, *saveptr;
+    char data_copy[256];
+    char ht_config[16] = {0};
+    char ssid[WIFI_SSID_MAX_LEN + 1] = {0};
+    int channel = 0;
+    int ret;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    bool is_sta_connected = false;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Enable WiFi first");
+    }
+    
+    /* Check if STA is connected - need to use second interface for AP */
+    is_sta_connected = g_wifi_ctx.connected;
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse parameters: ht_config,channel,ssid */
+    if (data_size >= sizeof(data_copy)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Parameters too long");
+    }
+    
+    memcpy(data_copy, data, data_size);
+    data_copy[data_size] = '\0';
+    
+    /* Parse ht_config (disable/ht20) */
+    token = strtok_r(data_copy, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Missing ht_config parameter");
+    }
+    strlcpy(ht_config, token, sizeof(ht_config));
+    
+    /* Check if it's just "disable" command */
+    if (strcmp(ht_config, "disable") == 0 && !strchr((const char *)data, ',')) {
+        /* Disable AP mode */
+        ret = net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, g_wifi_ctx.iface, NULL, 0);
+        if (ret) {
+            LOG_ERR("AP disable failed: %d", ret);
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Failed to disable AP");
+        }
+        LOG_INF("AP mode disabled");
+        return QAT_Response_Str(QAT_RC_OK, "+CWSOFTAP:disabled ap");
+    }
+    
+    /* Parse channel (1-14, 36-165) */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Missing channel parameter");
+    }
+    channel = atoi(token);
+    
+    /* Parse SSID */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Missing SSID parameter");
+    }
+    strlcpy(ssid, token, sizeof(ssid));
+    
+    /* Get the SAP (SoftAP) interface using dedicated API */
+    ap_iface = net_if_get_wifi_sap();
+    
+    if (!ap_iface) {
+        LOG_ERR("Failed to get WiFi SAP interface");
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:No SAP interface available");
+    }
+    
+    LOG_INF("Using second WiFi interface for AP: %p", ap_iface);
+    
+    /* If STA is connected, disconnect it first and switch to concurrent mode */
+    if (is_sta_connected) {
+        LOG_INF("STA connected, disconnecting before switching to AP interface");
+        
+        /* Disconnect STA */
+        ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, g_wifi_ctx.iface, NULL, 0);
+        if (ret) {
+            LOG_WRN("Failed to disconnect STA: %d (continuing anyway)", ret);
+        } else {
+            LOG_INF("STA disconnected successfully");
+            /* Update context */
+            k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+            g_wifi_ctx.connected = false;
+            k_mutex_unlock(&g_wifi_ctx.mutex);
+        }
+        
+    }
+    
+    /* Setup AP parameters using standard WiFi API */
+    params.ssid = ssid;
+    params.ssid_length = strlen(ssid);
+    params.channel = channel;
+    params.security = WIFI_SECURITY_TYPE_NONE; /* Default to open, can be configured with +CWWPA */
+    
+    /* Enable AP mode on the second interface */
+    ret = net_mgmt(NET_REQUEST_WIFI_AP_ENABLE, ap_iface, &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("AP enable failed: %d", ret);
+        snprintf(buffer, sizeof(buffer), "+CWSOFTAP:Failed to enable AP (ret=%d)", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, buffer);
+    }
+    
+    /* Save SSID to context */
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    memcpy(g_wifi_ctx.ssid, ssid, params.ssid_length);
+    g_wifi_ctx.ssid[params.ssid_length] = '\0';
+    g_wifi_ctx.ssid_len = params.ssid_length;
+    g_wifi_ctx.channel = channel;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    LOG_INF("AP mode enabled: ht=%s, channel=%d, ssid=%s", ht_config, channel, ssid);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWSOFTAP - Show usage */
+static cat_return_state cmd_wlan_ap_enable_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, 
+        "+CWSOFTAP=<param1>,<param2>,<ssid>(param1:disable/ht20, param2:1-14, 36-165)");
+}
+
+/* AT+CWSOFTAP_STOP - Disable AP mode */
+static cat_return_state cmd_wlan_ap_disable_exec(const struct cat_command *cmd)
+{
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP_STOP:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Disable AP mode */
+    ret = net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, g_wifi_ctx.iface, NULL, 0);
+    if (ret) {
+        LOG_ERR("AP disable failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP_STOP:Failed to disable AP");
+    }
+    
+    LOG_INF("AP mode disabled");
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWCOUNTRY=<country_code> - Set regulatory domain */
+static cat_return_state cmd_wlan_reg_domain_set(const struct cat_command *cmd, const uint8_t *data,
+                                                const size_t data_size, const size_t args_num)
+{
+    struct wifi_reg_domain reg_domain = {0};
+    struct wifi_reg_chan_info chan_info_buf[MAX_REG_CHAN_NUM];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWCOUNTRY:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Country code should be 2 characters */
+    if (data_size != 2) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWCOUNTRY:Invalid country code (use 2-letter code)");
+    }
+    
+    /* Setup regulatory domain - convert to uppercase */
+    reg_domain.country_code[0] = toupper((unsigned char)data[0]);
+    reg_domain.country_code[1] = toupper((unsigned char)data[1]);
+    reg_domain.country_code[2] = '\0';  // Null terminator is required
+    
+    /* Provide chan_info buffer for the driver */
+    reg_domain.chan_info = chan_info_buf;
+        reg_domain.oper = WIFI_MGMT_SET;
+    
+    /* Set regulatory domain */
+    ret = net_mgmt(NET_REQUEST_WIFI_REG_DOMAIN, g_wifi_ctx.iface, &reg_domain, sizeof(reg_domain));
+    if (ret) {
+        LOG_ERR("Set regulatory domain failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWCOUNTRY:Failed to set country code");
+    }
+    
+    LOG_INF("Regulatory domain set to: %s", reg_domain.country_code);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWCOUNTRY? - Query regulatory domain */
+static cat_return_state cmd_wlan_reg_domain_query(const struct cat_command *cmd, uint8_t *data,
+                                                  size_t *data_size, const size_t max_data_size)
+{
+    struct wifi_reg_domain reg_domain = {0};
+    struct wifi_reg_chan_info chan_info_buf[MAX_REG_CHAN_NUM];
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWCOUNTRY:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Provide chan_info buffer for the driver */
+    reg_domain.chan_info = chan_info_buf;
+    reg_domain.oper = WIFI_MGMT_GET;
+    
+    /* Get regulatory domain */
+    ret = net_mgmt(NET_REQUEST_WIFI_REG_DOMAIN, g_wifi_ctx.iface, &reg_domain, sizeof(reg_domain));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWCOUNTRY:Failed to get country code");
+    }
+    
+    /* Ensure null termination and format output with only 2 characters */
+    snprintf(buffer, sizeof(buffer), "+CWCOUNTRY:%.2s", reg_domain.country_code);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+CWCOUNTRY - Show usage */
+static cat_return_state cmd_wlan_reg_domain_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, "+CWCOUNTRY=<countrycode>, e.g. US/CN");
+}
+
+
+/*-------------------------------------------------------------------------
+ * Advanced WiFi Configuration Commands
+ *-----------------------------------------------------------------------*/
+/* AT+CWPHYMODE - Show usage */
+static cat_return_state cmd_wlan_phy_mode_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, "+CWPHYMODE=a/b/g/ng/abgn");
+}
+
+/* AT+CWPHYMODE=<mode> - Set PHY mode */
+static cat_return_state cmd_wlan_phy_mode_set(const struct cat_command *cmd, const uint8_t *data,
+                                              const size_t data_size, const size_t args_num)
+{
+    struct qcom_wifi_set_phy_mode_params params;
+    char wmode[16];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse PHY mode string */
+    if (data_size == 0 || data_size >= sizeof(wmode)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Invalid parameter");
+    }
+    
+    memcpy(wmode, data, data_size);
+    wmode[data_size] = '\0';
+    
+    /* Map string to PHY mode enum - correct enum values from wlan_base.h */
+    if (strcmp(wmode, "b") == 0) {
+        params.phy_mode = 0;  /* QAPI_WLAN_11B_MODE_E = 0x0 */
+    } else if (strcmp(wmode, "g") == 0) {
+        params.phy_mode = 1;  /* QAPI_WLAN_11G_MODE_E = 0x1 */
+    } else if (strcmp(wmode, "ng") == 0) {
+        params.phy_mode = 2;  /* QAPI_WLAN_11NG_HT20_MODE_E = 0x2 */
+    } else if (strcmp(wmode, "a") == 0) {
+        params.phy_mode = 3;  /* QAPI_WLAN_11A_MODE_E = 0x3 */
+    } else if (strcmp(wmode, "a_ht20") == 0) {
+        params.phy_mode = 4;  /* QAPI_WLAN_11A_HT20_MODE_E = 0x4 */
+    } else if (strcmp(wmode, "abgn") == 0) {
+        params.phy_mode = 5;  /* QAPI_WLAN_11ABGN_HT20_MODE_E = 0x5 */
+    } else {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Unknown wmode, only support b/g/ng/a/a_ht20/abgn");
+    }
+    
+    /* Set PHY mode via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_PHY_MODE, g_wifi_ctx.iface, 
+                   &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Set PHY mode failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Failed to set PHY mode");
+    }
+    
+    LOG_INF("PHY mode set to %s (%u)", wmode, params.phy_mode);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWPHYMODE? - Query PHY mode */
+static cat_return_state cmd_wlan_phy_mode_query(const struct cat_command *cmd, uint8_t *data,
+                                                size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_phy_mode_params params;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    const char *phy_str;
+    int ret;
+    int offset = 0;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get PHY mode via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_PHY_MODE, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Failed to get PHY mode");
+    }
+    
+    /* Map phy_mode enum to string - correct enum values from wlan_base.h */
+    switch (params.phy_mode) {
+    case 0: /* QAPI_WLAN_11B_MODE_E = 0x0 */
+        phy_str = "b";
+        break;
+    case 1: /* QAPI_WLAN_11G_MODE_E = 0x1 */
+        phy_str = "g";
+        break;
+    case 2: /* QAPI_WLAN_11NG_HT20_MODE_E = 0x2 */
+        phy_str = "ng";
+        break;
+    case 3: /* QAPI_WLAN_11A_MODE_E = 0x3 */
+        phy_str = "a";
+        break;
+    case 4: /* QAPI_WLAN_11A_HT20_MODE_E = 0x4 */
+        phy_str = "a_ht20";
+        break;
+    case 5: /* QAPI_WLAN_11ABGN_HT20_MODE_E = 0x5 */
+        phy_str = "abgn";
+        break;
+    default:
+        /* Unknown mode - return numeric value */
+        snprintf(buffer, sizeof(buffer), "+CWPHYMODE:FAIL, %u", params.phy_mode);
+        return QAT_Response_Str(QAT_RC_ERROR, buffer);
+    }
+    
+    /* Format output: +CWPHYMODE:<mode_string> */
+    offset = snprintf(buffer, sizeof(buffer), "+CWPHYMODE:%s", phy_str);
+    
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+ANTIINF - Show usage */
+static cat_return_state cmd_wlan_antiinf_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, 
+        "AT+ANTIINF=<0: 1M RTS|1:6M RTS|2: 12M RTS>\r\n"
+        "AT+ANTIINF?: get ANTIINF");
+}
+
+/* AT+ANTIINF=<rts_rate> - Set Anti-interference (0:1Mbps, 1:6Mbps, 2:12Mbps) */
+static cat_return_state cmd_wlan_antiinf_set(const struct cat_command *cmd, const uint8_t *data,
+                                             const size_t data_size, const size_t args_num)
+{
+    struct qcom_wifi_set_rts_cts_params rts_params;
+    struct qcom_wifi_set_rts_rate_params rate_params;
+    struct qcom_wifi_set_edca_param_cfg_params edca_params;
+    struct qcom_wifi_set_threshold_params threshold_params;
+    struct qcom_wifi_set_ba_win_timing_params ba_params;
+    struct qcom_wifi_set_slot_time_params slot_params;
+    char buffer[32];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse RTS rate parameter (0: 1Mbps, 1: 6Mbps, 2: 12Mbps) */
+    if (data_size == 0 || data_size >= sizeof(buffer)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Invalid parameter");
+    }
+    
+    memcpy(buffer, data, data_size);
+    buffer[data_size] = '\0';
+    rate_params.rts_rate = (uint32_t)atoi(buffer);
+    
+    /* Step 1: Enable RTS/CTS via net_mgmt */
+    rts_params.enable = 1;
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_RTS_CTS, g_wifi_ctx.iface,
+                   &rts_params, sizeof(rts_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Enable RTS/CTS fail");
+    }
+    
+    /* Step 2: Set RTS rate via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_RTS_RATE, g_wifi_ctx.iface,
+                   &rate_params, sizeof(rate_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:fix RTS rate fail (0:1Mbps 1:6Mbps 2:12Mbps)");
+    }
+    
+    /* Step 3: Set EDCA parameters (optimized for anti-interference) via net_mgmt */
+    edca_params.qid = 0xff;  // All queues (0-7)
+    edca_params.aifsn = 0x3;
+    edca_params.cw_min = 0x2;  // cwmin = 2^2 - 1 = 3
+    edca_params.cw_max = 0x4;  // cwmax = 2^4 - 1 = 15
+    edca_params.txop_limit = 200;
+    
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_EDCA_PARAM_CFG, g_wifi_ctx.iface,
+                   &edca_params, sizeof(edca_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:set edca param fail");
+    }
+    
+    /* Step 4: Set PER upper threshold via net_mgmt */
+    threshold_params.threshold = 60;
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_THRESHOLD, g_wifi_ctx.iface,
+                   &threshold_params, sizeof(threshold_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:set per upper threshold fail");
+    }
+    
+    /* Step 5: Set BA window timing via net_mgmt */
+    ba_params.ack_timeout = 128;  // 128us, should be less than 4096
+    ba_params.delay = 10;         // 10 * 2 * SM clock cycles, should be less than 64
+    
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_BA_WIN_TIMING, g_wifi_ctx.iface,
+                   &ba_params, sizeof(ba_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:set ba window fail");
+    }
+    
+    /* Step 6: Set slot time via net_mgmt */
+    slot_params.slot_time = 20;  // 20us
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_SLOT_TIME, g_wifi_ctx.iface,
+                   &slot_params, sizeof(slot_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:set slot time fail");
+    }
+    
+    LOG_INF("Anti-interference configured: RTS rate=%u", rate_params.rts_rate);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+ANTIINF? - Query antiinf status */
+static cat_return_state cmd_wlan_antiinf_query(const struct cat_command *cmd, uint8_t *data,
+                                               size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_rts_cts_params rts_params;
+    struct qcom_wifi_get_rts_rate_params rate_params;
+    struct qcom_wifi_get_edca_param_cfg_params edca_params;
+    struct qcom_wifi_get_threshold_params threshold_params;
+    struct qcom_wifi_get_ba_win_timing_params ba_params;
+    struct qcom_wifi_get_slot_time_params slot_params;
+    char buffer[WLAN_STR_BUFFER_LENGTH];
+    int ret;
+    int offset = 0;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get RTS/CTS enable status via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_RTS_CTS, g_wifi_ctx.iface,
+                   &rts_params, sizeof(rts_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get RTS/CTS status");
+    }
+    
+    /* Get RTS rate via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_RTS_RATE, g_wifi_ctx.iface,
+                   &rate_params, sizeof(rate_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get RTS rate");
+    }
+    
+    /* Get EDCA parameters (queue 0xff for all queues) via net_mgmt */
+    edca_params.qid = 0xff;
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_EDCA_PARAM_CFG, g_wifi_ctx.iface,
+                   &edca_params, sizeof(edca_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get EDCA parameters");
+    }
+    
+    /* Get PER threshold via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_THRESHOLD, g_wifi_ctx.iface,
+                   &threshold_params, sizeof(threshold_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get threshold");
+    }
+    
+    /* Get BA window timing via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_BA_WIN_TIMING, g_wifi_ctx.iface,
+                   &ba_params, sizeof(ba_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get BA window timing");
+    }
+    
+    /* Get slot time via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_SLOT_TIME, g_wifi_ctx.iface,
+                   &slot_params, sizeof(slot_params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+ANTIINF:Failed to get slot time");
+    }
+    
+    /* Format output to match reference: enable/disable,rts_rate,qid,cw_min,cw_max,threshold,ack_timeout,delay*2,slot_time */
+    /* Check if RTS is enabled: if rate is non-zero, consider it enabled */
+    const char *enable_str = (rts_params.enable == 1 || rate_params.rts_rate != 0) ? "enable" : "disable";
+    
+    offset = snprintf(buffer, sizeof(buffer), "+ANTIINF:%s,%u,%u,%u,%u,%u,%u,%u,%u",
+                     enable_str,
+                     rate_params.rts_rate,
+                     edca_params.qid,
+                     edca_params.cw_min,
+                     edca_params.cw_max,
+                     threshold_params.threshold,
+                     ba_params.ack_timeout,
+                     2 * ba_params.delay,  // delay * 2 as in reference
+                     slot_params.slot_time);
+    
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+EDCA - Show usage */
+static cat_return_state cmd_wlan_edca_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK,
+        "AT+EDCA=setparam,<qtid:0~7 or 255>,<aifsn>,<cwmin:exp>,<cwmax:exp>,<txop_limit>\r\n"
+        "AT+EDCA=getparam,<qtid:0~7 or 255>");
+}
+
+/* AT+EDCA=<qid>,<aifsn>,<cw_min>,<cw_max>,<txop> - Set EDCA parameters */
+static cat_return_state cmd_wlan_edca_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num)
+{
+    struct qcom_wifi_set_edca_param_cfg_params params;
+    char *token, *saveptr;
+    char data_copy[128];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse parameters: qid,aifsn,cw_min,cw_max,txop */
+    if (data_size >= sizeof(data_copy)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Parameters too long");
+    }
+    
+    memcpy(data_copy, data, data_size);
+    data_copy[data_size] = '\0';
+    
+    /* Parse qid */
+    token = strtok_r(data_copy, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Missing qid");
+    }
+    params.qid = (uint8_t)atoi(token);
+    
+    /* Parse aifsn */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Missing aifsn");
+    }
+    params.aifsn = (uint8_t)atoi(token);
+    
+    /* Parse cw_min */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Missing cw_min");
+    }
+    params.cw_min = (uint16_t)atoi(token);
+    
+    /* Parse cw_max */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Missing cw_max");
+    }
+    params.cw_max = (uint16_t)atoi(token);
+    
+    /* Parse txop_limit */
+    token = strtok_r(NULL, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Missing txop_limit");
+    }
+    params.txop_limit = (uint16_t)atoi(token);
+    
+    /* Set EDCA parameters via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_EDCA_PARAM_CFG, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Set EDCA parameters failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Failed to set EDCA parameters");
+    }
+    
+    LOG_INF("EDCA parameters set: qid=%u, aifsn=%u, cw_min=%u, cw_max=%u, txop=%u",
+            params.qid, params.aifsn, params.cw_min, params.cw_max, params.txop_limit);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+EDCA? - Query EDCA parameters */
+static cat_return_state cmd_wlan_edca_query(const struct cat_command *cmd, uint8_t *data,
+                                            size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_edca_param_cfg_params params;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Query for queue 0 by default */
+    params.qid = 0;
+    
+    /* Get EDCA parameters via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_EDCA_PARAM_CFG, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCA:Failed to get EDCA parameters");
+    }
+    
+    snprintf(buffer, sizeof(buffer), "+EDCA:%u,%u,%u,%u,%u",
+             params.qid, params.aifsn, params.cw_min, params.cw_max, params.txop_limit);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+EDCCATHR - Show usage */
+static cat_return_state cmd_wlan_edcca_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK,
+        "AT+EDCCATHR=<EDCCA value, equals real value plus 100>\r\n"
+        "AT+EDCCATHR?: get EDCCATHR");
+}
+
+/* AT+EDCCATHR=<value> - Set EDCCA threshold */
+static cat_return_state cmd_wlan_edcca_set(const struct cat_command *cmd, const uint8_t *data,
+                                               const size_t data_size, const size_t args_num)
+{
+    struct qcom_wifi_set_threshold_params params;
+    char buffer[32];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCCATHR:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse threshold value */
+    if (data_size == 0 || data_size >= sizeof(buffer)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCCATHR:Invalid parameter");
+    }
+    
+    memcpy(buffer, data, data_size);
+    buffer[data_size] = '\0';
+    params.threshold = (uint32_t)atoi(buffer);
+    
+    /* Set threshold via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_THRESHOLD, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Set threshold failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCCATHR:Failed to set threshold");
+    }
+    
+    LOG_INF("Threshold set to %u", params.threshold);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+EDCCATHR? - Query EDCCA threshold */
+static cat_return_state cmd_wlan_edcca_query(const struct cat_command *cmd, uint8_t *data,
+                                                 size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_threshold_params params;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCCATHR:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get threshold via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_THRESHOLD, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+EDCCATHR:Failed to get threshold");
+    }
+    
+    snprintf(buffer, sizeof(buffer), "+EDCCATHR:%u", params.threshold);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+BMISSTHR - Show usage */
+static cat_return_state cmd_wlan_bmiss_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK,
+        "AT+BMISSTHR=<bmiss_threshold: 0~255>\r\n"
+        "AT+BMISSTHR?: get BMISSTHR");
+}
+
+/* AT+BMISSTHR=<threshold> - Set beacon miss threshold */
+static cat_return_state cmd_wlan_bmiss_set(const struct cat_command *cmd, const uint8_t *data,
+                                           const size_t data_size, const size_t args_num)
+{
+    struct qcom_wifi_set_bmiss_threshold_params params;
+    char buffer[32];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+BMISSTHR:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse threshold value */
+    if (data_size == 0 || data_size >= sizeof(buffer)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+BMISSTHR:Invalid parameter");
+    }
+    
+    memcpy(buffer, data, data_size);
+    buffer[data_size] = '\0';
+    params.threshold = (uint32_t)atoi(buffer);
+    
+    /* Set beacon miss threshold via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_BMISS_THRESHOLD, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        LOG_ERR("Set beacon miss threshold failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+BMISSTHR:Failed to set threshold");
+    }
+    
+    LOG_INF("Beacon miss threshold set to %u", params.threshold);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+BMISSTHR? - Query beacon miss threshold */
+static cat_return_state cmd_wlan_bmiss_query(const struct cat_command *cmd, uint8_t *data,
+                                             size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_bmiss_threshold_params params;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+BMISSTHR:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get beacon miss threshold via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_BMISS_THRESHOLD, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+BMISSTHR:Failed to get threshold");
+    }
+    
+    snprintf(buffer, sizeof(buffer), "+BMISSTHR:%u", params.threshold);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+WEVT=<enable> - Enable/Disable event reporting */
+static cat_return_state cmd_wlan_event_set(const struct cat_command *cmd, const uint8_t *data,
+                                           const size_t data_size, const size_t args_num)
+{
+    char buffer[32];
+    int enable;
+    
+    /* Parse enable parameter */
+    if (data_size == 0 || data_size >= sizeof(buffer)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+WEVT:Invalid parameter");
+    }
+    
+    memcpy(buffer, data, data_size);
+    buffer[data_size] = '\0';
+    enable = atoi(buffer);
+    
+    if (enable != 0 && enable != 1) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+WEVT:Parameter must be 0 or 1");
+    }
+    
+    enable_event_reporting = (enable != 0);
+    
+    LOG_INF("Event reporting %s", enable_event_reporting ? "enabled" : "disabled");
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+WEVT? - Query event reporting status */
+static cat_return_state cmd_wlan_event_query(const struct cat_command *cmd, uint8_t *data,
+                                             size_t *data_size, const size_t max_data_size)
+{
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    
+    snprintf(buffer, sizeof(buffer), "+WEVT:%d", enable_event_reporting ? 1 : 0);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+/* AT+WEVT - Show usage */
+static cat_return_state cmd_wlan_event_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, "+WEVT=0/1 (0=disable, 1=enable event reporting)");
+}
+
+/*-------------------------------------------------------------------------
+ * WPA Configuration Commands
+ *-----------------------------------------------------------------------*/
+
+/* AT+CWWPA=<wpa_ver>,<ucipher>,<mcipher> - Set WPA parameters */
+static cat_return_state cmd_wlan_wpa_params_set(const struct cat_command *cmd, const uint8_t *data,
+                                                const size_t data_size, const size_t args_num)
+{
+    char *token, *saveptr;
+    char data_copy[128];
+    char *wpa_ver;
+    char *ucipher = NULL;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    uint32_t auth_mode;
+    uint32_t cipher;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:Enable WiFi first");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Parse parameters: wpa_ver,ucipher,mcipher */
+    if (data_size >= sizeof(data_copy)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:Parameters too long");
+    }
+    
+    memcpy(data_copy, data, data_size);
+    data_copy[data_size] = '\0';
+    
+    /* Parse WPA version */
+    token = strtok_r(data_copy, ",", &saveptr);
+    if (!token) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:Missing WPA version");
+    }
+    wpa_ver = token;
+    
+    /* Convert to uppercase for comparison */
+    for (char *p = wpa_ver; *p; p++) {
+        *p = toupper((unsigned char)*p);
+    }
+    
+    /* Map WPA version to auth_mode */
+    if (strcmp(wpa_ver, "WPA") == 0) {
+        auth_mode = 0x02;  /* WPA-PSK */
+    } else if (strcmp(wpa_ver, "WPA2") == 0) {
+        auth_mode = 0x04;  /* WPA2-PSK */
+    } else if (strcmp(wpa_ver, "SAE") == 0) {
+        auth_mode = 0x400;  /* WPA3-SAE */
+    } else if (strcmp(wpa_ver, "SAE_WPA2") == 0) {
+        auth_mode = 0x404;  /* WPA2/WPA3 mixed */
+    } else if (strcmp(wpa_ver, "SAE_WPA2_WPA") == 0) {
+        auth_mode = 0x406;  /* WPA/WPA2/WPA3 mixed */
+    } else {
+        snprintf(buffer, sizeof(buffer), "+CWWPA:FAIL, %s", wpa_ver);
+        return QAT_Response_Str(QAT_RC_ERROR, buffer);
+    }
+    
+    /* For mixed SAE modes, cipher is auto (0) */
+    if ((strcmp(wpa_ver, "SAE_WPA2") == 0) || 
+        (strcmp(wpa_ver, "SAE_WPA2_WPA") == 0)) {
+        cipher = 0;  /* Auto cipher */
+    } else {
+        /* Parse ucipher */
+        token = strtok_r(NULL, ",", &saveptr);
+        if (!token) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:Missing ucipher");
+        }
+        ucipher = token;
+        
+        /* Convert ucipher to uppercase */
+        for (char *p = ucipher; *p; p++) {
+            *p = toupper((unsigned char)*p);
+        }
+        
+        /* Parse mcipher */
+        token = strtok_r(NULL, ",", &saveptr);
+        if (!token) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:Missing mcipher");
+        }
+        char *mcipher = token;
+        
+        /* Convert mcipher to uppercase */
+        for (char *p = mcipher; *p; p++) {
+            *p = toupper((unsigned char)*p);
+        }
+        
+        /* Verify ucipher and mcipher are the same */
+        if (strcmp(ucipher, mcipher) != 0) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:invalid ucipher mcipher, should be same");
+        }
+        
+        /* Map cipher type to QAPI enum values */
+        if (strcmp(ucipher, "TKIP") == 0) {
+            cipher = 2;  /* QAPI_WLAN_CRYPT_TKIP_CRYPT_E = 2 */
+        } else if (strcmp(ucipher, "CCMP") == 0) {
+            cipher = 3;  /* QAPI_WLAN_CRYPT_AES_CRYPT_E = 3 */
+        } else {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPA:invalid ucipher mcipher, should be TKIP or CCMP");
+        }
+    }
+    
+    /* Store security parameters directly in context (no net_mgmt call) */
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    g_wifi_ctx.auth_mode = auth_mode;
+    g_wifi_ctx.cipher = cipher;
+    g_wifi_ctx.security_set = true;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    LOG_INF("WPA parameters saved to context: auth_mode=0x%x, cipher=0x%x", auth_mode, cipher);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWWPA - Show usage */
+static cat_return_state cmd_wlan_wpa_params_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, 
+        "+CWWPA=WPA/WPA2/SAE,CCMP,CCMP/TKIP,TKIP. For mix mode, \r\n+CWWPA=SAE_WPA2/SAE_WPA2_WPA,CCMP and TKIP are not required");
+}
+
+/* AT+CWPWD=<passphrase> - Set WPA passphrase */
+static cat_return_state cmd_wlan_wpa_passphrase_set(const struct cat_command *cmd, const uint8_t *data,
+                                                    const size_t data_size, const size_t args_num)
+{
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWPWD:Enable WiFi first");
+    }
+    
+    /* Validate passphrase length (8-64 characters) */
+    if (data_size < 8 || data_size > 64) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        snprintf(buffer, sizeof(buffer), "+CWPWD:FAIL,%zu", data_size);
+        return QAT_Response_Str(QAT_RC_ERROR, buffer);
+    }
+    
+    /* If length is 64, verify it's hexadecimal */
+    if (data_size == 64) {
+        for (size_t i = 0; i < data_size; i++) {
+            if (!isxdigit((int)data[i])) {
+                k_mutex_unlock(&g_wifi_ctx.mutex);
+                return QAT_Response_Str(QAT_RC_ERROR, 
+                    "+CWPWD:passphrase in hex, please enter [0-9] or [A-F]");
+            }
+        }
+    }
+    
+    /* Store passphrase directly in context (no net_mgmt call) */
+    memcpy(g_wifi_ctx.passphrase, data, data_size);
+    g_wifi_ctx.passphrase[data_size] = '\0';
+    g_wifi_ctx.passphrase_len = data_size;
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    LOG_INF("WPA passphrase saved to context (length: %zu)", data_size);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWPWD - Show usage */
+static cat_return_state cmd_wlan_wpa_passphrase_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, 
+        "+CWPWD=<PASSWORD>(The PASSWORD length should be between 8 and 64)");
+}
+
+/*-------------------------------------------------------------------------
+ * Operating Mode Commands
+ *-----------------------------------------------------------------------*/
+
+/* AT+CWMODE - Show usage */
+static cat_return_state cmd_wlan_mode_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK, "+CWMODE=sta/ap");
+}
+
+/* AT+CWMODE=<mode> - Set operating mode (sta/ap) */
+static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num)
+{
+    static char mode_str[16];
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    uint8_t device_id;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:WiFi not enabled");
+    }
+    
+    /* Parse mode parameter */
+    if (data_size == 0 || data_size >= sizeof(mode_str)) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:Invalid parameter");
+    }
+    
+    memcpy(mode_str, data, data_size);
+    mode_str[data_size] = '\0';
+    
+    /* Map mode string to device ID and save directly to context (no net_mgmt call) */
+    if (strcmp(mode_str, "sta") == 0 || strcmp(mode_str, "station") == 0) {
+        device_id = QAT_DEV_STA_ID;
+    } else if (strcmp(mode_str, "ap") == 0) {
+        device_id = QAT_DEV_AP_ID;
+    } else if (strcmp(mode_str, "ap_sta") == 0) {
+        device_id = QAT_DEFAULT_HAL_STA_ID;  /* Concurrent mode */
+    } else {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        snprintf(buffer, sizeof(buffer), "+CWMODE:unknown mode, %s", mode_str);
+        return QAT_Response_Str(QAT_RC_ERROR, buffer);
+    }
+    
+    /* Store mode directly in context */
+    g_wifi_ctx.active_device = device_id;
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    LOG_INF("Operating mode saved to context: %s (device_id=%u)", mode_str, device_id);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/* AT+CWMODE? - Query operating mode */
+static cat_return_state cmd_wlan_mode_query(const struct cat_command *cmd, uint8_t *data,
+                                            size_t *data_size, const size_t max_data_size)
+{
+    struct qcom_wifi_get_operation_mode_params params;
+    char buffer[WLAN_RESPONSE_BUFFER_LENGTH];
+    const char *mode_str;
+    int ret;
+    
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    
+    if (!g_wifi_ctx.wlan_enabled || !g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:WiFi not enabled");
+    }
+    
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+    
+    /* Get operating mode via net_mgmt */
+    ret = net_mgmt(NET_REQUEST_WIFI_QCOM_GET_OPERATION_MODE, g_wifi_ctx.iface,
+                   &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:Failed to get operating mode");
+    }
+    
+    /* Convert mode to string based on qapi_WLAN_DEV_Mode_e enum */
+    /* DEV_MODE_STATION_E = 0x01, DEV_MODE_AP_E = 0x10, DEV_MODE_AP_STA_E = 0x11, DEV_MODE_NO_CONC_E = 3 */
+    switch (params.opmode) {
+    case DEV_MODE_STATION_E:
+        mode_str = "station";
+        break;
+    case DEV_MODE_AP_E:
+        mode_str = "softap";
+        break;
+    case DEV_MODE_AP_STA_E:
+        mode_str = "concurrency mode";
+        break;
+    case DEV_MODE_NO_CONC_E:
+        mode_str = "non_softap+station";
+        break;
+    default:
+        mode_str = "unknown";
+        break;
+    }
+    
+    snprintf(buffer, sizeof(buffer), "+CWMODE:%s", mode_str);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+
+/*-------------------------------------------------------------------------
+ * Command List
+ *-----------------------------------------------------------------------*/
+static struct cat_command qat_wlan_cmds[] = {
+    {
+        .name = "+WIFIST",
+        .description = "WiFi status",
+        .read = cmd_wlan_status_query,
+    },
+    {
+        .name = "+CWENABLE",
+        .description = "Enable WiFi",
+        .run = cmd_wlan_enable_exec,
+    },
+    {
+        .name = "+CWQABLE",
+        .description = "Disable WiFi",
+        .run = cmd_wlan_disable_exec,
+    },
+    {
+        .name = "+CWMODE",
+        .description = "Set/Query operating mode",
+        .run = cmd_wlan_mode_exec,
+        .read = cmd_wlan_mode_query,
+        .write = cmd_wlan_mode_set,
+    },
+    {
+        .name = "+CWLAP",
+        .description = "Scan WiFi networks",
+        .run = cmd_wlan_scan_exec,
+        .write = cmd_wlan_scan_set,
+    },
+    {
+        .name = "+CWWPA",
+        .description = "Set WPA parameters",
+        .run = cmd_wlan_wpa_params_exec,
+        .write = cmd_wlan_wpa_params_set,
+    },
+    {
+        .name = "+CWPWD",
+        .description = "Set WPA passphrase",
+        .run = cmd_wlan_wpa_passphrase_exec,
+        .write = cmd_wlan_wpa_passphrase_set,
+    },
+    {
+        .name = "+CWJAP",
+        .description = "Connect to WiFi",
+        .run = cmd_wlan_connect_exec,
+        .read = cmd_wlan_connect_query,
+        .write = cmd_wlan_connect_set,
+    },
+    {
+        .name = "+CWQAP",
+        .description = "Disconnect from WiFi",
+        .run = cmd_wlan_disconnect_exec,
+    },
+    {
+        .name = "+CWSOFTAP",
+        .description = "Enable AP mode",
+        .run = cmd_wlan_ap_enable_exec,
+        .write = cmd_wlan_ap_enable_set,
+    },
+    {
+        .name = "+WEVT",
+        .description = "Enable/Disable event reporting",
+        .run = cmd_wlan_event_exec,
+        .read = cmd_wlan_event_query,
+        .write = cmd_wlan_event_set,
+    },
+    /* Advanced WiFi Configuration Commands */
+    {
+        .name = "+CWPHYMODE",
+        .description = "Set/Query PHY mode",
+        .run = cmd_wlan_phy_mode_exec,
+        .read = cmd_wlan_phy_mode_query,
+        .write = cmd_wlan_phy_mode_set,
+    },
+    {
+        .name = "+CWCOUNTRY",
+        .description = "Set/Query regulatory domain",
+        .run = cmd_wlan_reg_domain_exec,
+        .read = cmd_wlan_reg_domain_query,
+        .write = cmd_wlan_reg_domain_set,
+    },
+    {
+        .name = "+ANTIINF",
+        .description = "Set/Query Anti-interference",
+        .run = cmd_wlan_antiinf_exec,
+        .read = cmd_wlan_antiinf_query,
+        .write = cmd_wlan_antiinf_set,
+    },
+    {
+        .name = "+EDCA",
+        .description = "Set/Query EDCA parameters",
+        .run = cmd_wlan_edca_exec,
+        .read = cmd_wlan_edca_query,
+        .write = cmd_wlan_edca_set,
+    },
+    {
+        .name = "+EDCCATHR",
+        .description = "Set/Query EDCCA threshold",
+        .run = cmd_wlan_edcca_exec,
+        .read = cmd_wlan_edcca_query,
+        .write = cmd_wlan_edcca_set,
+    },
+    {
+        .name = "+BMISSTHR",
+        .description = "Set/Query beacon miss threshold",
+        .run = cmd_wlan_bmiss_exec,
+        .read = cmd_wlan_bmiss_query,
+        .write = cmd_wlan_bmiss_set,
+    },
+};
+
+static struct cat_command_group qat_wlan_cmd_group = {
+    .name = "QAT_WLAN",
+    .cmd = qat_wlan_cmds,
+    .cmd_num = ARRAY_SIZE(qat_wlan_cmds),
+};
+
+/*-------------------------------------------------------------------------
+ * Initialization
+ *-----------------------------------------------------------------------*/
+struct cat_command_group *qat_wlan_get_command_group(void)
+{
+    LOG_DBG("Registering QAT WiFi commands");
+    return &qat_wlan_cmd_group;
+}
+
+static int qat_wlan_init(void)
+{
+    /* Initialize context */
+    k_mutex_init(&g_wifi_ctx.mutex);
+    g_wifi_ctx.wlan_enabled = false;
+    g_wifi_ctx.connected = false;
+    g_wifi_ctx.iface = NULL;
+    g_wifi_ctx.active_device = QAT_DEV_INV_ID;  /* Invalid until WiFi is enabled */
+    g_wifi_ctx.scan_result_count = 0;
+    g_wifi_ctx.scan_in_progress = false;
+
+    /* Initialize delayed work for DHCP start and stop */
+    k_work_init_delayable(&dhcp_start_work.work, dhcp_start_work_handler);
+    k_work_init(&dhcp_stop_work.work, dhcp_stop_work_handler);
+    
+    /* Initialize delayed work for scan complete event */
+    k_work_init_delayable(&scan_complete_work, scan_complete_work_handler);
+
+    /* Note: Event callbacks are now registered dynamically in cmd_wlan_enable_exec
+     * This matches the QAPI pattern where qapi_WLAN_Set_Callback is called in Enable command
+     */
+    callbacks_registered = false;
+
+    LOG_INF("QAT WiFi module initialized");
+    return 0;
+}
+
+/* Automatically register this command group with QAT */
+QAT_REGISTER_CMD_GROUP(qat_wlan_get_command_group, "WLAN");
+
+/* Initialize at system startup */
+SYS_INIT(qat_wlan_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);

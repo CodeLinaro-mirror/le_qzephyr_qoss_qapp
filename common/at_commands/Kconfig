@@ -10,6 +10,18 @@ config QAT_COMMON
 	  This provides basic AT commands.
 	  Requires both QAT and QAT_COMMON to be enabled.
 
+config QAT_WLAN
+	bool "QAT WiFi AT Commands"
+	depends on QAT && WIFI
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_MGMT_EVENT_INFO
+	default y
+	help
+	  Enable WiFi related AT commands for QAT module.
+	  This provides commands like AT+CWJAP for WiFi connection.
+	  Uses Zephyr's standard WiFi management APIs.
+
 config QAT_TCPIP
 	bool "QAT TCP/IP AT Commands"
 	depends on QAT
