@@ -121,15 +121,32 @@ static int parse_url(const char *url,
 		return -EINVAL;
 	}
 
-	/* Find end of host (either '/', ':', or end of string) */
-	const char *host_start = p;
-	const char *host_end   = p;
+	/* Find end of host.
+	 * IPv6 literal  http://[addr]/ or http://[addr]:port/  — scan to ']',
+	 * copy address without brackets.
+	 * Otherwise scan to '/' or ':'.
+	 */
+	const char *host_start;
+	const char *host_end;
+	size_t host_len;
 
-	while (*host_end && *host_end != '/' && *host_end != ':') {
-		host_end++;
+	if (*p == '[') {
+		host_start = p + 1;              /* skip '[' */
+		host_end   = strchr(host_start, ']');
+		if (!host_end) {
+			LOG_ERR("Malformed IPv6 literal: missing ']'");
+			return -EINVAL;
+		}
+		host_len = (size_t)(host_end - host_start);
+		host_end++;                      /* advance past ']' */
+	} else {
+		host_start = p;
+		host_end   = p;
+		while (*host_end && *host_end != '/' && *host_end != ':') {
+			host_end++;
+		}
+		host_len = (size_t)(host_end - host_start);
 	}
-
-	size_t host_len = (size_t)(host_end - host_start);
 
 	if (host_len == 0 || host_len >= host_size) {
 		LOG_ERR("Invalid or too-long hostname in URL");
@@ -812,10 +829,18 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	/* --- Build http_request --- */
 	struct http_request http_req;
 
+	/* For IPv6 literal hosts the Host: header requires [addr] brackets. */
+	char host_for_http[128 + 2];
+	if (literal_family == AF_INET6) {
+		snprintf(host_for_http, sizeof(host_for_http), "[%s]", host);
+	} else {
+		memcpy(host_for_http, host, strlen(host) + 1);
+	}
+
 	memset(&http_req, 0, sizeof(http_req));
 	http_req.method           = zephyr_method;
 	http_req.url              = path;
-	http_req.host             = host;
+	http_req.host             = host_for_http;
 	http_req.port             = port_str;
 	http_req.protocol         = "HTTP/1.1";
 	http_req.response         = http_response_cb;
@@ -939,7 +964,13 @@ int httpc_at_stream_begin(const struct httpc_at_request *req,
 	}
 
 	/* Mandatory headers */
-	snprintf(line, sizeof(line), "Host: %s\r\n", host);
+	char host_for_http2[128 + 2];
+	if (literal_family == AF_INET6) {
+		snprintf(host_for_http2, sizeof(host_for_http2), "[%s]", host);
+	} else {
+		memcpy(host_for_http2, host, strlen(host) + 1);
+	}
+	snprintf(line, sizeof(line), "Host: %s\r\n", host_for_http2);
 	ret = send_str_timeout(sock, line, timeout_ms);
 	if (ret < 0) {
 		zsock_close(sock);
