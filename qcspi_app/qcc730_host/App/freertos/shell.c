@@ -119,6 +119,8 @@ uint8_t cmd_shell_char_received()
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "rx_mqtt", 2) == 0) {
             cmd_shell_exec(buf);
+        } else if (strncmp(buf, "httptest", 8) == 0) {
+            cmd_shell_exec(buf);
         } else if (buf[0] != '\r') {
             buf[pos++] = '\r';
             extern void qcc730_atcmd_send_handler(uint8_t * cmd, uint32_t len);

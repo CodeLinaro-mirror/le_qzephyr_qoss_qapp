@@ -156,6 +156,7 @@ char test_buf_end1[] = "111";
 char test_buf_end2[] = "222";
 char test_buf_end3[] = "333";
 
+
 void qcc730_wkup()
 {
     qc_hal_gpio_write(QCC730_WKUP_GPIO_Port, QCC730_WKUP_Pin, QC_HAL_GPIO_PIN_RESET);
@@ -412,12 +413,12 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
     int arg_start = 0;
     int flag = QAT_RESP_TYPE;
 
-    /* Validate input parameters */
-    if (!cmd || buf_len == 0 || buf_len >= AT_RESPONSE_MAX) {
-        return -1;
-    }
-
-    /* Separate header and arguments */
+    /* Separate header and arguments.
+     * IMPORTANT: header[] is only AT_CMD_MAX_SIZE (16) bytes.
+     * Guard against buffer overflow when processing large non-AT payloads
+     * (e.g. HTTP response body HTML).  If the header candidate grows beyond
+     * AT_CMD_MAX_SIZE-1 bytes without finding ':', it cannot be a valid AT
+     * command prefix — break early and let the find-command step fail. */
     for (i = 0; i < buf_len; i++) {
         if (cmd[i] == '\r' || cmd[i] == '\0' || cmd[i] == '\n') {
             continue;
@@ -428,8 +429,10 @@ uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
             } else
                 break;
         }
-        if (h >= AT_CMD_MAX_SIZE - 1) {  /* Prevent header buffer overflow */
-            return -1;
+        if (h >= AT_CMD_MAX_SIZE - 1) {
+            /* Header too long — not a recognised AT command prefix */
+            h = 0;
+            break;
         }
         header[h] = cmd[i];
         h++;
@@ -475,7 +478,7 @@ void print_atcmd_resp(uint8_t *data, uint32_t len)
     if (!strncmp((char *)&data[2], "+CMD:", 5)) {
         /* Work around for UART and SPI conflict on STM32 platform */
         // qc_osal_msleep(1000);
-        printf("%s", data);
+        printf("%.*s", (int)len, (char *)data);
         return;
     }
     if (!strncmp((char *)&data[0], "+IPDHEX:", 8)) {
@@ -489,7 +492,9 @@ void print_atcmd_resp(uint8_t *data, uint32_t len)
         return;
     }
 
-    printf("%s", data);
+    /* Use length-bounded print to avoid reading beyond rx_buf when packet
+     * is exactly ATCMD_BUF_LEN bytes and has no null terminator. */
+    printf("%.*s", (int)len, (char *)data);
 }
 
 /**
@@ -499,9 +504,12 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
 {
     int ret;
     int packet_count = 0;
+    int error_count = 0;
 
     /* Loop to read all available data packets */
     do {
+        if (packet_count > 0 && packet_count % 10 == 0)
+            qc_osal_msleep(1);
         /* Use rx_buf from qcc730_atcmd structure */
         memset(qcc730_atcmd->rx_buf, 0, ATCMD_BUF_LEN);
         ret = ring_recv(ring_id, qcc730_atcmd->rx_buf, sizeof(qcc730_atcmd->rx_buf), 0);
@@ -528,19 +536,13 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
             }
         } else if (ret < 0) {
             QC_OSAL_LOG_ERR("Failed to receive data: %d", ret);
-            break; /* Exit on error */
+            break; /* Exit on error */ 
+        } else {
+            error_count = 0;
         }
-        if (packet_count > 0 && packet_count % 10 == 0)
-            qc_osal_msleep(1);
 
         /* ret == 0 means no more data available, loop will exit */
     } while (ret > 0);
-
-    if (packet_count > 0) {
-        // QC_OSAL_LOG_INF("Total processed %d data packets from ring %d", packet_count, ring_id);
-    } else {
-        QC_OSAL_LOG_INF("No data available from ring %d", ring_id);
-    }
 }
 
 /* ============================================================================
@@ -930,7 +932,38 @@ void test_http_process(uint8_t *data, uint32_t len)
 
 int test_http(int argc, char **argv)
 {
-    /* Implementation from old code */
+    int interval = 0;
+    http_send_num_max = 10;
+    http_mode = -1;
+
+    if (argc > 1) {
+        http_mode = atoi(argv[1]);
+    }
+
+    if (http_mode == HTTP_TEST_MODEL_CHECK_BIG_DATA_ON_DATA_MODEL) {
+        if (argc > 2) {
+            interval = atoi(argv[2]);
+        }
+        if (argc > 3) {
+            http_send_num_max = atoi(argv[3]);
+        }
+
+        demo_print("httptest test_mode:%d, send_num_max:%d, test_buf len:%d, interval:%dms\r\n",
+                   http_mode, http_send_num_max, (int)(strlen(test_buf) - 1), interval);
+
+        for (int i = 0; i < http_send_num_max; i++) {
+            demo_print("httptest num:%d\r\n", i + 1);
+            qcc730_atcmd_send_handler(test_buf, strlen(test_buf));
+            if (i < http_send_num_max - 1) {
+                qc_hal_delay(interval);
+            }
+        }
+
+        http_mode = -1;
+    } else {
+        demo_print("httptest: unsupported mode %d (only mode 3 supported)\r\n", http_mode);
+    }
+
     return 0;
 }
 
