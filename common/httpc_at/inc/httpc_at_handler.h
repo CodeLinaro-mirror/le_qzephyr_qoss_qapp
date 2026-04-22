@@ -49,7 +49,8 @@ extern "C" {
 #define HTTPC_AT_MAX_HEADER_FIELDS     10
 #define HTTPC_AT_MAX_FILE_PATH_LEN     32
 #define HTTPC_AT_RECV_BUF_SIZE         2048
-#define HTTPC_AT_SEND_BUF_SIZE         1000 /* FR.1.0 section 6.4/6.5 max POST/PUT length */
+#define HTTPC_AT_SEND_BUF_SIZE         1000  /* max POST/PUT body in cache mode (data_cache=1) */
+#define HTTPC_AT_MAX_STREAM_SIZE       65536 /* max POST/PUT body in stream mode (data_cache=0) */
 #define HTTPC_AT_CHUNK_SIZE            1000
 #define HTTPC_AT_DEFAULT_TIMEOUT_MS    10000
 #define HTTPC_AT_DEFAULT_GET_TIMEOUT_MS 5000

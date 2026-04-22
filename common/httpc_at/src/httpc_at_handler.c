@@ -1143,8 +1143,9 @@ int httpc_at_handle_httppost(uint32_t op_type, uint32_t param_count, httpc_at_pa
     }
     int data_len = params[1].int_val;
 
-    if (data_len <= 0 || data_len > HTTPC_AT_SEND_BUF_SIZE) {
-        LOG_ERR("HTTPPOST: invalid length=%d (max=%d)", data_len, HTTPC_AT_SEND_BUF_SIZE);
+    int max_len = (g_cfg.data_cache == 1) ? HTTPC_AT_SEND_BUF_SIZE : HTTPC_AT_MAX_STREAM_SIZE;
+    if (data_len <= 0 || data_len > max_len) {
+        LOG_ERR("HTTPPOST: invalid length=%d (max=%d)", data_len, max_len);
         return -EINVAL;
     }
 
@@ -1240,8 +1241,9 @@ int httpc_at_handle_httpput(uint32_t op_type, uint32_t param_count, httpc_at_par
     }
     int data_len = params[2].int_val;
 
-    if (data_len <= 0 || data_len > HTTPC_AT_SEND_BUF_SIZE) {
-        LOG_ERR("HTTPPUT: invalid length=%d (max=%d)", data_len, HTTPC_AT_SEND_BUF_SIZE);
+    int max_len = (g_cfg.data_cache == 1) ? HTTPC_AT_SEND_BUF_SIZE : HTTPC_AT_MAX_STREAM_SIZE;
+    if (data_len <= 0 || data_len > max_len) {
+        LOG_ERR("HTTPPUT: invalid length=%d (max=%d)", data_len, max_len);
         return -EINVAL;
     }
 
