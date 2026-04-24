@@ -932,7 +932,38 @@ void test_http_process(uint8_t *data, uint32_t len)
 
 int test_http(int argc, char **argv)
 {
-    /* Implementation from old code */
+    int interval = 0;
+    http_send_num_max = 10;
+    http_mode = -1;
+
+    if (argc > 1) {
+        http_mode = atoi(argv[1]);
+    }
+
+    if (http_mode == HTTP_TEST_MODEL_CHECK_BIG_DATA_ON_DATA_MODEL) {
+        if (argc > 2) {
+            interval = atoi(argv[2]);
+        }
+        if (argc > 3) {
+            http_send_num_max = atoi(argv[3]);
+        }
+
+        demo_print("httptest test_mode:%d, send_num_max:%d, test_buf len:%d, interval:%dms\r\n",
+                   http_mode, http_send_num_max, (int)(strlen(test_buf) - 1), interval);
+
+        for (int i = 0; i < http_send_num_max; i++) {
+            demo_print("httptest num:%d\r\n", i + 1);
+            qcc730_atcmd_send_handler(test_buf, strlen(test_buf));
+            if (i < http_send_num_max - 1) {
+                qc_hal_delay(interval);
+            }
+        }
+
+        http_mode = -1;
+    } else {
+        demo_print("httptest: unsupported mode %d (only mode 3 supported)\r\n", http_mode);
+    }
+
     return 0;
 }
 
