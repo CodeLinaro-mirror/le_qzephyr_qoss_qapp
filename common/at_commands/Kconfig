@@ -38,3 +38,21 @@ config QAT_HTTPC
 	  Enable HTTP client AT commands for QAT module.
 	  This provides AT+HTTPCLIENT/HTTPGETSIZE/HTTPGET/HTTPPOST/HTTPPUT/
 	  HTTPURLCFG/HTTPSSLCFG/HTTPNETCFG.
+
+config QAT_FSTORE
+	bool "QAT File Store AT Commands"
+	depends on QAT && FILE_SYSTEM
+	default y
+	help
+	  Enable file storage AT commands for QAT module.
+	  This provides AT+WRITEFILE/READFILE/DELFILE to transfer and manage
+	  files on the QCC730 LittleFS filesystem from the host side.
+
+config QAT_WIFI_CRED
+	bool "QAT WiFi Credential Persistence"
+	depends on QAT_WLAN && FILE_SYSTEM
+	default y
+	help
+	  Enable WiFi credential persistence commands for QAT module.
+	  This provides AT+CWSAVE/CWLOAD to store and restore SSID, passphrase,
+	  and security parameters to the QCC730 LittleFS filesystem.

@@ -21,6 +21,9 @@
 #include "qat_api.h"
 #include <qcom_wifi_mgmt.h>
 #include <zephyr/net/net_ip.h>
+#ifdef CONFIG_QAT_WIFI_CRED
+#include <zephyr/fs/fs.h>
+#endif
 
 LOG_MODULE_REGISTER(qat_wlan, LOG_LEVEL_DBG);
 
@@ -2650,6 +2653,130 @@ static cat_return_state cmd_ps_wlan_bcmc_list_query(const struct cat_command *cm
 
 
 /*-------------------------------------------------------------------------
+ * WiFi Credential Persistence (AT+CWSAVE / AT+CWLOAD)
+ *-----------------------------------------------------------------------*/
+#ifdef CONFIG_QAT_WIFI_CRED
+
+#define WIFI_CRED_PATH   "/lfs/wifi.conf"
+#define WIFI_CRED_MAGIC  "WCFG"
+#define WIFI_CRED_VER    1
+
+typedef struct {
+    uint8_t  magic[4];
+    uint8_t  version;
+    uint8_t  ssid_len;
+    uint8_t  passphrase_len;
+    uint8_t  _pad;
+    uint32_t auth_mode;
+    uint32_t cipher;
+    char     ssid[WIFI_SSID_MAX_LEN + 1];
+    char     passphrase[65];
+} wifi_cred_t;
+
+static cat_return_state cmd_wlan_cwsave_exec(const struct cat_command *cmd)
+{
+    wifi_cred_t cred;
+    struct fs_file_t file;
+    int ret;
+
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+
+    if (g_wifi_ctx.ssid_len == 0) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSAVE: No SSID configured\r\n");
+    }
+
+    memset(&cred, 0, sizeof(cred));
+    memcpy(cred.magic, WIFI_CRED_MAGIC, 4);
+    cred.version = WIFI_CRED_VER;
+    cred.ssid_len = g_wifi_ctx.ssid_len;
+    cred.passphrase_len = g_wifi_ctx.passphrase_len;
+    cred.auth_mode = g_wifi_ctx.auth_mode;
+    cred.cipher = g_wifi_ctx.cipher;
+    memcpy(cred.ssid, g_wifi_ctx.ssid, g_wifi_ctx.ssid_len);
+    memcpy(cred.passphrase, g_wifi_ctx.passphrase, g_wifi_ctx.passphrase_len);
+
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+
+    fs_file_t_init(&file);
+    ret = fs_open(&file, WIFI_CRED_PATH, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+    if (ret != 0) {
+        LOG_ERR("CWSAVE: fs_open failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSAVE: Failed to open file\r\n");
+    }
+
+    ret = fs_write(&file, &cred, sizeof(cred));
+    fs_close(&file);
+
+    if (ret != (int)sizeof(cred)) {
+        LOG_ERR("CWSAVE: fs_write failed: %d", ret);
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSAVE: Failed to write credentials\r\n");
+    }
+
+    LOG_INF("CWSAVE: saved SSID=%.*s to %s", cred.ssid_len, cred.ssid, WIFI_CRED_PATH);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+static cat_return_state cmd_wlan_cwload_exec(const struct cat_command *cmd)
+{
+    wifi_cred_t cred;
+    /*
+     * Intentionally does not check wlan_enabled: CWLOAD only writes to
+     * g_wifi_ctx memory and does not touch hardware or iface. This allows
+     * pre-populating credentials before AT+CWENABLE, so the host can call
+     * CWENABLE -> CWJAP without re-sending all parameters after a reboot.
+     */
+    struct fs_file_t file;
+    int ret;
+
+    fs_file_t_init(&file);
+    ret = fs_open(&file, WIFI_CRED_PATH, FS_O_READ);
+    if (ret != 0) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: No saved credentials\r\n");
+    }
+
+    ret = fs_read(&file, &cred, sizeof(cred));
+    fs_close(&file);
+
+    if (ret != (int)sizeof(cred)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Credential file corrupted\r\n");
+    }
+
+    if (memcmp(cred.magic, WIFI_CRED_MAGIC, 4) != 0 || cred.version != WIFI_CRED_VER) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Invalid credential file\r\n");
+    }
+
+    if (cred.ssid_len > WIFI_SSID_MAX_LEN || cred.passphrase_len > 64) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Credential file corrupted\r\n");
+    }
+
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+
+    g_wifi_ctx.ssid_len = cred.ssid_len;
+    memcpy(g_wifi_ctx.ssid, cred.ssid, cred.ssid_len);
+    g_wifi_ctx.ssid[cred.ssid_len] = '\0';
+
+    g_wifi_ctx.passphrase_len = cred.passphrase_len;
+    memcpy(g_wifi_ctx.passphrase, cred.passphrase, cred.passphrase_len);
+    g_wifi_ctx.passphrase[cred.passphrase_len] = '\0';
+
+    g_wifi_ctx.auth_mode = cred.auth_mode;
+    g_wifi_ctx.cipher = cred.cipher;
+    g_wifi_ctx.security_set = (cred.passphrase_len > 0);
+
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+
+    LOG_INF("CWLOAD: loaded SSID=%.*s from %s", cred.ssid_len, cred.ssid, WIFI_CRED_PATH);
+
+    char response[WIFI_SSID_MAX_LEN + 32];
+
+    snprintf(response, sizeof(response), "+CWLOAD: SSID=%.*s\r\n", cred.ssid_len, cred.ssid);
+    return QAT_Response_Str(QAT_RC_OK, response);
+}
+
+#endif /* CONFIG_QAT_WIFI_CRED */
+
+/*-------------------------------------------------------------------------
  * Command List
  *-----------------------------------------------------------------------*/
 static struct cat_command qat_wlan_cmds[] = {
@@ -2798,6 +2925,18 @@ static struct cat_command qat_wlan_cmds[] = {
         .read = cmd_ps_wlan_bcmc_list_query,
         .write = cmd_ps_wlan_bcmc_list_set,
     },
+#ifdef CONFIG_QAT_WIFI_CRED
+    {
+        .name = "+CWSAVE",
+        .description = "Save WiFi credentials (SSID/passphrase/auth) to /lfs/wifi.conf",
+        .run = cmd_wlan_cwsave_exec,
+    },
+    {
+        .name = "+CWLOAD",
+        .description = "Load WiFi credentials from /lfs/wifi.conf into context",
+        .run = cmd_wlan_cwload_exec,
+    },
+#endif
 };
 
 static struct cat_command_group qat_wlan_cmd_group = {
