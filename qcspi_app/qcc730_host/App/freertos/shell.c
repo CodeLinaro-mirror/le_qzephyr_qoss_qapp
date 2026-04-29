@@ -111,6 +111,8 @@ uint8_t cmd_shell_char_received()
 #endif
         } else if (strncmp(buf, "qatperf", 7) == 0) {
             cmd_shell_exec(buf);
+        } else if (strncmp(buf, "net_tx_loop", 11) == 0) {
+            cmd_shell_exec(buf);
         } else if (strncmp(buf, "tx", 2) == 0) {
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "at_send", 7) == 0) {
