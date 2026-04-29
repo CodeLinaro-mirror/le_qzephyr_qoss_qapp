@@ -24,7 +24,7 @@
  * ============================================================================ */
 
 #define AT_ARGC_MAX 128    /* Maximum number of arguments */
-#define AT_CMD_MAX_SIZE 16 /* Maximum command name size */
+#define AT_CMD_MAX_SIZE 32 /* Maximum command name size */
 #define ATCMD_PARSER_FUNC_LIST_MAX_SIZE 32
 #define AT_RESPONSE_MAX 2048  /* Maximum response buffer size */
 #define ATCMD_BUF_LEN 1400    /* AT command buffer length */
