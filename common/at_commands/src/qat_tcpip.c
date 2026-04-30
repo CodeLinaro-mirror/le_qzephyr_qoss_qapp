@@ -1311,36 +1311,20 @@ static void cipsend_exit_online_mode(void)
 static int cipsend_data_callback(const uint8_t *data, size_t len)
 {
     char response[64];
-    size_t start = 0;
-    size_t end = len;
 
     if (cipsend_state.link_id == INVALID_LINKID) {
         return -EINVAL;
     }
 
-    /* Interactive tools may submit line fragments like:
-     *   "+++\r", "\n", or "\r\n"
-     * Trim leading/trailing CR/LF first so they are not forwarded as payload.
-     */
-    while (start < end && (data[start] == '\r' || data[start] == '\n')) {
-        start++;
-    }
-    while (end > start && (data[end - 1] == '\r' || data[end - 1] == '\n')) {
-        end--;
-    }
-
-    size_t trimmed_len = end - start;
-
-    /* Match FreeRTOS len==0 escape behavior, but tolerate surrounding CR/LF. */
+    /* "+++" escape sequence: exit online mode */
     if (!cipsend_state.exit_length_valid &&
-        trimmed_len == 3 &&
-        memcmp(data + start, "+++", 3) == 0) {
+        len == 3 &&
+        memcmp(data, "+++", 3) == 0) {
         cipsend_exit_online_mode();
         return 0;
     }
 
-    /* Pure newline fragment after leaving/while in online mode: swallow it. */
-    if (trimmed_len == 0) {
+    if (len == 0) {
         return 0;
     }
 
@@ -1357,16 +1341,16 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
     int sock_fd = g_client_conns[cipsend_state.link_id].sock_fd;
     k_mutex_unlock(&conn_mutex);
 
-    const uint8_t *payload = data + start;
-    size_t send_len = trimmed_len;
+    const uint8_t *payload = data;
+    size_t send_len = len;
 
     if (cipsend_state.exit_length_valid) {
         size_t remaining = cipsend_state.max_len - cipsend_state.total_sent;
         send_len = (send_len <= remaining) ? send_len : remaining;
     }
 
-    LOG_INF("CIPSEND: link=%d raw_len=%zu trimmed_len=%zu send_len=%zu total_sent=%zu max_len=%zu fixed_len=%d payload='%.*s'",
-            cipsend_state.link_id, len, trimmed_len, send_len,
+    LOG_INF("CIPSEND: link=%d len=%zu send_len=%zu total_sent=%zu max_len=%zu fixed_len=%d payload='%.*s'",
+            cipsend_state.link_id, len, send_len,
             cipsend_state.total_sent, cipsend_state.max_len,
             cipsend_state.exit_length_valid ? 1 : 0,
             (int)send_len, (const char *)payload);
@@ -3633,9 +3617,12 @@ dnsc_reconfigure: {
 /*-------------------------------------------------------------------------
  * AT+SNTPC - SNTP Client
  *-----------------------------------------------------------------------*/
-#define SNTPC_MAX_SERVERS    2
-#define SNTPC_SERVER_LEN     64
-
+#define SNTPC_MAX_SERVERS           2
+#define SNTPC_SERVER_LEN            64
+#define SNTPC_RECV_TIMEOUT_MS       15000
+#define SNTPC_UPDATE_DELAY_MS       3600000
+#define SNTPC_RETRY_TIMEOUT_MS      15000
+#define SNTPC_RETRY_TIMEOUT_MAX_MS  150000
 typedef struct {
     char name[SNTPC_SERVER_LEN];      /* domain name if configured as name */
     char ip[INET6_ADDRSTRLEN];        /* textual IP if configured as IP */
@@ -3648,10 +3635,97 @@ static sntpc_server_entry_t sntpc_servers[SNTPC_MAX_SERVERS];
 static struct {
     bool started;                     /* SNTP client started or not */
     int  op_mode;                     /* 0: unicast, 1: broadcast */
+    uint32_t retry_delay_ms;          /* current backoff delay */
 } sntpc_state = {
     .started = false,
     .op_mode = 0,
+    .retry_delay_ms = SNTPC_RETRY_TIMEOUT_MS,
 };
+
+static void sntpc_work_handler(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(sntpc_work, sntpc_work_handler);
+
+static void sntpc_work_handler(struct k_work *work)
+{
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+
+    if (!sntpc_state.started) {
+        return;
+    }
+
+    const char *server = NULL;
+
+    for (int i = 0; i < SNTPC_MAX_SERVERS; i++) {
+        if (!sntpc_servers[i].valid) {
+            continue;
+        }
+        if (sntpc_servers[i].name[0] != '\0') {
+            server = sntpc_servers[i].name;
+            break;
+        } else if (sntpc_servers[i].ip[0] != '\0') {
+            server = sntpc_servers[i].ip;
+            break;
+        }
+    }
+
+    if (!server) {
+        sntpc_state.started = false;
+        return;
+    }
+
+    struct sntp_time ts;
+    int ret = sntp_simple(server, SNTPC_RECV_TIMEOUT_MS, &ts);
+
+    if (ret == 0) {
+        LOG_INF("SNTPC: synced from %s, unix_ts=%llu",
+                server, (unsigned long long)ts.seconds);
+
+        time_t unix_ts = (time_t)ts.seconds;
+        struct tm tm_utc;
+
+        if (gmtime_r(&unix_ts, &tm_utc) != NULL) {
+            const struct device *rtc_dev = DEVICE_DT_GET(DT_ALIAS(rtc));
+
+            if (device_is_ready(rtc_dev)) {
+                struct rtc_time rtc_utc = {
+                    .tm_sec   = tm_utc.tm_sec,
+                    .tm_min   = tm_utc.tm_min,
+                    .tm_hour  = tm_utc.tm_hour,
+                    .tm_mday  = tm_utc.tm_mday,
+                    .tm_mon   = tm_utc.tm_mon,
+                    .tm_year  = tm_utc.tm_year,
+                    .tm_wday  = tm_utc.tm_wday,
+                    .tm_yday  = tm_utc.tm_yday,
+                    .tm_isdst = -1,
+                    .tm_nsec  = 0,
+                };
+                int rtc_ret = rtc_set_time(rtc_dev, &rtc_utc);
+
+                if (rtc_ret != 0) {
+                    LOG_WRN("SNTPC: rtc_set_time failed (%d)", rtc_ret);
+                } else {
+                    LOG_INF("SNTPC: RTC time updated via SNTP");
+                }
+            }
+        }
+
+        char evt[64];
+        snprintf(evt, sizeof(evt), "+SNTPC:synced,%llu\r\n",
+                 (unsigned long long)ts.seconds);
+        QAT_Response_Str(QAT_RC_QUIET, evt);
+
+        /* Reset backoff and schedule next sync after 1 hour */
+        sntpc_state.retry_delay_ms = SNTPC_RETRY_TIMEOUT_MS;
+        k_work_reschedule(dwork, K_MSEC(SNTPC_UPDATE_DELAY_MS));
+    } else {
+        LOG_ERR("SNTPC: sync from %s failed, err=%d", server, ret);
+
+        /* Exponential backoff, capped at SNTPC_RETRY_TIMEOUT_MAX_MS */
+        sntpc_state.retry_delay_ms =
+            MIN(sntpc_state.retry_delay_ms * 2, SNTPC_RETRY_TIMEOUT_MAX_MS);
+        k_work_reschedule(dwork, K_MSEC(sntpc_state.retry_delay_ms));
+    }
+}
 
 static cat_return_state cmd_sntpc_exec(const struct cat_command *cmd)
 {
@@ -3677,16 +3751,12 @@ static cat_return_state cmd_sntpc_query(const struct cat_command *cmd,
                        "+SNTPC:%s\r\n",
                        sntpc_state.started ? "started" : "stopped");
 
-    /* Per FreeRTOS demo: +SNTPC:<id>,<name>,<ip>[,KOD] */
+    /* Per FreeRTOS demo: +SNTPC:<id>,<name>,<ip>[,KOD] for all slots */
     for (int i = 0; i < SNTPC_MAX_SERVERS; i++) {
-        if (!sntpc_servers[i].valid) {
-            continue;
-        }
-
-        const char *name = (sntpc_servers[i].name[0] != '\0')
+        const char *name = (sntpc_servers[i].valid && sntpc_servers[i].name[0] != '\0')
                                ? sntpc_servers[i].name
                                : "****";
-        const char *ip   = (sntpc_servers[i].ip[0] != '\0')
+        const char *ip   = (sntpc_servers[i].valid && sntpc_servers[i].ip[0] != '\0')
                                ? sntpc_servers[i].ip
                                : "****";
 
@@ -3717,105 +3787,32 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
 
     /* AT+SNTPC=start */
     if (strncasecmp(subcmd, "start", 5) == 0) {
-        const char *server = NULL;
+        bool has_server = false;
 
-        /* Prefer configured servers (id 0..N), pick first valid name/ip */
         for (int i = 0; i < SNTPC_MAX_SERVERS; i++) {
-            if (!sntpc_servers[i].valid) {
-                continue;
-            }
-
-            if (sntpc_servers[i].name[0] != '\0') {
-                server = sntpc_servers[i].name;  /* domain name */
-                break;
-            } else if (sntpc_servers[i].ip[0] != '\0') {
-                server = sntpc_servers[i].ip;    /* numeric IP string */
+            if (sntpc_servers[i].valid &&
+                (sntpc_servers[i].name[0] != '\0' || sntpc_servers[i].ip[0] != '\0')) {
+                has_server = true;
                 break;
             }
         }
 
-        if (!server) {
+        if (!has_server) {
             return QAT_Response_Str(QAT_RC_ERROR,
                 "+SNTPC:no SNTP server configured, use AT+SNTPC=setServer first\r\n");
         }
 
-        struct sntp_time ts;
-        int ret = sntp_simple(server, 5000, &ts); /* 5s timeout */
-
-        if (ret == 0) {
-            sntpc_state.started = true;
-
-            LOG_INF("SNTPC: synced from %s, unix_ts=%llu",
-                    server, (unsigned long long)ts.seconds);
-
-            /* Convert SNTP unix seconds (UTC) to struct tm and program RTC,
-             * so that existing AT+TIME? can read the synchronized time.
-             *
-             * NOTE:
-             * - sntp_simple() returns time in UTC.
-             * - rtc_set_time() is called with this UTC value directly.
-             * - AT+TIME? currently reports the raw RTC time without any
-             *   additional time zone offset.
-
-             * If needs local time (e.g. UTC+8 for China),
-             * the host or higher layer should apply the time zone offset
-             * when interpreting the AT+TIME? result, or a separate
-             * time zone handling should be implemented on top.
-             */
-            time_t unix_ts = (time_t)ts.seconds;
-            struct tm tm_utc;
-
-            if (gmtime_r(&unix_ts, &tm_utc) == NULL) {
-                LOG_WRN("SNTPC: gmtime_r failed for %llu",
-                        (unsigned long long)ts.seconds);
-            } else {
-                /* Use the same RTC device alias as qat_common (+TIME)
-                 * so that AT+SNTPC updates the time source used by AT+TIME?.
-                 */
-                const struct device *rtc_dev = DEVICE_DT_GET(DT_ALIAS(rtc));
-
-                if (!device_is_ready(rtc_dev)) {
-                    LOG_WRN("SNTPC: RTC device not ready");
-                } else {
-                    struct rtc_time rtc_utc = {
-                        .tm_sec  = tm_utc.tm_sec,
-                        .tm_min  = tm_utc.tm_min,
-                        .tm_hour = tm_utc.tm_hour,
-                        .tm_mday = tm_utc.tm_mday,
-                        .tm_mon  = tm_utc.tm_mon,
-                        .tm_year = tm_utc.tm_year,
-                        .tm_wday = tm_utc.tm_wday,
-                        .tm_yday = tm_utc.tm_yday,
-                        .tm_isdst = -1,
-                        .tm_nsec = 0,
-                    };
-                    int rtc_ret = rtc_set_time(rtc_dev, &rtc_utc);
-                    if (rtc_ret != 0) {
-                        LOG_WRN("SNTPC: rtc_set_time failed (%d)", rtc_ret);
-                    } else {
-                        LOG_INF("SNTPC: RTC time updated via SNTP");
-                    }
-                }
-            }
-
-            char evt[64];
-            snprintf(evt, sizeof(evt), "+SNTPC:synced,%llu\r\n",
-                     (unsigned long long)ts.seconds);
-            QAT_Response_Str(QAT_RC_QUIET, evt);
-
-            return QAT_Response_Str(QAT_RC_OK, NULL);
-        } else {
-            char resp[64];
-            snprintf(resp, sizeof(resp), "+SNTPC:sync failed,err=%d\r\n", ret);
-            LOG_ERR("SNTPC: sync from %s failed, err=%d", server, ret);
-            return QAT_Response_Str(QAT_RC_ERROR, resp);
-        }
+        sntpc_state.started = true;
+        sntpc_state.retry_delay_ms = SNTPC_RETRY_TIMEOUT_MS;
+        k_work_reschedule(&sntpc_work, K_NO_WAIT);
+        return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
     /* AT+SNTPC=stop */
     if (strncasecmp(subcmd, "stop", 4) == 0) {
         sntpc_state.started = false;
-        LOG_INF("SNTPC: client stopped (Zephyr)");
+        k_work_cancel_delayable(&sntpc_work);
+        LOG_INF("SNTPC: client stopped");
         return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
