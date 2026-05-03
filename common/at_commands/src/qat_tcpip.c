@@ -51,6 +51,14 @@ LOG_MODULE_REGISTER(qat_tcpip, LOG_LEVEL_INF);
 #define PING_DEFAULT_SIZE 32
 #define PING_ID 0xACAB
 
+/* Dedicated work queue for TCP/IP work items */
+#define TCPIP_WQ_STACK_SIZE 4096
+#define TCPIP_WQ_PRIORITY   8 /* preemptible, below qat_service(7) */
+
+/* Server poll backoff: tight-loop while data is flowing, idle backoff otherwise */
+#define TCP_SERVER_IDLE_POLL_MS 50
+#define UDP_SERVER_IDLE_POLL_MS 100
+
 /* Ping context */
 static struct {
     struct k_work_delayable work;
@@ -160,7 +168,10 @@ static bool server_ipd_message_print_flag = true;
 static bool udp_server_ipd_message_print_flag = true;
 static uint8_t is_passthrough_mode = 0;
 
-/* Work queue thread — three recv work handlers run serially on the system work queue */
+/* Dedicated work queue for all TCP/IP work items (system workq stack is only 2 KB) */
+static K_THREAD_STACK_DEFINE(tcpip_wq_stack, TCPIP_WQ_STACK_SIZE);
+static struct k_work_q tcpip_wq;
+
 static uint8_t s_recv_buf[INPUT_BUFFER_SIZE + 1];
 static char    s_recv_response[INPUT_BUFFER_SIZE + 64];
 
@@ -659,8 +670,8 @@ static void sap_ra_work_handler(struct k_work *work)
     }
 
     sap_send_ra(iface);
-    k_work_reschedule((struct k_work_delayable *)work,
-                      K_MSEC(SAP_RA_INTERVAL_MS));
+    k_work_reschedule_for_queue(&tcpip_wq, (struct k_work_delayable *)work,
+                                K_MSEC(SAP_RA_INTERVAL_MS));
 }
 
 /* RS handler: respond to Router Solicitation from clients on SAP iface */
@@ -698,7 +709,7 @@ static void sap_ra_start(void)
     sap_ra_running = true;
     k_work_init_delayable(&sap_ra_work, sap_ra_work_handler);
     /* Send first RA immediately, then every SAP_RA_INTERVAL_MS */
-    k_work_reschedule(&sap_ra_work, K_NO_WAIT);
+    k_work_reschedule_for_queue(&tcpip_wq, &sap_ra_work, K_NO_WAIT);
     LOG_INF("SAP RA: started (interval=%d ms)", SAP_RA_INTERVAL_MS);
 }
 
@@ -1028,7 +1039,7 @@ static void client_recv_work_handler(struct k_work *work)
     }
 
     /* Reschedule work */
-    k_work_reschedule(dwork, (recv_len > 0) ? K_NO_WAIT : K_MSEC(10));
+    k_work_reschedule_for_queue(&tcpip_wq, dwork, (recv_len > 0) ? K_NO_WAIT : K_MSEC(10));
 }
 
 static cat_return_state cmd_cipstart_set(const struct cat_command *cmd,
@@ -1241,7 +1252,7 @@ static cat_return_state cmd_cipstart_set(const struct cat_command *cmd,
     /* Start receive work — cancel any stale work item before reinitializing */
     k_work_cancel_delayable(&g_client_conns[link_id].recv_work);
     k_work_init_delayable(&g_client_conns[link_id].recv_work, client_recv_work_handler);
-    k_work_reschedule(&g_client_conns[link_id].recv_work, K_MSEC(100));
+    k_work_reschedule_for_queue(&tcpip_wq, &g_client_conns[link_id].recv_work, K_NO_WAIT);
     LOG_INF("CIPSTART: Receive work scheduled");
 
     k_mutex_unlock(&conn_mutex);
@@ -1455,7 +1466,7 @@ static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPSEND: Failed to enter online mode\r\n");
     }
 
-    k_work_submit(&cipsend_prompt_work);
+    k_work_submit_to_queue(&tcpip_wq, &cipsend_prompt_work);
     return QAT_Response_Str(QAT_RC_OK, NULL);
 }
 
@@ -1887,9 +1898,9 @@ static void ping_work_handler(struct k_work *work)
 
     /* Schedule reply timeout; last ping uses same timeout as others */
     if (ping_ctx.sequence < ping_ctx.count) {
-        k_work_reschedule(dwork, K_MSEC(ping_ctx.interval));
+        k_work_reschedule_for_queue(&tcpip_wq, dwork, K_MSEC(ping_ctx.interval));
     } else {
-        k_work_reschedule(dwork, K_MSEC(RECV_TIMEOUT_MS));
+        k_work_reschedule_for_queue(&tcpip_wq, dwork, K_MSEC(RECV_TIMEOUT_MS));
     }
 }
 
@@ -1992,7 +2003,7 @@ static cat_return_state cmd_cipping_set(const struct cat_command *cmd,
 
     /* Start ping work */
     k_work_init_delayable(&ping_ctx.work, ping_work_handler);
-    k_work_schedule(&ping_ctx.work, K_NO_WAIT);
+    k_work_schedule_for_queue(&tcpip_wq, &ping_ctx.work, K_NO_WAIT);
 
     /* Wait for completion */
     ret = k_sem_take(&ping_ctx.done_sem, K_SECONDS(count * 2 + 5));
@@ -2308,6 +2319,8 @@ static void tcp_server_work_handler(struct k_work *work)
         }
     }
 
+    bool progressed = false;
+
     int ret = zsock_poll(fds, nfds, 0);
     if (ret > 0) {
         /* Check listen socket for new connections */
@@ -2342,6 +2355,7 @@ static void tcp_server_work_handler(struct k_work *work)
                     }
 
                     LOG_INF("TCP server accepted client on slot %d", slot);
+                    progressed = true;
                 } else {
                     zsock_close(client_fd);
                     LOG_WRN("TCP server: no free slots");
@@ -2372,6 +2386,7 @@ static void tcp_server_work_handler(struct k_work *work)
             ssize_t recv_len = zsock_recv(g_listen_clients[i].sock_fd, s_recv_buf, sizeof(s_recv_buf), 0);
 
             if (recv_len > 0) {
+                progressed = true;
                 if (g_listen_clients[i].recv_mode == RECV_MODE_ACTIVE) {
                     /* Active mode: print immediately */
                     const char *server_proto =
@@ -2420,7 +2435,8 @@ static void tcp_server_work_handler(struct k_work *work)
 
     /* Reschedule if server is still running */
     if (tcp_server_running) {
-        k_work_reschedule((struct k_work_delayable *)work, K_MSEC(50));
+        k_work_reschedule_for_queue(&tcpip_wq, (struct k_work_delayable *)work,
+                                    progressed ? K_NO_WAIT : K_MSEC(TCP_SERVER_IDLE_POLL_MS));
     }
 }
 
@@ -2604,7 +2620,7 @@ static cat_return_state cmd_cipserver_set(const struct cat_command *cmd,
         tcp_server_running = true;
         tcp_server_accept_new_client = true;
 
-        k_work_reschedule(&tcp_server_work, K_MSEC(100));
+        k_work_reschedule_for_queue(&tcpip_wq, &tcp_server_work, K_NO_WAIT);
 
         LOG_INF("TCP server started on port %d", value);
         return QAT_Response_Str(QAT_RC_OK, NULL);
@@ -2636,6 +2652,8 @@ static void udp_server_work_handler(struct k_work *work)
         return;
     }
 
+    bool progressed = false;
+
     /* Poll UDP socket */
     struct zsock_pollfd fds[1];
     fds[0].fd = udp_listen_fd;
@@ -2650,6 +2668,7 @@ static void udp_server_work_handler(struct k_work *work)
                                          (struct sockaddr *)&from_addr, &from_len);
 
         if (recv_len > 0) {
+            progressed = true;
             /* Find or create client slot */
             int slot = -1;
             char from_ip[INET6_ADDRSTRLEN];
@@ -2726,7 +2745,8 @@ static void udp_server_work_handler(struct k_work *work)
 
     /* Reschedule if server is still running */
     if (udp_server_running) {
-        k_work_reschedule((struct k_work_delayable *)work, K_MSEC(100));
+        k_work_reschedule_for_queue(&tcpip_wq, (struct k_work_delayable *)work,
+                                    progressed ? K_NO_WAIT : K_MSEC(UDP_SERVER_IDLE_POLL_MS));
     }
 }
 
@@ -3409,7 +3429,7 @@ static cat_return_state cmd_cipudpserver_set(const struct cat_command *cmd,
         udp_config.accept_new_peer = true;
         udp_server_running = true;
 
-        k_work_reschedule(&udp_server_work, K_MSEC(1));
+        k_work_reschedule_for_queue(&tcpip_wq, &udp_server_work, K_NO_WAIT);
 
         LOG_INF("UDP server started on port %d", value);
         return QAT_Response_Str(QAT_RC_OK, NULL);
@@ -3722,14 +3742,14 @@ static void sntpc_work_handler(struct k_work *work)
 
         /* Reset backoff and schedule next sync after 1 hour */
         sntpc_state.retry_delay_ms = SNTPC_RETRY_TIMEOUT_MS;
-        k_work_reschedule(dwork, K_MSEC(SNTPC_UPDATE_DELAY_MS));
+        k_work_reschedule_for_queue(&tcpip_wq, dwork, K_MSEC(SNTPC_UPDATE_DELAY_MS));
     } else {
         LOG_ERR("SNTPC: sync from %s failed, err=%d", server, ret);
 
         /* Exponential backoff, capped at SNTPC_RETRY_TIMEOUT_MAX_MS */
         sntpc_state.retry_delay_ms =
             MIN(sntpc_state.retry_delay_ms * 2, SNTPC_RETRY_TIMEOUT_MAX_MS);
-        k_work_reschedule(dwork, K_MSEC(sntpc_state.retry_delay_ms));
+        k_work_reschedule_for_queue(&tcpip_wq, dwork, K_MSEC(sntpc_state.retry_delay_ms));
     }
 }
 
@@ -3810,7 +3830,7 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
 
         sntpc_state.started = true;
         sntpc_state.retry_delay_ms = SNTPC_RETRY_TIMEOUT_MS;
-        k_work_reschedule(&sntpc_work, K_NO_WAIT);
+        k_work_reschedule_for_queue(&tcpip_wq, &sntpc_work, K_NO_WAIT);
         return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
@@ -4049,6 +4069,15 @@ static struct cat_command qat_tcpip_cmds[] = {
  *-----------------------------------------------------------------------*/
 static int qat_tcpip_init(void)
 {
+    static const struct k_work_queue_config tcpip_wq_cfg = {
+        .name = "tcpip_wq",
+    };
+
+    k_work_queue_init(&tcpip_wq);
+    k_work_queue_start(&tcpip_wq, tcpip_wq_stack,
+                       K_THREAD_STACK_SIZEOF(tcpip_wq_stack),
+                       TCPIP_WQ_PRIORITY, &tcpip_wq_cfg);
+
     /* Initialize connection pools */
     for (int i = 0; i < MAX_CONNECTIONS; i++) {
         cleanup_client_conn(i);
