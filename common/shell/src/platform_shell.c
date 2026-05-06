@@ -282,7 +282,7 @@ static int cmd_rram_read(const struct shell *ctx, size_t argc, char **argv)
     int err = -ENOTSUP;
 
 #if CONFIG_WIFI
-
+    err = 0;
     uint32_t partition_id = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse partition_id (err %d)", err);
@@ -329,7 +329,7 @@ static int cmd_rram_write(const struct shell *ctx, size_t argc, char **argv)
     int err = -ENOTSUP;
 
 #if CONFIG_WIFI
-
+    err = 0;
     uint32_t partition_id = shell_strtoul(argv[1], 10, &err);
     if (err) {
         shell_error(ctx, "Unable to parse partition_id (err %d)", err);
