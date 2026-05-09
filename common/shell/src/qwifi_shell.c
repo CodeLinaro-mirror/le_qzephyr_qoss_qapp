@@ -578,9 +578,18 @@ static int cmd_set_rate(const struct shell *ctx, size_t argc, char **argv)
     memset(&set_rate_cfg, 0, sizeof(set_rate_cfg));
 
     if (argc == 2 && !strcmp(argv[1], "auto")) {
-        set_rate_cfg.ra_ON = 1;
+        set_rate_cfg.ra_ON = QAPI_WLAN_RA_ON;
+    } else if (argc == 3 && !strcmp(argv[1], "htOnly")) {
+        if(!strcmp(argv[2], "enable")) {
+			set_rate_cfg.ra_ON = QAPI_WLAN_RA_HT_ONLY_ENABLE;
+        } else if(!strcmp(argv[2], "disable")) {
+			set_rate_cfg.ra_ON = QAPI_WLAN_RA_HT_ONLY_DISABLE;
+        } else {
+			shell_error(ctx, "Usage: qwifi set_rate htOnly <enable|disable>");
+			return -EINVAL;
+        }
     } else if (argc == 5) {
-        set_rate_cfg.ra_ON = 0;
+        set_rate_cfg.ra_ON = QAPI_WLAN_RA_OFF;
 
         set_rate_cfg.rate_staid = (uint32_t)shell_strtoul(argv[1], 10, &err);
         if (err) { shell_error(ctx, "Unable to parse <staid> (err %d)", err); return err; }
@@ -594,7 +603,7 @@ static int cmd_set_rate(const struct shell *ctx, size_t argc, char **argv)
         set_rate_cfg.rate_t_rate = (uint32_t)shell_strtoul(argv[4], 10, &err);
         if (err) { shell_error(ctx, "Unable to parse <t_rate> (err %d)", err); return err; }
     } else {
-        shell_error(ctx, "Usage: qwifi set_rate auto | <staid> <p_rate> <s_rate> <t_rate>");
+        shell_error(ctx, "Usage: qwifi set_rate auto | htOnly <enable|disable> | <staid> <p_rate> <s_rate> <t_rate>");
         return -EINVAL;
     }
 
@@ -603,7 +612,7 @@ static int cmd_set_rate(const struct shell *ctx, size_t argc, char **argv)
         return -ENOEXEC;
     }
 
-    shell_print(ctx, "Rate set%s", set_rate_cfg.ra_ON ? " (auto)" : "");
+    shell_print(ctx, "Rate set%s", set_rate_cfg.ra_ON == QAPI_WLAN_RA_ON? " (auto)" : "");
     return 0;
 }
 
@@ -901,6 +910,97 @@ static int cmd_version(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_set_ba_win_size(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+	struct qcom_wifi_set_ba_win_size_params ba_win_size;
+
+    memset(&ba_win_size, 0, sizeof(ba_win_size));
+
+	if(argc == 3) {
+		ba_win_size.tx_size = (uint16_t)shell_strtoul(argv[1], 10, &err);
+		if (err) { shell_error(ctx, "Unable to parse <tx_ba_window_size> (err %d)", err); return err; }
+
+		ba_win_size.rx_size = (uint16_t)shell_strtoul(argv[2], 10, &err);
+		if (err) { shell_error(ctx, "Unable to parse <rx_ba_window_size> (err %d)", err); return err; }
+
+		if(ba_win_size.tx_size > 64 || ba_win_size.rx_size > 64) {
+			shell_error(ctx, "Tha MAX value of tx_ba_window_size and rx_ba_window_size is 64"); 
+			return -EINVAL;
+		}
+	} else {
+		shell_error(ctx, "Usage: qwifi set_ba_win_size <tx_ba_window_size> <rx_ba_window_size>");
+        return -EINVAL;
+	}
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_BA_WIN_SIZE, iface, &ba_win_size, sizeof(ba_win_size))) {
+        shell_error(ctx, "Failed to set BA WIN size");
+        return -ENOEXEC;
+    }
+	
+    return 0;
+}
+
+static int cmd_set_cts_to_self(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_cts_to_self_params params = {0};
+
+    if (argc != 2) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    params.enable = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <enable> (err %d)", err);
+        return err;
+    }
+    if (params.enable != 0 && params.enable != 1) {
+        shell_error(ctx, "enable must be 0 or 1");
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_CTS_TO_SELF, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Failed to set CTS to SELF to %u", params.enable);
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "CTS to SELF set to %s", params.enable ? "enabled" : "disabled");
+    return 0;
+}
+
+static int cmd_set_rsp_rate(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_set_rsp_rate_params params = {0};
+
+    if (argc != 2) {
+        shell_error(ctx, "Invalid number of arguments");
+        return -EINVAL;
+    }
+
+    params.rate_idx = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse <rate_idx> (err %d)", err);
+        return err;
+    }
+    if (params.rate_idx != 8  && params.rate_idx != 16) {
+        shell_error(ctx, "RspRate only support set to 8:6Mbps or 16:6.5Mbps");
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_SET_RSP_RATE, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Failed to set rsp rate index to %u", params.rate_idx);
+        return -ENOEXEC;
+    }
+
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
                                              "Set the transmit power in dbm.\n"
@@ -1014,7 +1114,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              cmd_get_phy_mode, 1, 0),
                                SHELL_CMD_ARG(set_rate, NULL,
                                              "Set data rate.\n"
-					     "Usage: qwifi set_rate auto | <staid> <p_rate> <s_rate> <t_rate>\n",
+					     "Usage: qwifi set_rate auto | htOnly <enable|disable> | <staid> <p_rate> <s_rate> <t_rate>\n",
                                              cmd_set_rate, 2, 3),
                                SHELL_CMD_ARG(get_rate, NULL,
                                              "Get data rate for station.\n"
@@ -1032,6 +1132,18 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Show WLAN lib version.\n"
 					     "Usage: qwifi version\n",
                                              cmd_version, 1, 0),
+                               SHELL_CMD_ARG(set_ba_win_size, NULL,
+                                             "Set BA Window size.\n"
+					     "Usage: qwifi set_ba_win_size | <tx_ba_window_size> <rx_ba_window_size>\n",
+                                             cmd_set_ba_win_size, 3, 0),
+                               SHELL_CMD_ARG(set_cts_to_self, NULL,
+                                             "Set CTS to SELF enable or disable.\n"
+					     "Usage: qwifi set_cts_to_self | <1: enable| 0: disable>\n",
+                                             cmd_set_cts_to_self, 2, 0),
+                               SHELL_CMD_ARG(set_rsp_rate, NULL,
+                                             "Set Rsp rate to 6Mbps or 6.5Mbps.\n"
+					     "Usage: qwifi set_rsp_rate | <rate_idx = 8:6Mbps or 16:6.5Mbps>\n",
+                                             cmd_set_rsp_rate, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
