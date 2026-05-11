@@ -14,17 +14,32 @@
 
 LOG_MODULE_REGISTER(qat_fstore, LOG_LEVEL_INF);
 
-#define FSTORE_MOUNT_POINT  "/lfs"
-#define FSTORE_PATH_MAX     128
-#define FSTORE_READ_CHUNK   256
+#define FSTORE_MOUNT_POINT    "/lfs"
+#define FSTORE_PATH_MAX       128
+#define FSTORE_READ_CHUNK     256
+#define FSTORE_CHUNK_HEX_MAX  128  /* max bytes per AT+WRITEFILE append chunk */
 
 /* WRITEFILE state */
 static struct {
     struct fs_file_t file;
-    size_t total_len;
+    size_t total_len;    /* expected total bytes (0 = unknown) */
     size_t received_len;
     bool active;
 } writefile_state;
+
+static int hex_val(char c)
+{
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
 
 /*
  * Normalize a path: if it doesn't start with FSTORE_MOUNT_POINT, prepend it.
@@ -33,12 +48,20 @@ static struct {
  */
 static int normalize_path(const char *in, char *out)
 {
+    /* strip optional surrounding double-quotes */
+    size_t in_len = strlen(in);
+    if (in_len >= 2 && in[0] == '"' && in[in_len - 1] == '"') {
+        in++;
+        in_len -= 2;
+    }
+
     if (strncmp(in, FSTORE_MOUNT_POINT, strlen(FSTORE_MOUNT_POINT)) == 0) {
-        if (snprintf(out, FSTORE_PATH_MAX, "%s", in) >= FSTORE_PATH_MAX) {
+        if (snprintf(out, FSTORE_PATH_MAX, "%.*s", (int)in_len, in) >= FSTORE_PATH_MAX) {
             return -ENAMETOOLONG;
         }
     } else {
-        if (snprintf(out, FSTORE_PATH_MAX, "%s/%s", FSTORE_MOUNT_POINT, in) >= FSTORE_PATH_MAX) {
+        if (snprintf(out, FSTORE_PATH_MAX, "%s/%.*s", FSTORE_MOUNT_POINT, (int)in_len, in) >=
+            FSTORE_PATH_MAX) {
             return -ENAMETOOLONG;
         }
     }
@@ -85,102 +108,182 @@ static void ensure_parent_dir(const char *path)
 }
 
 /*
- * Online data mode callback for AT+WRITEFILE.
- * Called by QAT framework when data arrives on the ring channel.
- */
-static int writefile_data_cb(const uint8_t *data, size_t len)
-{
-    if (!writefile_state.active) {
-        return 0;
-    }
-
-    size_t remaining = writefile_state.total_len - writefile_state.received_len;
-    size_t to_write = (len < remaining) ? len : remaining;
-
-    ssize_t written = fs_write(&writefile_state.file, data, to_write);
-
-    if (written < 0) {
-        LOG_ERR("fs_write failed: %zd", written);
-        fs_close(&writefile_state.file);
-        writefile_state.active = false;
-        QAT_Transfer_Mode_set(QAT_Transfer_Mode_AT_COMMAND_E, NULL);
-        QAT_Response_Str(QAT_RC_QUIET, "ERROR\r\n");
-        return (int)len;
-    }
-
-    writefile_state.received_len += (size_t)written;
-
-    LOG_DBG("WRITEFILE: %zu/%zu bytes", writefile_state.received_len, writefile_state.total_len);
-
-    if (writefile_state.received_len >= writefile_state.total_len) {
-        fs_close(&writefile_state.file);
-        writefile_state.active = false;
-        QAT_Transfer_Mode_set(QAT_Transfer_Mode_AT_COMMAND_E, NULL);
-        QAT_Response_Str(QAT_RC_QUIET, "OK\r\n");
-    }
-
-    return (int)len;
-}
-
-/*
- * AT+WRITEFILE=<path>,<size>
- * Enter online data mode; receive <size> bytes and write to filesystem path.
+ * AT+WRITEFILE="<path>",C,<size>          — create / truncate file
+ * AT+WRITEFILE="<path>",A,"<hex>"         — append hex-encoded chunk
+ *
+ * Replaces the legacy binary data-mode interface.  Raw binary data cannot be
+ * relayed through the STM32 ring service, so files are transferred as hex
+ * strings carried in standard AT command lines.
+ *
+ * Typical flow (upload_cert.py):
+ *   AT+WRITEFILE="/lfs/server.crt",C,1107   ← create, declare total size
+ *   AT+WRITEFILE="/lfs/server.crt",A,"2d2d..."  ← first 64-byte chunk
+ *   ...repeat until all bytes sent...
+ *   (file is closed automatically when received_len >= total_len)
  */
 static cat_return_state cmd_writefile_exec(const struct cat_command *cmd)
 {
     return QAT_Response_Str(QAT_RC_OK,
-                            "AT+WRITEFILE=<path>,<size>: write <size> bytes to <path> on /lfs\r\n");
+                            "AT+WRITEFILE=\"<path>\",C,<size>  — create/truncate\r\n"
+                            "AT+WRITEFILE=\"<path>\",A,\"<hex>\" — append hex chunk\r\n");
 }
 
 static cat_return_state cmd_writefile_set(const struct cat_command *cmd, const uint8_t *data,
                                           const size_t data_size, const size_t args_num)
 {
+    /* buf must hold: "<path>",X,"<256-hex-chars>"  */
+    char buf[FSTORE_PATH_MAX + 16 + FSTORE_CHUNK_HEX_MAX * 2 + 16];
     char path_arg[FSTORE_PATH_MAX];
-    int size;
     char full_path[FSTORE_PATH_MAX];
     int ret;
 
-    if (sscanf((char *)data, "%127[^,],%d", path_arg, &size) != 2 || size <= 0) {
-        return QAT_Response_Str(QAT_RC_ERROR,
-                                "+WRITEFILE: Invalid parameters\r\n"
-                                "Usage: AT+WRITEFILE=<path>,<size>\r\n");
+    if (data_size == 0 || data_size >= sizeof(buf)) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: invalid parameters\r\n");
     }
+    memcpy(buf, data, data_size);
+    buf[data_size] = '\0';
 
-    if (writefile_state.active) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: Transfer already in progress\r\n");
+    char *p = buf;
+
+    /* --- parse path (with or without surrounding quotes) --- */
+    if (*p == '"') {
+        p++;
+        char *end = strchr(p, '"');
+
+        if (!end) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: unterminated path\r\n");
+        }
+        size_t len = (size_t)(end - p);
+
+        if (len >= sizeof(path_arg)) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: path too long\r\n");
+        }
+        memcpy(path_arg, p, len);
+        path_arg[len] = '\0';
+        p = end + 1; /* past closing quote */
+    } else {
+        char *end = strchr(p, ',');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+
+        if (len >= sizeof(path_arg)) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: path too long\r\n");
+        }
+        memcpy(path_arg, p, len);
+        path_arg[len] = '\0';
+        p = end ? end : p + len;
+    }
+    if (*p == ',') {
+        p++;
     }
 
     if (normalize_path(path_arg, full_path) != 0) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: Path too long\r\n");
+        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: path too long\r\n");
     }
 
-    ensure_parent_dir(full_path);
+    /* --- mode: 'C' (create) or 'A' (append hex) --- */
+    char mode = *p;
 
-    fs_file_t_init(&writefile_state.file);
-    ret = fs_open(&writefile_state.file, full_path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
-    if (ret != 0) {
-        LOG_ERR("fs_open(%s) failed: %d", full_path, ret);
-        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: Failed to open file\r\n");
+    if (mode == '\0') {
+        return QAT_Response_Str(QAT_RC_ERROR,
+                                "+WRITEFILE: missing mode — use C (create) or A (append hex)\r\n");
+    }
+    p++;
+    if (*p == ',') {
+        p++;
     }
 
-    writefile_state.total_len = (size_t)size;
-    writefile_state.received_len = 0;
-    writefile_state.active = true;
+    /* ---- C: create / truncate ---- */
+    if (mode == 'C' || mode == 'c') {
+        size_t expected = (*p != '\0') ? (size_t)atol(p) : 0;
 
-    ret = QAT_Transfer_Mode_set(QAT_Transfer_Mode_ONLINE_DATA_E, writefile_data_cb);
-    if (ret != 0) {
-        fs_close(&writefile_state.file);
-        writefile_state.active = false;
-        return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: Failed to enter data mode\r\n");
+        if (writefile_state.active) {
+            fs_close(&writefile_state.file);
+            writefile_state.active = false;
+        }
+        ensure_parent_dir(full_path);
+        fs_file_t_init(&writefile_state.file);
+        ret = fs_open(&writefile_state.file, full_path, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+        if (ret != 0) {
+            LOG_ERR("fs_open(%s) failed: %d", full_path, ret);
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: failed to create file\r\n");
+        }
+        writefile_state.total_len    = expected;
+        writefile_state.received_len = 0;
+        writefile_state.active       = true;
+        LOG_INF("WRITEFILE create: %s (expect %zu B)", full_path, expected);
+        return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
-    LOG_INF("WRITEFILE: receiving %d bytes -> %s", size, full_path);
+    /* ---- A: append hex-encoded chunk ---- */
+    if (mode == 'A' || mode == 'a') {
+        if (!writefile_state.active) {
+            return QAT_Response_Str(QAT_RC_ERROR,
+                                    "+WRITEFILE: no file open — send C command first\r\n");
+        }
 
-    char response[FSTORE_PATH_MAX + 64];
+        /* strip optional surrounding quotes from hex string */
+        char *hex = p;
 
-    snprintf(response, sizeof(response),
-             "+WRITEFILE: Ready, send %d bytes to %s\r\n", size, full_path);
-    return QAT_Response_Str(QAT_RC_OK, response);
+        if (*hex == '"') {
+            hex++;
+            char *end = strchr(hex, '"');
+
+            if (end) {
+                *end = '\0';
+            }
+        }
+
+        size_t hex_len = strlen(hex);
+
+        if (hex_len == 0 || hex_len % 2 != 0) {
+            return QAT_Response_Str(QAT_RC_ERROR,
+                                    "+WRITEFILE: hex data missing or odd length\r\n");
+        }
+        if (hex_len > FSTORE_CHUNK_HEX_MAX * 2) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: hex chunk too large\r\n");
+        }
+
+        uint8_t decode[FSTORE_CHUNK_HEX_MAX];
+        size_t byte_count = hex_len / 2;
+
+        for (size_t i = 0; i < byte_count; i++) {
+            int hi = hex_val(hex[i * 2]);
+            int lo = hex_val(hex[i * 2 + 1]);
+
+            if (hi < 0 || lo < 0) {
+                return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: invalid hex character\r\n");
+            }
+            decode[i] = (uint8_t)((hi << 4) | lo);
+        }
+
+        ssize_t written = fs_write(&writefile_state.file, decode, byte_count);
+
+        if (written < 0) {
+            LOG_ERR("fs_write failed: %zd", written);
+            fs_close(&writefile_state.file);
+            writefile_state.active = false;
+            return QAT_Response_Str(QAT_RC_ERROR, "+WRITEFILE: write error\r\n");
+        }
+        writefile_state.received_len += (size_t)written;
+
+        /* auto-close when total_len is known and reached */
+        if (writefile_state.total_len > 0 &&
+            writefile_state.received_len >= writefile_state.total_len) {
+            fs_close(&writefile_state.file);
+            writefile_state.active = false;
+            char resp[48];
+
+            snprintf(resp, sizeof(resp), "+WRITEFILE: %zu bytes written",
+                     writefile_state.received_len);
+            LOG_INF("WRITEFILE done: %zu bytes", writefile_state.received_len);
+            return QAT_Response_Str(QAT_RC_OK, resp);
+        }
+
+        return QAT_Response_Str(QAT_RC_OK, NULL);
+    }
+
+    return QAT_Response_Str(QAT_RC_ERROR,
+                            "+WRITEFILE: unknown mode — use C (create) or A (append hex)\r\n");
 }
 
 /*
