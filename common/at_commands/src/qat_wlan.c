@@ -140,6 +140,18 @@ static cat_return_state cmd_wlan_listen_interval_set(const struct cat_command *c
 static cat_return_state cmd_wlan_listen_interval_query(const struct cat_command *cmd, uint8_t *data,
                                                       size_t *data_size, const size_t max_data_size);
 
+#ifdef CONFIG_QAT_WIFI_CRED
+typedef enum {
+    WIFI_CRED_OK         =  0,
+    WIFI_CRED_ERR_NOFILE = -1,  /* fs_open failed — no saved file */
+    WIFI_CRED_ERR_IO     = -2,  /* short read */
+    WIFI_CRED_ERR_MAGIC  = -3,  /* bad magic or version */
+    WIFI_CRED_ERR_LEN    = -4,  /* ssid/passphrase length out of range */
+} wifi_cred_err_t;
+
+static wifi_cred_err_t load_wifi_cred_from_flash(void);
+#endif /* CONFIG_QAT_WIFI_CRED */
+
 /*-------------------------------------------------------------------------
  * WiFi Event Handler
  *-----------------------------------------------------------------------*/
@@ -819,7 +831,53 @@ static cat_return_state cmd_wlan_connect_set(const struct cat_command *cmd, cons
     }
 
     k_mutex_unlock(&g_wifi_ctx.mutex);
-    
+
+#ifdef CONFIG_QAT_WIFI_CRED
+    /* AT+CWJAP=@saved  →  connect using flash-stored credentials */
+    if (data_size == 6 && memcmp(data, "@saved", 6) == 0) {
+        wifi_cred_err_t load_err = load_wifi_cred_from_flash();
+        if (load_err != WIFI_CRED_OK) {
+            const char *msg = (load_err == WIFI_CRED_ERR_NOFILE)
+                              ? "+CWJAP: no saved credentials"
+                              : "+CWJAP: saved credentials corrupt";
+            return QAT_Response_Str(QAT_RC_ERROR, msg);
+        }
+        /* Credentials loaded into g_wifi_ctx — build connect params */
+        struct wifi_connect_req_params params = {0};
+        k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+        params.ssid        = g_wifi_ctx.ssid;
+        params.ssid_length = g_wifi_ctx.ssid_len;
+        params.channel     = WIFI_CHANNEL_ANY;
+        params.timeout     = SYS_FOREVER_MS;
+        if (g_wifi_ctx.security_set && g_wifi_ctx.passphrase_len > 0) {
+            if (g_wifi_ctx.auth_mode == 0x02) {
+                params.security = WIFI_SECURITY_TYPE_WPA_PSK;
+            } else if (g_wifi_ctx.auth_mode == 0x04) {
+                params.security = WIFI_SECURITY_TYPE_PSK;
+            } else if (g_wifi_ctx.auth_mode == 0x400) {
+                params.security = WIFI_SECURITY_TYPE_SAE;
+            } else if (g_wifi_ctx.auth_mode == 0x404 || g_wifi_ctx.auth_mode == 0x406) {
+                params.security = WIFI_SECURITY_TYPE_PSK_SHA256;
+            } else {
+                params.security = WIFI_SECURITY_TYPE_PSK;
+            }
+            params.psk        = (const uint8_t *)g_wifi_ctx.passphrase;
+            params.psk_length = g_wifi_ctx.passphrase_len;
+        } else {
+            params.security = WIFI_SECURITY_TYPE_NONE;
+        }
+        char buf[WLAN_RESPONSE_BUFFER_LENGTH];
+        snprintf(buf, sizeof(buf), "+CWJAP:connecting to ssid %s (@saved)", g_wifi_ctx.ssid);
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        QAT_Response_Str(QAT_RC_QUIET, buf);
+        int r = net_mgmt(NET_REQUEST_WIFI_CONNECT, g_wifi_ctx.iface, &params, sizeof(params));
+        if (r) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWJAP:Connect failed");
+        }
+        return QAT_Response_Str(QAT_RC_OK, NULL);
+    }
+#endif /* CONFIG_QAT_WIFI_CRED */
+
     /* Parse SSID and optional BSSID: AT+CWJAP=<ssid>[,<bssid>] */
     comma = strchr((const char *)data, ',');
     if (!comma) {
@@ -2673,6 +2731,49 @@ typedef struct {
     char     passphrase[65];
 } wifi_cred_t;
 
+/*
+ * Load WiFi credentials from /lfs/wifi.conf into g_wifi_ctx.
+ * Returns WIFI_CRED_OK on success, or a negative wifi_cred_err_t on failure.
+ * Caller must NOT hold g_wifi_ctx.mutex.
+ */
+static wifi_cred_err_t load_wifi_cred_from_flash(void)
+{
+    wifi_cred_t cred;
+    struct fs_file_t file;
+
+    fs_file_t_init(&file);
+    int ret = fs_open(&file, WIFI_CRED_PATH, FS_O_READ);
+    if (ret != 0) {
+        return WIFI_CRED_ERR_NOFILE;
+    }
+    ret = fs_read(&file, &cred, sizeof(cred));
+    fs_close(&file);
+    if (ret != (int)sizeof(cred)) {
+        return WIFI_CRED_ERR_IO;
+    }
+    if (memcmp(cred.magic, WIFI_CRED_MAGIC, 4) != 0 || cred.version != WIFI_CRED_VER) {
+        return WIFI_CRED_ERR_MAGIC;
+    }
+    if (cred.ssid_len > WIFI_SSID_MAX_LEN || cred.passphrase_len > 64) {
+        return WIFI_CRED_ERR_LEN;
+    }
+
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    g_wifi_ctx.ssid_len       = cred.ssid_len;
+    memcpy(g_wifi_ctx.ssid, cred.ssid, cred.ssid_len);
+    g_wifi_ctx.ssid[cred.ssid_len] = '\0';
+    g_wifi_ctx.passphrase_len = cred.passphrase_len;
+    memcpy(g_wifi_ctx.passphrase, cred.passphrase, cred.passphrase_len);
+    g_wifi_ctx.passphrase[cred.passphrase_len] = '\0';
+    g_wifi_ctx.auth_mode    = cred.auth_mode;
+    g_wifi_ctx.cipher       = cred.cipher;
+    g_wifi_ctx.security_set = (cred.passphrase_len > 0);
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+
+    LOG_INF("load_wifi_cred_from_flash: loaded SSID=%.*s", cred.ssid_len, cred.ssid);
+    return WIFI_CRED_OK;
+}
+
 static cat_return_state cmd_wlan_cwsave_exec(const struct cat_command *cmd)
 {
     wifi_cred_t cred;
@@ -2719,58 +2820,26 @@ static cat_return_state cmd_wlan_cwsave_exec(const struct cat_command *cmd)
 
 static cat_return_state cmd_wlan_cwload_exec(const struct cat_command *cmd)
 {
-    wifi_cred_t cred;
     /*
      * Intentionally does not check wlan_enabled: CWLOAD only writes to
      * g_wifi_ctx memory and does not touch hardware or iface. This allows
      * pre-populating credentials before AT+CWENABLE, so the host can call
      * CWENABLE -> CWJAP without re-sending all parameters after a reboot.
      */
-    struct fs_file_t file;
-    int ret;
-
-    fs_file_t_init(&file);
-    ret = fs_open(&file, WIFI_CRED_PATH, FS_O_READ);
-    if (ret != 0) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: No saved credentials\r\n");
+    wifi_cred_err_t err = load_wifi_cred_from_flash();
+    if (err != WIFI_CRED_OK) {
+        const char *msg =
+            (err == WIFI_CRED_ERR_NOFILE) ? "+CWLOAD: No saved credentials\r\n" :
+            (err == WIFI_CRED_ERR_LEN)    ? "+CWLOAD: Credential file corrupted\r\n" :
+                                            "+CWLOAD: Invalid credential file\r\n";
+        return QAT_Response_Str(QAT_RC_ERROR, msg);
     }
-
-    ret = fs_read(&file, &cred, sizeof(cred));
-    fs_close(&file);
-
-    if (ret != (int)sizeof(cred)) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Credential file corrupted\r\n");
-    }
-
-    if (memcmp(cred.magic, WIFI_CRED_MAGIC, 4) != 0 || cred.version != WIFI_CRED_VER) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Invalid credential file\r\n");
-    }
-
-    if (cred.ssid_len > WIFI_SSID_MAX_LEN || cred.passphrase_len > 64) {
-        return QAT_Response_Str(QAT_RC_ERROR, "+CWLOAD: Credential file corrupted\r\n");
-    }
-
-    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
-
-    g_wifi_ctx.ssid_len = cred.ssid_len;
-    memcpy(g_wifi_ctx.ssid, cred.ssid, cred.ssid_len);
-    g_wifi_ctx.ssid[cred.ssid_len] = '\0';
-
-    g_wifi_ctx.passphrase_len = cred.passphrase_len;
-    memcpy(g_wifi_ctx.passphrase, cred.passphrase, cred.passphrase_len);
-    g_wifi_ctx.passphrase[cred.passphrase_len] = '\0';
-
-    g_wifi_ctx.auth_mode = cred.auth_mode;
-    g_wifi_ctx.cipher = cred.cipher;
-    g_wifi_ctx.security_set = (cred.passphrase_len > 0);
-
-    k_mutex_unlock(&g_wifi_ctx.mutex);
-
-    LOG_INF("CWLOAD: loaded SSID=%.*s from %s", cred.ssid_len, cred.ssid, WIFI_CRED_PATH);
 
     char response[WIFI_SSID_MAX_LEN + 32];
-
-    snprintf(response, sizeof(response), "+CWLOAD: SSID=%.*s\r\n", cred.ssid_len, cred.ssid);
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    snprintf(response, sizeof(response), "+CWLOAD: SSID=%.*s\r\n",
+             g_wifi_ctx.ssid_len, g_wifi_ctx.ssid);
+    k_mutex_unlock(&g_wifi_ctx.mutex);
     return QAT_Response_Str(QAT_RC_OK, response);
 }
 
