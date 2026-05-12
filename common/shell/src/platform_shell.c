@@ -18,6 +18,7 @@
 #include <zephyr/net/wifi_mgmt.h>
 #endif
 #include <qapi_rram.h>
+#include "smps2_low_vbat.h"
 
 #define OTP_MAC_ADDR                    0x1a01c0
 #define OTP_MANUFACTURING_YEAR_WEEK     0x1a0260
@@ -374,6 +375,115 @@ free_buffer:
     return err;
 }
 
+static int cmd_smps2_set_pfm_temp(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    int32_t t0 = (int32_t)shell_strtol(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse t0 (err %d)", err);
+        return err;
+    }
+    int32_t t1 = (int32_t)shell_strtol(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse t1 (err %d)", err);
+        return err;
+    }
+    int32_t t2 = (int32_t)shell_strtol(argv[3], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse t2 (err %d)", err);
+        return err;
+    }
+    int32_t t3 = (int32_t)shell_strtol(argv[4], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse t3 (err %d)", err);
+        return err;
+    }
+
+    if (!smps2_set_pfm_temp_thresholds(t0, t1, t2, t3)) {
+        shell_error(ctx,
+                    "smps2_set_pfm_temp: invalid thresholds [%d %d %d %d] "
+                    "— must be strictly increasing",
+                    t0, t1, t2, t3);
+        return -EINVAL;
+    }
+
+    shell_print(ctx, "smps2 PFM temp thresholds set to [%d, %d, %d, %d] C",
+                t0, t1, t2, t3);
+    return 0;
+}
+
+static int cmd_smps2_get_pfm_temp(const struct shell *ctx, size_t argc, char **argv)
+{
+    int32_t thresholds[PFM_TEMP_COLS];
+
+    smps2_get_pfm_temp_thresholds(thresholds);
+
+    shell_print(ctx,
+                "smps2 PFM temp thresholds (upper-bound per column):\n"
+                "  col0 (<=t0): %d C\n"
+                "  col1 (<=t1): %d C\n"
+                "  col2 (<=t2): %d C\n"
+                "  col3 (<=t3): %d C",
+                thresholds[0], thresholds[1], thresholds[2], thresholds[3]);
+    return 0;
+}
+
+static int cmd_smps2_set_guardband(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    int32_t  temp_gb = (int32_t)shell_strtol(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse temp_gb (err %d)", err);
+        return err;
+    }
+    uint32_t vbat_gb = (uint32_t)shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse vbat_gb (err %d)", err);
+        return err;
+    }
+
+    smps2_set_pfm_guardband(temp_gb, vbat_gb);
+    shell_print(ctx, "smps2 PFM guard-band set: temp_gb=%d C, vbat_gb=%u mV",
+                temp_gb, vbat_gb);
+    return 0;
+}
+
+static int cmd_smps2_get_guardband(const struct shell *ctx, size_t argc, char **argv)
+{
+    int32_t  temp_gb = 0;
+    uint32_t vbat_gb = 0;
+
+    smps2_get_pfm_guardband(&temp_gb, &vbat_gb);
+    shell_print(ctx,
+                "smps2 PFM guard-band:\n"
+                "  temp_gb: %d C  (added to measured temp before lookup)\n"
+                "  vbat_gb: %u mV (subtracted from measured Vbat before lookup)",
+                temp_gb, vbat_gb);
+    return 0;
+}
+
+static int cmd_smps2_set_verbose(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    uint32_t verbose = (uint32_t)shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse verbose (err %d)", err);
+        return err;
+    }
+
+    smps2_set_log_verbose(verbose ? true : false);
+    shell_print(ctx, "smps2 verbose logging: %s",
+                verbose ? "ON (ERR level)" : "OFF (INFO level)");
+    return 0;
+}
+
+static int cmd_smps2_get_verbose(const struct shell *ctx, size_t argc, char **argv)
+{
+    shell_print(ctx, "smps2 verbose logging: %s)",
+                smps2_get_log_verbose() ? "ON (ERR level)" : "OFF (INFO level)");
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(
     sub_uart_cmds,
     SHELL_CMD_ARG(version, NULL,
@@ -420,6 +530,41 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
                   "Examples:\n"
                   "\trram_write 4 0 \"deadbeef\"\n",
                   cmd_rram_write, 4, 0),
+    SHELL_CMD_ARG(smps2_set_pfm_temp, NULL,
+                    "Set SMPS2 PFM temperature thresholds (upper-bound per column)\n"
+                    "Usage: smps2_set_pfm_temp <t0> <t1> <t2> <t3>\n"
+                    "  t0/t1/t2/t3: temperature upper-bounds in °C, must be strictly increasing\n"
+                    "  Default: 30 50 70 90\n"
+                    "  Example: smps2_set_pfm_temp 30 50 70 90\n",
+                    cmd_smps2_set_pfm_temp, 5, 0),
+    SHELL_CMD_ARG(smps2_get_pfm_temp, NULL,
+                    "Get current SMPS2 PFM temperature thresholds\n"
+                    "Usage: smps2_get_pfm_temp\n",
+                    cmd_smps2_get_pfm_temp, 1, 0),
+    SHELL_CMD_ARG(smps2_set_guardband, NULL,
+                    "Set SMPS2 PFM guard-band values\n"
+                    "Usage: smps2_set_guardband <temp_gb_c> <vbat_gb_mv>\n"
+                    "  temp_gb_c : temperature guard-band in C (added to measured temp; can be negative)\n"
+                    "  vbat_gb_mv: Vbatt guard-band in mV (subtracted from measured Vbat; unsigned)\n"
+                    "  Default: temp_gb_c=5, vbat_gb_mv=50\n"
+                    "  Example: smps2_set_guardband 5 50\n"
+                    "  Disable guard-band: smps2_set_guardband 0 0\n",
+                    cmd_smps2_set_guardband, 3, 0),
+    SHELL_CMD_ARG(smps2_get_guardband, NULL,
+                    "Get current SMPS2 PFM guard-band values\n"
+                    "Usage: smps2_get_guardband\n",
+                    cmd_smps2_get_guardband, 1, 0),
+    SHELL_CMD_ARG(smps2_set_verbose, NULL,
+                    "Enable/disable SMPS2 verbose (ERR-level) logging\n"
+                    "Usage: smps2_set_verbose <0|1>\n"
+                    "  0: quiet — decision/state-change logs use INFO (default)\n"
+                    "  1: verbose — decision/state-change logs use ERR\n"
+                    "  Example: smps2_set_verbose 1\n",
+                    cmd_smps2_set_verbose, 2, 0),
+    SHELL_CMD_ARG(smps2_get_verbose, NULL,
+                    "Get current SMPS2 verbose logging state\n"
+                    "Usage: smps2_get_verbose\n",
+                    cmd_smps2_get_verbose, 1, 0),
     SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(platform, &sub_uart_cmds, "platform commands", NULL);
