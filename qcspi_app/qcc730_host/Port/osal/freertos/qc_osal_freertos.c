@@ -113,6 +113,17 @@ int qc_osal_mutex_init(qc_osal_mutex_t *mutex)
     return 0;
 }
 
+int qc_osal_mutex_deinit(qc_osal_mutex_t *mutex)
+{
+    if (!mutex || !*mutex) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    vSemaphoreDelete((SemaphoreHandle_t)*mutex);
+    *mutex = NULL;
+    return 0;
+}
+
 int qc_osal_mutex_lock(qc_osal_mutex_t mutex, int32_t timeout_ms)
 {
     SemaphoreHandle_t xMutex = (SemaphoreHandle_t)mutex;
@@ -174,6 +185,17 @@ int qc_osal_sem_init(qc_osal_sem_t *sem, uint32_t initial_count, uint32_t max_co
     }
 
     *sem = (qc_osal_sem_t)xSem;
+    return 0;
+}
+
+int qc_osal_sem_deinit(qc_osal_sem_t *sem)
+{
+    if (!sem || !*sem) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    vSemaphoreDelete((SemaphoreHandle_t)*sem);
+    *sem = NULL;
     return 0;
 }
 
@@ -430,6 +452,50 @@ int qc_osal_work_submit(qc_osal_work_q_t work_q, qc_osal_work_t work)
         return -QC_OSAL_EAGAIN;
     }
 
+    return 0;
+}
+
+int qc_osal_work_deinit(qc_osal_work_t *work)
+{
+    if (!work || !*work) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    vPortFree(*work);
+    *work = NULL;
+    return 0;
+}
+
+int qc_osal_work_queue_deinit(qc_osal_work_q_t *work_q)
+{
+    struct qc_osal_work_q_wrapper *wrapper;
+
+    if (!work_q || !*work_q) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    wrapper = (struct qc_osal_work_q_wrapper *)*work_q;
+
+    /* Stop the task loop, drain any pending items, then delete the task.
+     * xQueueReset() discards queued pointers before vTaskDelete() so that
+     * the task never dereferences a work item that may already be freed. */
+    wrapper->running = 0;
+    if (wrapper->queue) {
+        xQueueReset(wrapper->queue);
+    }
+    if (wrapper->task) {
+        vTaskDelete(wrapper->task);
+        wrapper->task = NULL;
+    }
+
+    /* Delete the queue */
+    if (wrapper->queue) {
+        vQueueDelete(wrapper->queue);
+        wrapper->queue = NULL;
+    }
+
+    vPortFree(wrapper);
+    *work_q = NULL;
     return 0;
 }
 

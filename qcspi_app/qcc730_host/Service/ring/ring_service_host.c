@@ -98,6 +98,24 @@ void ring_service_deinit(void)
     //    /* Clear callback */
     //    g_ring_service.callback = NULL;
     //    g_ring_service.callback_data = NULL;
+    /* NOTE: callback is intentionally preserved across reset so the caller
+     * does not need to re-register after AT+RST. */
+
+    /* Free work items for each ring */
+    for (uint32_t i = 0; i < g_ring_service.num_rings; i++) {
+        qc_osal_work_deinit(&rx_works[i].work);
+    }
+
+    /* Stop work queue thread and free its resources */
+    qc_osal_work_queue_deinit(&ring_host_work_q);
+
+    /* Free per-ring synchronization objects */
+    for (uint32_t i = 0; i < g_ring_service.num_rings; i++) {
+        qc_osal_mutex_deinit(&g_ring_service.rings[i].tx_lock);
+        qc_osal_mutex_deinit(&g_ring_service.rings[i].rx_lock);
+        qc_osal_sem_deinit(&g_ring_service.rings[i].tx_sem);
+        qc_osal_sem_deinit(&g_ring_service.rings[i].rx_sem);
+    }
 
     const struct ring_adapter_ops *adapter = NULL;
 
@@ -114,6 +132,9 @@ void ring_service_deinit(void)
     }
 
     QC_OSAL_LOG_INF("QCSPI adapter deinitialized successfully");
+
+    /* Reset num_rings last — after all cleanup that depends on it */
+    g_ring_service.num_rings = 0;
 
     QC_OSAL_LOG_INF("Host ring service deinitialized");
 }

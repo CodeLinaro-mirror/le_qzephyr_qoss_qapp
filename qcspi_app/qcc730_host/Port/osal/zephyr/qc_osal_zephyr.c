@@ -124,6 +124,17 @@ int qc_osal_mutex_init(qc_osal_mutex_t *mutex)
     return 0;
 }
 
+int qc_osal_mutex_deinit(qc_osal_mutex_t *mutex)
+{
+    if (!mutex || !*mutex) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    k_free(*mutex);
+    *mutex = NULL;
+    return 0;
+}
+
 int qc_osal_mutex_lock(qc_osal_mutex_t mutex, int32_t timeout_ms)
 {
     struct k_mutex *kmutex = (struct k_mutex *)mutex;
@@ -190,6 +201,17 @@ int qc_osal_sem_init(qc_osal_sem_t *sem, uint32_t initial_count, uint32_t max_co
     }
 
     *sem = (qc_osal_sem_t)ksem;
+    return 0;
+}
+
+int qc_osal_sem_deinit(qc_osal_sem_t *sem)
+{
+    if (!sem || !*sem) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    k_free(*sem);
+    *sem = NULL;
     return 0;
 }
 
@@ -572,6 +594,40 @@ int qc_osal_work_queue_init(qc_osal_work_q_t *work_q, size_t stack_size, int pri
     k_work_queue_start(&wrapper->zephyr_work_q, stack, stack_size, priority, NULL);
 
     *work_q = (qc_osal_work_q_t)wrapper;
+    return 0;
+}
+
+int qc_osal_work_deinit(qc_osal_work_t *work)
+{
+    struct qc_osal_work_wrapper *wrapper;
+
+    if (!work || !*work) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    wrapper = (struct qc_osal_work_wrapper *)*work;
+    /* k_work_cancel_sync blocks until any in-progress handler finishes,
+     * ensuring the wrapper is not freed while the handler is still running. */
+    struct k_work_sync sync;
+    k_work_cancel_sync(&wrapper->zephyr_work, &sync);
+    k_free(wrapper);
+    *work = NULL;
+    return 0;
+}
+
+int qc_osal_work_queue_deinit(qc_osal_work_q_t *work_q)
+{
+    struct qc_osal_work_q_wrapper *wrapper;
+
+    if (!work_q || !*work_q) {
+        return -QC_OSAL_EINVAL;
+    }
+
+    wrapper = (struct qc_osal_work_q_wrapper *)*work_q;
+    k_thread_abort(&wrapper->zephyr_work_q.thread);
+    k_free(wrapper->stack);
+    k_free(wrapper);
+    *work_q = NULL;
     return 0;
 }
 
