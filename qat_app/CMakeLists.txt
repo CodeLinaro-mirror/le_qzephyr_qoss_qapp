@@ -8,6 +8,8 @@ project(qat_app)
 file(GLOB app_sources src/main.c)
 target_sources(app PRIVATE ${app_sources})
 
+zephyr_linker_sources(SECTIONS http_server_sections.ld)
+
 
 # ===== Post-build: run Python script for hex/strip/bin/hashed =====
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
