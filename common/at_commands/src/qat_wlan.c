@@ -681,11 +681,11 @@ static cat_return_state cmd_wlan_disable_exec(const struct cat_command *cmd)
         k_mutex_unlock(&g_wifi_ctx.mutex);
         return QAT_Response_Str(QAT_RC_OK, "+CWQABLE:WiFi already disabled");
     }
-    
+
     if (g_wifi_ctx.iface) {
         net_if_down(g_wifi_ctx.iface);
     }
-    
+
     g_wifi_ctx.wlan_enabled = false;
     g_wifi_ctx.connected = false;
     k_mutex_unlock(&g_wifi_ctx.mutex);
@@ -2671,6 +2671,11 @@ static cat_return_state cmd_ps_wlan_bcmc_list_set(const struct cat_command *cmd,
     port = (uint32_t)atoi(token);
 
     if (add) {
+        for (int i = 0; i < AT_BCMC_WHITELIST_LEN; i++) {
+            if (at_udp_whitelist_arr[i] == port) {
+                return QAT_Response_Str(QAT_RC_OK, NULL);
+            }
+        }
         for (int i = 0; i < AT_BCMC_WHITELIST_LEN; i++) {
             if (at_udp_whitelist_arr[i] == 0) {
                 at_udp_whitelist_arr[i] = port;

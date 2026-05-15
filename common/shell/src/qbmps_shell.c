@@ -343,6 +343,9 @@ static int cmd_set_bcmc_filter(const struct shell *ctx, size_t argc, char **argv
 
         if (en) {
             for (int i = 0; i < UDP_WHITELIST_LEN; i++) {
+                if (udp_whitelist_arr[i] == port) {
+                   break;
+                }
                 if (udp_whitelist_arr[i] == 0) {
                     udp_whitelist_arr[i] = port;
                     break;
