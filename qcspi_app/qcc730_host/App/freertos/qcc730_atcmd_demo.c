@@ -42,6 +42,9 @@
  */
 static int g_resp_print_enable = 1;
 
+static void atcmd_rx_callback(uint8_t ring_id, void *user_data);
+static int atcmd_ring_reset(void);
+
 /* ============================================================================
  * Global Variables
  * ============================================================================ */
@@ -212,7 +215,7 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
 /**
  * @brief Wrapper function for compatibility
  */
-extern int qcc730_ring_reset();
+extern void qcc730_reset();
 void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 {
     if (NULL == cmd || 1 >= len) {
@@ -221,11 +224,10 @@ void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 
     // reset spi state
     if (QCC730_SPI_NOT_READY == qapi_atcmd_get_spi_state()) {
-        if (qcc730_ring_reset() < 0) {
-            demo_print("qcc730_ring_reset failed\r\n");
+        if (atcmd_ring_reset() < 0) {
+            demo_print("atcmd_ring_reset failed\r\n");
             return;
         }
-        qapi_atcmd_set_spi_state(QCC730_SPI_READY);
     }
 
     atcmd_send(cmd, len);
@@ -1293,6 +1295,36 @@ void atcmd_demo_init(void)
 /**
  * @brief Register AT command shell commands
  */
+static int atcmd_ring_reset(void)
+{
+    int ret;
+
+    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+
+    for (int i = 0; i < 10; i++) {
+        qcc730_reset();
+        ret = ring_register_callback(atcmd_rx_callback, NULL);
+        if (ret == 0) {
+            qapi_atcmd_set_spi_state(QCC730_SPI_READY);
+            printf("AT host ring reset completed\r\n");
+            return 0;
+        }
+        printf("Failed to register AT command callback: %d\r\n", ret);
+
+        qc_osal_msleep(500);
+    }
+
+    return ret;
+}
+
+static int cmd_qcc730_reset_atcmd(int argc, char **argv)
+{
+    (void)argc;
+    (void)argv;
+
+    return atcmd_ring_reset();
+}
+
 void atcmd_demo_register_commands(void)
 {
     cmd_shell_add("help", (void *)atcmd_help, "AT Command help!");
@@ -1304,6 +1336,7 @@ void atcmd_demo_register_commands(void)
     cmd_shell_add("net_tx_loop", (void *)test_net_tx_loop, "network online-data throughput test");
     cmd_shell_add("httptest", (void *)test_http, "http test");
     cmd_shell_add("bmps_enable", (void *)cmd_bmps_enable, "Enable/disable BMPS (0=disable/wakeup, 1=enable)");
+    cmd_shell_add("qcc730_reset", (void *)cmd_qcc730_reset_atcmd, "Reset QCC730 and re-establish AT SPI/ring");
 }
 
 #endif /* SHELL_FEATURE */
