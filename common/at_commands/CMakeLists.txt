@@ -12,6 +12,13 @@ zephyr_library_sources_ifdef(CONFIG_QAT_HTTPC	src/qat_httpc.c)
 zephyr_library_sources_ifdef(CONFIG_QAT_FSTORE	src/qat_fstore.c)
 zephyr_library_sources_ifdef(CONFIG_QAT_HTTPSERVER	src/qat_httpserver.c)
 
+zephyr_library_sources_ifdef(CONFIG_QAT_OTA  src/qat_ota.c)
+
+zephyr_library_include_directories_ifdef(CONFIG_QAT_OTA
+    ${CMAKE_CURRENT_SOURCE_DIR}/../mcumgr_qcom/include
+    ${ZEPHYR_BASE}/../modules/crypto/mbedtls/include
+)
+
 zephyr_library_include_directories(
     ${ZEPHYR_HAL_QCOM_MODULE_DIR}/qat/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../httpc_at/inc

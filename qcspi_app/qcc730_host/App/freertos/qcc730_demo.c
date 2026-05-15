@@ -39,7 +39,7 @@ void qcc730_reset()
 {
 #define DELAY_TIMING 300
     int ret = -1;
-
+printf("%s\n\r", __func__);
     HAL_NVIC_DisableIRQ(EXTI12_IRQn);
 
     while (ret < 0) {
@@ -48,7 +48,7 @@ void qcc730_reset()
         qc_hal_delay(DELAY_TIMING);
         qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_SET); // chip_on test
         qc_hal_delay(DELAY_TIMING);
-        qc_hal_delay(1000);
+        qc_hal_delay(4000);
 
         ret = qcc730_ring_reset();
     }

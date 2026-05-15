@@ -68,3 +68,32 @@ config QAT_HTTPSERVER
 	  supported at runtime via AT+WEBSERVERCFG (scheme=0 for HTTP, 1 for HTTPS,
 	  2 for mutual TLS). HTTP and HTTPS service instances are always compiled in;
 	  AT+WEBSERVER activates the appropriate one at runtime without recompiling.
+
+config QAT_OTA
+	bool "QAT OTA Firmware Upgrade AT Commands"
+	depends on QAT && QCOM_FW_UPGRADE
+	select NET_TCP
+	help
+	  Enable AT+OTAFWUP and AT+OTATRIAL commands for over-the-air firmware
+	  upgrade via HTTP. Requires the QCOM image management backend and a
+	  TCP/IP stack. Not enabled by default; must be opted in via prj.conf
+	  or board defconfig.
+
+config QAT_OTA_STACK_SIZE
+	int "OTA worker thread stack size (bytes)"
+	depends on QAT_OTA
+	default 4096
+	help
+	  Stack size for the dedicated OTA download thread. Must be large enough
+	  to accommodate the httpc_at_execute() stack frame and the mbedTLS SHA-256
+	  context used by fw_upgrade_session_process(). 4096 bytes is the minimum.
+
+config QAT_OTA_THREAD_PRIORITY
+	int "OTA worker thread cooperative priority"
+	depends on QAT_OTA
+	default 5
+	help
+	  Zephyr thread priority for the OTA worker thread. Lower values are higher
+	  priority. Non-negative values are preemptive. Default 5 is preemptive and
+	  runs below the system workqueue (0) and the AT service thread.
+

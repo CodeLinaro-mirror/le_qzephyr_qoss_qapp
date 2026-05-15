@@ -857,8 +857,12 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	}
 
 	/* --- Execute HTTP request --- */
-	int32_t timeout_ms = (req->timeout_ms > 0)
-			     ? req->timeout_ms
+	/* SYS_FOREVER_MS (-1): caller opts out of per-recv idle timeout (e.g. OTA,
+	 * where fw_upgrade_session_process() blocks for flash I/O inside the body
+	 * callback and the transport must not race against that latency).
+	 * 0: use module default.  >0: caller-supplied value. */
+	int32_t timeout_ms = (req->timeout_ms == SYS_FOREVER_MS) ? SYS_FOREVER_MS
+			     : (req->timeout_ms > 0)              ? req->timeout_ms
 			     : HTTPC_AT_DEFAULT_TIMEOUT_MS;
 
 	ret = http_client_req(sock, &http_req, timeout_ms, &rsp_ctx);

@@ -1,10 +1,21 @@
 # Copyright (c) 2024 Qualcomm Technologies, Inc.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
+config QCOM_FW_UPGRADE
+	bool "Qualcomm Firmware Upgrade Engine"
+	depends on FLASH
+	select MBEDTLS
+	select MBEDTLS_SHA256
+	help
+	  Enables the low-level firmware upgrade engine (fw_upgrade.c,
+	  fw_upgrade_mem.c, flash_adapter.c) without the MCUmgr protocol stack.
+	  Required by CONFIG_QAT_OTA. Automatically selected by QCOM_IMG_MGMT.
+
 menuconfig QCOM_IMG_MGMT
 	bool "Qualcomm Custom Image Management"
 	depends on FLASH
 	depends on MCUMGR
+	select QCOM_FW_UPGRADE
 	select MCUMGR_SMP_CBOR_MIN_DECODING_LEVEL_2
 	select MCUMGR_SMP_CBOR_MIN_ENCODING_LEVEL_2
 	select CRC

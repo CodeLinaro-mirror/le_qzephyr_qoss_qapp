@@ -374,9 +374,25 @@ void atcmd_response_parser_EVT_MQTTSUBRECV(int argc, uint32_t **argv, char *orig
 
 void atcmd_response_parser_EVT_OTAFWUP_FIN(int argc, uint32_t **argv, char *orig_cmd)
 {
-    printf("OTAFWUP_FIN received, host will reset spi after 5s\r\n");
-    qc_osal_msleep(5000);
-    /* Reset will be handled by application */
+	/* printf("+EVT:OTAFWUP_FIN:%s\r\n", argv[0]); */
+    /* Wait for QCC730 to complete boot */
+    if((argc == 1) && !strncmp(argv[0], "reset", strlen("reset")))
+    {
+    	qc_osal_msleep(5000);
+	    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+    }
+}
+
+/* +OTATRIAL */
+void atcmd_response_parser_EVT_OTATRIAL(int argc, uint32_t **argv, char *orig_cmd)
+{
+    /* printf("OTATRIAL received, %s--%s\r\n", argv[0],argv[1]); */
+    if ((argc == 2) && (atoi(argv[1]) == 1) && !strncmp(argv[0], "Success", strlen("Success"))) {
+        /* Reset will be handled by application */
+        printf("OTATRIAL received, host will reset spi after 5s\r\n");
+		qc_osal_msleep(5000);
+		qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+    }
 }
 
 void atcmd_response_parser_EVT_MQTTSUBRECVHEX(int argc, uint32_t **argv, char *orig_cmd)
@@ -1240,6 +1256,8 @@ void atcmd_add_command_parser(void)
     atcmd_parser_func_add("+RDMEM", (void *)atcmd_response_parser_RDMEM, "parse RDMEM response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+IPDHEX", (void *)atcmd_response_parser_IPDHEX, "parse +IPD response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+RST", (void *)atcmd_response_parser_RST, "parse +RST response", QAT_RESP_TYPE);
+    atcmd_parser_func_add("+OTATRIAL", (void *)atcmd_response_parser_EVT_OTATRIAL,
+                          "parse AT_OTATRIAL response", QAT_RESP_TYPE);
 }
 
 /**
