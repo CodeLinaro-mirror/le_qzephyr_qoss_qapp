@@ -1,0 +1,46 @@
+# Copyright (c) 2026 Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+config MQTTC_AT
+	bool "MQTT client AT command handler"
+	depends on NETWORKING
+	depends on NET_SOCKETS
+	depends on DNS_RESOLVER
+	depends on MQTT_LIB
+	help
+	  Enable the MQTT client AT command handler module.
+	  Provides AT+MQTTINIT, AT+MQTTCONN, AT+MQTTSUB, AT+MQTTPUB,
+	  AT+MQTTPUBRAW, AT+MQTTUNSUB, AT+MQTTDISCONN, AT+MQTTDESTROY,
+	  and AT+MQTTMODE command handlers using Zephyr's MQTT library.
+
+if MQTTC_AT
+
+config MQTTC_AT_LOG_LEVEL
+	int "Log level for MQTTC AT handler"
+	default 3
+	range 0 4
+	help
+	  Sets the log level for mqttc_at modules.
+	  0=OFF, 1=ERR, 2=WRN, 3=INF, 4=DBG
+
+config MQTTC_AT_MAX_SESSIONS
+	int "Maximum number of concurrent MQTT sessions"
+	default 2
+	range 1 2
+	help
+	  Maximum number of concurrent MQTT sessions (session_id 0 and 1).
+
+config MQTTC_AT_MAX_TOPICS
+	int "Maximum subscribed topics per session"
+	default 10
+	range 1 10
+	help
+	  Maximum number of topics that can be subscribed per session.
+
+config MQTTC_AT_RECV_THREAD_STACK_SIZE
+	int "MQTT receive thread stack size (bytes)"
+	default 2048
+	help
+	  Stack size for the per-session MQTT receive/keepalive thread.
+
+endif # MQTTC_AT

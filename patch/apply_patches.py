@@ -138,6 +138,9 @@ def apply_patches(force=False):
                 print("Use 'force' to reapply or 'revert' to clean up.")
                 return False
 
+    if force:
+        revert_patches()
+
     print(f"Found {len(patch_files)} patch file(s) to apply:")
     for i, patch_file in enumerate(patch_files, 1):
         print(f"  {i:02d}. {patch_file.name}")

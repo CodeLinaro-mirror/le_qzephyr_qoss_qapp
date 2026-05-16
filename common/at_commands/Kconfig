@@ -97,3 +97,11 @@ config QAT_OTA_THREAD_PRIORITY
 	  priority. Non-negative values are preemptive. Default 5 is preemptive and
 	  runs below the system workqueue (0) and the AT service thread.
 
+config QAT_MQTTC
+	bool "QAT MQTT Client AT Commands"
+	depends on QAT && MQTTC_AT
+	default y
+	help
+	  Enable MQTT client AT commands for QAT module.
+	  This provides AT+MQTTINIT/MQTTCONN/MQTTSUB/MQTTPUB/MQTTPUBRAW/
+	  MQTTUNSUB/MQTTDISCONN/MQTTDESTROY/MQTTMODE.

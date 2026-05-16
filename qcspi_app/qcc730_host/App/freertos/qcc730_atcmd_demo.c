@@ -410,7 +410,7 @@ void atcmd_response_parser_EVT_MQTTSUBRECVHEX(int argc, uint32_t **argv, char *o
 
             printf("+EVT:MQTT_SUBRECVHEX:%s,%s,%s,", argv[0], argv[1], argv[2]);
             for (i = 0; i < buf_len; i++)
-                printf("%x", *buf++);
+                printf("%x", buf[i]);
 
             qc_osal_free(buf);
         }
