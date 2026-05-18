@@ -676,10 +676,33 @@ static cat_return_state cmd_wlan_enable_exec(const struct cat_command *cmd)
 static cat_return_state cmd_wlan_disable_exec(const struct cat_command *cmd)
 {
     k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
-    
+
     if (!g_wifi_ctx.wlan_enabled) {
         k_mutex_unlock(&g_wifi_ctx.mutex);
         return QAT_Response_Str(QAT_RC_OK, "+CWQABLE:WiFi already disabled");
+    }
+
+    if (g_wifi_ctx.connected && g_wifi_ctx.iface) {
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        int ret = net_mgmt(NET_REQUEST_WIFI_DISCONNECT, g_wifi_ctx.iface, NULL, 0);
+        if (ret) {
+            LOG_WRN("Disconnect before disable failed: %d", ret);
+        }
+        k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    }
+
+    if (g_wifi_ctx.ap_active) {
+        struct net_if *ap_iface = net_if_get_wifi_sap();
+
+        k_mutex_unlock(&g_wifi_ctx.mutex);
+        if (ap_iface) {
+            int ret = net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, ap_iface, NULL, 0);
+            if (ret) {
+                LOG_WRN("AP disable before wifi disable failed: %d", ret);
+            }
+        }
+        k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+        g_wifi_ctx.ap_active = false;
     }
 
     if (g_wifi_ctx.iface) {
