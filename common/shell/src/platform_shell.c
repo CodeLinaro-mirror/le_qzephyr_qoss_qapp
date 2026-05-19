@@ -23,6 +23,7 @@
 #define OTP_MAC_ADDR                    0x1a01c0
 #define OTP_MANUFACTURING_YEAR_WEEK     0x1a0260
 #define OTP_MODULE_PART_NUMBER          0x1a0264
+#define RRAM_TEST_MEMORY_UNIT           (1024)
 
 #if 0
 #define NT_LOG_LVL_INFO 0
@@ -375,6 +376,95 @@ free_buffer:
     return err;
 }
 
+static int rram_test(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = -ENOTSUP;
+
+#if CONFIG_WIFI
+    err = 0;
+    uint32_t partition_id = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse partition_id (err %d)", err);
+        return err;
+    }
+    if (partition_id != 4) {
+        shell_error(ctx, "partition_id must be 4");
+        return -EINVAL;
+    }
+
+    uint32_t address = shell_strtoul(argv[2], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input address (err %d)", err);
+        return err;
+    }
+
+    uint32_t byte_count = shell_strtoul(argv[3], 10, &err);
+    if (err) {
+        shell_error(ctx, "Unable to parse input byte_count (err %d)", err);
+        return err;
+    }
+
+    uint8_t *buffer = calloc(sizeof(uint8_t), RRAM_TEST_MEMORY_UNIT);
+    if (buffer == NULL) {
+        shell_error(ctx, "ERROR: No enough memory");
+        return -ENOMEM;
+    }
+
+    uint8_t *read_buffer = calloc(sizeof(uint8_t), RRAM_TEST_MEMORY_UNIT);
+    if (read_buffer == NULL) {
+        free(buffer);
+        shell_error(ctx, "ERROR: No enough memory");
+        return -ENOMEM;
+    }
+
+    uint32_t len = 0;
+    while (byte_count) {
+        if (byte_count >= RRAM_TEST_MEMORY_UNIT) {
+            len = RRAM_TEST_MEMORY_UNIT;
+        } else {
+            len = byte_count;
+        }
+
+        memset(buffer, 0, len);
+        memset(read_buffer, 0, len);
+
+        for (int i = 0; i < len; i++) {
+            buffer[i] = 0x5a;
+        }
+
+        qapi_Status_t status = qapi_rram_write(partition_id, address, buffer, len);
+        if (status != QAPI_OK) {
+            err = -EINVAL;
+            shell_error(ctx, "rram write failed(%d) %d:0x%x %d.", status, partition_id, address, len);
+            break;
+        }
+
+        status = qapi_rram_read(partition_id, address, read_buffer, len);
+        if (status != QAPI_OK) {
+            err = -EINVAL;
+            shell_error(ctx, "rram read failed(%d) %d:0x%x %d.", status, partition_id, address, len);
+            break;
+        }
+
+        if (memcmp(read_buffer, buffer, len) != 0) {
+            err = -EIO;
+            shell_error(ctx, "Verify Failed (0x%x %d).", address, len);
+            break;
+        }
+
+        shell_info(ctx, "Verify OK (0x%x %d).", address, len);
+
+        address += len;
+        byte_count -= len;
+    }
+
+    free(buffer);
+    free(read_buffer);
+#endif /* CONFIG_WIFI */
+
+    return err;
+}
+
 static int cmd_smps2_set_pfm_temp(const struct shell *ctx, size_t argc, char **argv)
 {
     int err = 0;
@@ -530,6 +620,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
                   "Examples:\n"
                   "\trram_write 4 0 \"deadbeef\"\n",
                   cmd_rram_write, 4, 0),
+    SHELL_CMD_ARG(rram_test, NULL,
+                  "rram_test\n"
+                  "Usage: rram_test [partition_id:uint32_t] [address:uint32_t] [bytes_count:uint32_t]\n"
+                  "Examples:\n"
+                  "\trram_test 4 0 36864\n",
+                  rram_test, 4, 0),
     SHELL_CMD_ARG(smps2_set_pfm_temp, NULL,
                     "Set SMPS2 PFM temperature thresholds (upper-bound per column)\n"
                     "Usage: smps2_set_pfm_temp <t0> <t1> <t2> <t3>\n"
