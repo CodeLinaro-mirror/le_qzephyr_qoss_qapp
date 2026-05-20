@@ -13,6 +13,7 @@ subdirs=(
     "power_app"
     "qcli_app"
     "ftm_app"
+    "ent_app"
 )
 hello_world_app=(
     "zephyr/samples/hello_world"
