@@ -1,0 +1,7 @@
+sample:
+  description: Qcom cli app
+    application
+  name: qcli app 
+common:
+  tags: introduction
+  harness: console
