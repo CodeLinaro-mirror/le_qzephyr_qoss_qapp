@@ -1,0 +1,559 @@
+From b4f7140d4d35f91f5e5cd5b4e5a88143758694d9 Mon Sep 17 00:00:00 2001
+From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
+Date: Sun, 17 May 2026 01:17:54 -0700
+Subject: [PATCH] zephyr: net: wifi: hostap: add WPA2/WPA3-Enterprise
+ (802.1X/EAP) support
+
+Add changes across the Zephyr networking stack, hostap integration layer,
+and Wi-Fi shell to enable WPA2/WPA3-Enterprise authentication on QCC730.
+
+Change-Id: I4b37c6529f35f3b1074be4a428b47706cfbcb1cf
+---
+ include/zephyr/net/wifi.h                |   2 +
+ include/zephyr/net/wifi_certs.h          |  15 ++
+ modules/hostap/CMakeLists.txt            |  61 +++++++-
+ modules/hostap/src/supp_api.c            | 182 +++++++++++++++--------
+ modules/hostap/src/supp_api.h            |  11 ++
+ modules/hostap/src/supp_main.c           |   3 +
+ subsys/mgmt/mcumgr/transport/Kconfig.udp |   1 -
+ subsys/net/l2/wifi/wifi_certs.c          |  10 ++
+ subsys/net/l2/wifi/wifi_shell.c          |  33 +++-
+ subsys/net/lib/sockets/sockets_packet.c  |   3 +-
+ 10 files changed, 256 insertions(+), 65 deletions(-)
+
+diff --git a/include/zephyr/net/wifi.h b/include/zephyr/net/wifi.h
+index 704c8976092..4b4f0d20453 100644
+--- a/include/zephyr/net/wifi.h
++++ b/include/zephyr/net/wifi.h
+@@ -113,6 +113,8 @@ enum wifi_security_type {
+ 	WIFI_SECURITY_TYPE_FT_EAP_SHA384,
+ 	/** SAE Extended key (uses group-dependent hashing) */
+ 	WIFI_SECURITY_TYPE_SAE_EXT_KEY,
++	/** WPA3-Enterprise (802.1X + PMFR) with PEAP/MSCHAPv2 EAP method */
++	WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2,
+ 
+ 	/** @cond INTERNAL_HIDDEN */
+ 	__WIFI_SECURITY_TYPE_AFTER_LAST,
+diff --git a/include/zephyr/net/wifi_certs.h b/include/zephyr/net/wifi_certs.h
+index ea9e02cf104..ea7fdda8427 100644
+--- a/include/zephyr/net/wifi_certs.h
++++ b/include/zephyr/net/wifi_certs.h
+@@ -35,4 +35,19 @@ int wifi_set_enterprise_credentials(struct net_if *iface, bool is_ap);
+  */
+ void wifi_clear_enterprise_credentials(void);
+ 
++#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
++    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
++/**
++ * @brief Load EAP-TLS certificates from a LittleFS directory.
++ *
++ * Reads ca.pem, client-key.pem, and client.pem from @p dir and registers
++ * them in the TLS credentials store.  LittleFS is mounted lazily at /lfs
++ * on the first call.
++ *
++ * @param dir Path to the directory (e.g. "/lfs")
++ * @return 0 on success, negative errno on failure
++ */
++int wifi_load_certs_from_fs(const char *dir);
++#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
++
+ #endif /* WIFI_CERTS_H__ */
+diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
+index 41a50842b71..5d570e913d3 100644
+--- a/modules/hostap/CMakeLists.txt
++++ b/modules/hostap/CMakeLists.txt
+@@ -721,13 +721,70 @@ zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_MBEDTLS_PSA
+ 
+ zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
+   ${HOSTAP_SRC_BASE}/crypto/ms_funcs.c
+-  ${HOSTAP_SRC_BASE}/crypto/aes-eax.c
+   ${HOSTAP_SRC_BASE}/crypto/md4-internal.c
+   ${HOSTAP_SRC_BASE}/crypto/sha1-internal.c
++  ${HOSTAP_SRC_BASE}/crypto/tls_mbedtls_alt.c
++)
++# aes-eax: AES-EAX mode cipher, only needed for EAP-IKEv2 (~6 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE AND CONFIG_EAP_IKEV2)
++  zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/aes-eax.c)
++endif()
++# fips_prf_internal: FIPS 186-2 PRF, only needed for EAP-SIM/AKA and EAP-LEAP (~4 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE)
++  if(CONFIG_EAP_SIM OR CONFIG_EAP_AKA OR CONFIG_EAP_LEAP)
++    zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/fips_prf_internal.c)
++  endif()
++endif()
++# milenage: MILENAGE algorithm, only needed for EAP-SIM/AKA (~11 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE)
++  if(CONFIG_EAP_SIM OR CONFIG_EAP_AKA)
++    zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/milenage.c)
++  endif()
++endif()
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_TEST
++  ${HOSTAP_SRC_BASE}/crypto/crypto_module_tests.c
+   ${HOSTAP_SRC_BASE}/crypto/fips_prf_internal.c
+-  ${HOSTAP_SRC_BASE}/crypto/milenage.c
++  ${HOSTAP_SRC_BASE}/crypto/sha1-internal.c
++  ${HOSTAP_SRC_BASE}/crypto/sha1-tlsprf.c
++)
++endif()
++
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_EXT)
++zephyr_include_directories(
++  ${HOSTAP_BASE}/port/mbedtls
++)
++
++zephyr_library_sources(
++  ${HOSTAP_SRC_BASE}/crypto/sha256-kdf.c
++  ${HOSTAP_SRC_BASE}/crypto/sha384-kdf.c
++  ${HOSTAP_SRC_BASE}/crypto/sha384-prf.c
++  ${HOSTAP_SRC_BASE}/crypto/sha512-kdf.c
++  ${HOSTAP_SRC_BASE}/crypto/sha512-prf.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
++  ${HOSTAP_SRC_BASE}/crypto/ms_funcs.c
++  ${HOSTAP_SRC_BASE}/crypto/md4-internal.c
++  ${HOSTAP_SRC_BASE}/crypto/sha1-internal.c
+   ${HOSTAP_SRC_BASE}/crypto/tls_mbedtls_alt.c
+ )
++# aes-eax: AES-EAX mode cipher, only needed for EAP-IKEv2 (~6 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE AND CONFIG_EAP_IKEV2)
++  zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/aes-eax.c)
++endif()
++# fips_prf_internal: FIPS 186-2 PRF, only needed for EAP-SIM/AKA and EAP-LEAP (~4 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE)
++  if(CONFIG_EAP_SIM OR CONFIG_EAP_AKA OR CONFIG_EAP_LEAP)
++    zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/fips_prf_internal.c)
++  endif()
++endif()
++# milenage: MILENAGE algorithm, only needed for EAP-SIM/AKA (~11 KB)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE)
++  if(CONFIG_EAP_SIM OR CONFIG_EAP_AKA)
++    zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/milenage.c)
++  endif()
++endif()
+ 
+ zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_TEST
+   ${HOSTAP_SRC_BASE}/crypto/crypto_module_tests.c
+diff --git a/modules/hostap/src/supp_api.c b/modules/hostap/src/supp_api.c
+index b8042860186..4835fe79063 100644
+--- a/modules/hostap/src/supp_api.c
++++ b/modules/hostap/src/supp_api.c
+@@ -505,9 +505,11 @@ static struct wifi_eap_config eap_config[] = {
+ 	{WIFI_SECURITY_TYPE_EAP_PEAP_GTC, WIFI_EAP_TYPE_PEAP, WIFI_EAP_TYPE_GTC, "PEAP",
+ 	 "auth=GTC"},
+ 	{WIFI_SECURITY_TYPE_EAP_TTLS_MSCHAPV2, WIFI_EAP_TYPE_TTLS, WIFI_EAP_TYPE_NONE, "TTLS",
+-	 "auth=MSCHAPV2"},
++	 "autheap=MSCHAPV2"},
+ 	{WIFI_SECURITY_TYPE_EAP_PEAP_TLS, WIFI_EAP_TYPE_PEAP, WIFI_EAP_TYPE_TLS, "PEAP",
+ 	 "auth=TLS"},
++	{WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2, WIFI_EAP_TYPE_PEAP, WIFI_EAP_TYPE_MSCHAPV2,
++	 "PEAP", "auth=MSCHAPV2"},
+ };
+ 
+ int process_cipher_config(struct wifi_connect_req_params *params,
+@@ -583,7 +585,8 @@ int is_eap_valid_security(int security)
+ 		    security == WIFI_SECURITY_TYPE_EAP_PEAP_MSCHAPV2 ||
+ 		    security == WIFI_SECURITY_TYPE_EAP_PEAP_GTC ||
+ 		    security == WIFI_SECURITY_TYPE_EAP_TTLS_MSCHAPV2 ||
+-		    security == WIFI_SECURITY_TYPE_EAP_PEAP_TLS);
++		    security == WIFI_SECURITY_TYPE_EAP_PEAP_TLS ||
++		    security == WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2);
+ }
+ #endif
+ 
+@@ -599,9 +602,9 @@ static void wpas_remove_certs(struct wpa_supplicant *wpa_s)
+ }
+ #endif
+ 
+-static int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+-				       struct wifi_connect_req_params *params,
+-				       bool mode_ap)
++int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
++				struct wifi_connect_req_params *params,
++				bool mode_ap, bool do_connect)
+ {
+ 	struct add_network_resp resp = {0};
+ 	char *chan_list = NULL;
+@@ -932,7 +935,8 @@ static int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+ 
+ 			if (params->security == WIFI_SECURITY_TYPE_EAP_PEAP_MSCHAPV2 ||
+ 			    params->security == WIFI_SECURITY_TYPE_EAP_PEAP_GTC ||
+-			    params->security == WIFI_SECURITY_TYPE_EAP_PEAP_TLS) {
++			    params->security == WIFI_SECURITY_TYPE_EAP_PEAP_TLS ||
++			    params->security == WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2) {
+ 				snprintk(phase1, sizeof(phase1),
+ 					 "peapver=%d peaplabel=0 crypto_binding=0",
+ 					 params->eap_ver);
+@@ -964,13 +968,16 @@ static int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+ 				}
+ 			}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d anonymous_identity \"%s\"",
+-					   resp.network_id, params->anon_id)) {
+-				goto out;
++			if (params->aid_length > 0) {
++				if (!wpa_cli_cmd_v("set_network %d anonymous_identity \"%s\"",
++						   resp.network_id, params->anon_id)) {
++					goto out;
++				}
+ 			}
+ 
+ 			if (false == ((params->security == WIFI_SECURITY_TYPE_EAP_PEAP_MSCHAPV2 ||
+-			    params->security == WIFI_SECURITY_TYPE_EAP_TTLS_MSCHAPV2) &&
++			    params->security == WIFI_SECURITY_TYPE_EAP_TTLS_MSCHAPV2 ||
++			    params->security == WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2) &&
+ 			    (!params->verify_peer_cert))) {
+ 				if (wpas_config_process_blob(wpa_s->conf, "ca_cert",
+ 						   enterprise_creds.ca_cert,
+@@ -984,69 +991,83 @@ static int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+ 				}
+ 			}
+ 
+-			if (wpas_config_process_blob(wpa_s->conf, "client_cert",
+-					   enterprise_creds.client_cert,
+-					   enterprise_creds.client_cert_len)) {
+-				goto out;
+-			}
++			if (enterprise_creds.client_cert_len > 0) {
++				if (wpas_config_process_blob(wpa_s->conf, "client_cert",
++						   enterprise_creds.client_cert,
++						   enterprise_creds.client_cert_len)) {
++					goto out;
++				}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d client_cert \"blob://client_cert\"",
+-					   resp.network_id)) {
+-				goto out;
++				if (!wpa_cli_cmd_v("set_network %d client_cert \"blob://client_cert\"",
++						   resp.network_id)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (wpas_config_process_blob(wpa_s->conf, "private_key",
+-					   enterprise_creds.client_key,
+-					   enterprise_creds.client_key_len)) {
+-				goto out;
+-			}
++			if (enterprise_creds.client_key_len > 0) {
++				if (wpas_config_process_blob(wpa_s->conf, "private_key",
++						   enterprise_creds.client_key,
++						   enterprise_creds.client_key_len)) {
++					goto out;
++				}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d private_key \"blob://private_key\"",
+-					   resp.network_id)) {
+-				goto out;
++				if (!wpa_cli_cmd_v("set_network %d private_key \"blob://private_key\"",
++						   resp.network_id)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d private_key_passwd \"%s\"",
+-					   resp.network_id, params->key_passwd)) {
+-				goto out;
++			if (params->key_passwd_length > 0) {
++				if (!wpa_cli_cmd_v("set_network %d private_key_passwd \"%s\"",
++						   resp.network_id, params->key_passwd)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (wpas_config_process_blob(wpa_s->conf, "ca_cert2",
+-						     enterprise_creds.ca_cert2,
+-						     enterprise_creds.ca_cert2_len)) {
+-				goto out;
+-			}
++			if (enterprise_creds.ca_cert2_len > 0) {
++				if (wpas_config_process_blob(wpa_s->conf, "ca_cert2",
++							     enterprise_creds.ca_cert2,
++							     enterprise_creds.ca_cert2_len)) {
++					goto out;
++				}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d ca_cert2 \"blob://ca_cert2\"",
+-					   resp.network_id)) {
+-				goto out;
++				if (!wpa_cli_cmd_v("set_network %d ca_cert2 \"blob://ca_cert2\"",
++						   resp.network_id)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (wpas_config_process_blob(wpa_s->conf, "client_cert2",
+-						     enterprise_creds.client_cert2,
+-						     enterprise_creds.client_cert2_len)) {
+-				goto out;
+-			}
++			if (enterprise_creds.client_cert2_len > 0) {
++				if (wpas_config_process_blob(wpa_s->conf, "client_cert2",
++							     enterprise_creds.client_cert2,
++							     enterprise_creds.client_cert2_len)) {
++					goto out;
++				}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d client_cert2 \"blob://client_cert2\"",
+-					   resp.network_id)) {
+-				goto out;
++				if (!wpa_cli_cmd_v("set_network %d client_cert2 \"blob://client_cert2\"",
++						   resp.network_id)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (wpas_config_process_blob(wpa_s->conf, "private_key2",
+-						     enterprise_creds.client_key2,
+-						     enterprise_creds.client_key2_len)) {
+-				goto out;
+-			}
++			if (enterprise_creds.client_key2_len > 0) {
++				if (wpas_config_process_blob(wpa_s->conf, "private_key2",
++							     enterprise_creds.client_key2,
++							     enterprise_creds.client_key2_len)) {
++					goto out;
++				}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d private_key2 \"blob://private_key2\"",
+-					   resp.network_id)) {
+-				goto out;
++				if (!wpa_cli_cmd_v("set_network %d private_key2 \"blob://private_key2\"",
++						   resp.network_id)) {
++					goto out;
++				}
+ 			}
+ 
+-			if (!wpa_cli_cmd_v("set_network %d private_key2_passwd \"%s\"",
+-					   resp.network_id, params->key2_passwd)) {
+-				goto out;
++			if (params->key2_passwd_length > 0) {
++				if (!wpa_cli_cmd_v("set_network %d private_key2_passwd \"%s\"",
++						   resp.network_id, params->key2_passwd)) {
++					goto out;
++				}
+ 			}
+ #endif
+ 		} else {
+@@ -1122,8 +1143,10 @@ static int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+ 		goto out;
+ 	}
+ 
+-	if (!wpa_cli_cmd_v("select_network %d", resp.network_id)) {
+-		goto out;
++	if (do_connect) {
++		if (!wpa_cli_cmd_v("select_network %d", resp.network_id)) {
++			goto out;
++		}
+ 	}
+ 
+ 	memset(&last_wifi_conn_params, 0, sizeof(struct wifi_connect_req_params));
+@@ -1139,6 +1162,45 @@ out:
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
++/* Called from qwifi_drv_connect() for EAP security types.
++ * Configures wpa_supplicant with EAP credentials (method, certs, identity)
++ * and enables the network, but does NOT call select_network — the firmware
++ * initiates 802.11 auth+assoc directly via qapi_WLAN_Commit().
++ * After QAPI_WLAN_CONNECT_CB_E fires, enterprise_glue posts EVENT_ASSOC
++ * to the supplicant, which starts the EAP state machine.
++ */
++int supplicant_config_enterprise_network(const struct device *dev,
++					 struct wifi_connect_req_params *params)
++{
++	struct wpa_supplicant *wpa_s;
++	int ret = 0;
++
++	if (!net_if_is_admin_up(net_if_lookup_by_dev(dev))) {
++		wpa_printf(MSG_ERROR, "Interface %s is down", dev->name);
++		return -1;
++	}
++
++	k_mutex_lock(&wpa_supplicant_mutex, K_FOREVER);
++
++	wpa_s = get_wpa_s_handle(dev);
++	if (!wpa_s) {
++		ret = -1;
++		wpa_printf(MSG_ERROR, "Device %s not found", dev->name);
++		goto out;
++	}
++
++	ret = wpas_add_and_config_network(wpa_s, params, false, false);
++	if (ret) {
++		wpa_printf(MSG_ERROR, "Enterprise network config failed: %d", ret);
++	}
++
++out:
++	k_mutex_unlock(&wpa_supplicant_mutex);
++	return ret;
++}
++#endif /* CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE */
++
+ static int wpas_disconnect_network(const struct device *dev, int cur_mode)
+ {
+ 	struct net_if *iface = net_if_lookup_by_dev(dev);
+@@ -1240,7 +1302,7 @@ int supplicant_connect(const struct device *dev, struct wifi_connect_req_params
+ 		goto out;
+ 	}
+ 
+-	ret = wpas_add_and_config_network(wpa_s, params, false);
++	ret = wpas_add_and_config_network(wpa_s, params, false, true);
+ 	if (ret) {
+ 		wpa_printf(MSG_ERROR, "Failed to add and configure network for STA mode: %d", ret);
+ 		goto out;
+@@ -2175,7 +2237,7 @@ int supplicant_ap_enable(const struct device *dev,
+ 	/* Set BSS parameter max_num_sta to default configured value */
+ 	wpa_s->conf->max_num_sta = CONFIG_WIFI_MGMT_AP_MAX_NUM_STA;
+ 
+-	ret = wpas_add_and_config_network(wpa_s, params, true);
++	ret = wpas_add_and_config_network(wpa_s, params, true, true);
+ 	if (ret) {
+ 		wpa_printf(MSG_ERROR, "Failed to add and configure network for AP mode: %d", ret);
+ 		goto out;
+diff --git a/modules/hostap/src/supp_api.h b/modules/hostap/src/supp_api.h
+index 8ab49f177e7..544e45dbdd1 100644
+--- a/modules/hostap/src/supp_api.h
++++ b/modules/hostap/src/supp_api.h
+@@ -220,6 +220,17 @@ int process_cipher_config(struct wifi_connect_req_params *params,
+  */
+ int supplicant_add_enterprise_creds(const struct device *dev,
+ 		struct wifi_enterprise_creds_params *creds);
++
++/** Configure wpa_supplicant EAP network params without triggering connect.
++ *  Called from the QCC730 driver before qapi_WLAN_Commit() so that the
++ *  supplicant EAP state machine is ready when EVENT_ASSOC arrives.
++ *
++ * @param dev  Wi-Fi device
++ * @param params  Connection params (must be EAP security type)
++ * @return 0 for OK; <0 for error
++ */
++int supplicant_config_enterprise_network(const struct device *dev,
++					 struct wifi_connect_req_params *params);
+ #endif
+ 
+ /**
+diff --git a/modules/hostap/src/supp_main.c b/modules/hostap/src/supp_main.c
+index d1f8c360cb5..13f8714c111 100644
+--- a/modules/hostap/src/supp_main.c
++++ b/modules/hostap/src/supp_main.c
+@@ -628,6 +628,9 @@ static void event_socket_handler(int sock, void *eloop_ctx, void *user_data)
+ 			} else if (event_msg.event == EVENT_UNPROT_DISASSOC) {
+ 				os_free((char *)data->unprot_disassoc.sa);
+ 				os_free((char *)data->unprot_disassoc.da);
++			} else if (event_msg.event == EVENT_EAPOL_RX) {
++				os_free((void *)data->eapol_rx.src);
++				os_free((void *)data->eapol_rx.data);
+ 			}
+ 
+ 			os_free(event_msg.data);
+diff --git a/subsys/mgmt/mcumgr/transport/Kconfig.udp b/subsys/mgmt/mcumgr/transport/Kconfig.udp
+index 19de5cf3ce5..1d7e8a1c221 100644
+--- a/subsys/mgmt/mcumgr/transport/Kconfig.udp
++++ b/subsys/mgmt/mcumgr/transport/Kconfig.udp
+@@ -13,7 +13,6 @@ menuconfig MCUMGR_TRANSPORT_UDP
+ 	bool "UDP mcumgr SMP transport"
+ 	depends on NET_UDP
+ 	depends on NET_SOCKETS
+-	select NET_CONNECTION_MANAGER
+ 	help
+ 	  Enables handling of SMP commands received over UDP.
+ 	  Will start a thread for listening on the configured UDP port.
+diff --git a/subsys/net/l2/wifi/wifi_certs.c b/subsys/net/l2/wifi/wifi_certs.c
+index 545010cbf77..248752b9829 100644
+--- a/subsys/net/l2/wifi/wifi_certs.c
++++ b/subsys/net/l2/wifi/wifi_certs.c
+@@ -84,6 +84,16 @@ static int process_certificates(struct wifi_cert_data *certs, size_t cert_count)
+ 		uint8_t *cert_tmp;
+ 
+ 		err = tls_credential_get(certs[i].sec_tag, certs[i].type, NULL, &len);
++		if (err == -ENOENT) {
++			/* Credential not registered — treat as optional (not provided).
++			 * Phase-2 certs (ca_cert2, client_cert2, client_key2) are only
++			 * needed for EAP-PEAP/TTLS inner-TLS; supp_api.c already guards
++			 * their use with "len > 0" checks.  Leave data=NULL, len=0.
++			 */
++			*certs[i].data = NULL;
++			*certs[i].len = 0;
++			continue;
++		}
+ 		if (err != -EFBIG) {
+ 			LOG_ERR("Failed to get credential tag: %d length, err: %d",
+ 				certs[i].sec_tag, err);
+diff --git a/subsys/net/l2/wifi/wifi_shell.c b/subsys/net/l2/wifi/wifi_shell.c
+index 46f64dcb4f0..ae68a0b4e98 100644
+--- a/subsys/net/l2/wifi/wifi_shell.c
++++ b/subsys/net/l2/wifi/wifi_shell.c
+@@ -643,7 +643,7 @@ static int __wifi_args_to_params(const struct shell *sh, size_t argc, char *argv
+ 	params->channel = WIFI_CHANNEL_ANY;
+ 	params->security = WIFI_SECURITY_TYPE_NONE;
+ 	params->mfp = WIFI_MFP_OPTIONAL;
+-	params->eap_ver = 1;
++	params->eap_ver = 0;
+ 	params->ignore_broadcast_ssid = 0;
+ 	params->bandwidth = WIFI_FREQ_BANDWIDTH_20MHZ;
+ 	params->verify_peer_cert = false;
+@@ -1009,6 +1009,27 @@ static int cmd_wifi_disconnect(const struct shell *sh, size_t argc,
+ 	return 0;
+ }
+ 
++#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
++    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
++static int cmd_wifi_load_certs(const struct shell *sh, size_t argc,
++                               char *argv[])
++{
++	const char *path = (argc > 1) ? argv[1] : "/lfs";
++	int ret;
++
++	ret = wifi_load_certs_from_fs(path);
++	if (ret < 0) {
++		PR_ERROR("load-certs: failed (%d) — check that the LittleFS image is "
++			 "flashed and that ca.pem, client-key.pem, client.pem exist "
++			 "in %s\n", ret, path);
++		return ret;
++	}
++
++	PR("Certificates loaded from %s\n", path);
++	return 0;
++}
++#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
++
+ static int wifi_scan_args_to_params(const struct shell *sh,
+ 				    size_t argc,
+ 				    char *argv[],
+@@ -4039,6 +4060,16 @@ SHELL_SUBCMD_ADD((wifi), disconnect, NULL,
+ 		 cmd_wifi_disconnect,
+ 		 1, 2);
+ 
++#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
++    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
++SHELL_SUBCMD_ADD((wifi), load_certs, NULL,
++		 "Load enterprise certificates from LittleFS.\n"
++		 "[path] : Directory containing ca.pem, client-key.pem, client.pem.\n"
++		 "         Default: /lfs\n",
++		 cmd_wifi_load_certs,
++		 1, 2);
++#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
++
+ SHELL_SUBCMD_ADD((wifi), mode, NULL,
+ 		 "mode operational setting\n"
+ 		 "This command may be used to set the Wi-Fi device into a specific "
+diff --git a/subsys/net/lib/sockets/sockets_packet.c b/subsys/net/lib/sockets/sockets_packet.c
+index 5ea90a00272..36daef92ef5 100644
+--- a/subsys/net/lib/sockets/sockets_packet.c
++++ b/subsys/net/lib/sockets/sockets_packet.c
+@@ -492,7 +492,8 @@ static bool packet_is_supported(int family, int type, int proto)
+ 		return proto == 0
+ 		  || proto == ETH_P_ALL
+ 		  || proto == ETH_P_ECAT
+-		  || proto == ETH_P_IEEE802154;
++		  || proto == ETH_P_IEEE802154
++		  || proto == ETH_P_EAPOL;
+ 
+ 	case SOCK_DGRAM:
+ 		return true;
+-- 
+2.43.0
+
