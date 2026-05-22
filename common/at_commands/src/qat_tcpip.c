@@ -788,9 +788,13 @@ static cat_return_state cmd_cipsta_query(const struct cat_command *cmd, uint8_t 
             LOG_INF("NM: %s, offset=%d", addr_str, offset);
         } else {
             LOG_WRN("No valid unicast address found");
+            offset += snprintf(buffer + offset, sizeof(buffer) - offset,
+                               "127.0.0.1,0.0.0.0,255.0.0.0");
         }
     } else {
         LOG_WRN("No IPv4 config");
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset,
+                           "127.0.0.1,0.0.0.0,255.0.0.0");
     }
 
     /* Append IPv6 addresses */
