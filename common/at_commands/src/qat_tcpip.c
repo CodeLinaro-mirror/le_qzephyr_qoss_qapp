@@ -2442,6 +2442,7 @@ static cat_return_state cmd_cipserver_query(const struct cat_command *cmd, uint8
 {
     char buffer[QAT_RESPONSE_BUF_SIZE];
     int offset = 0;
+    buffer[0] = '\0';
     *data_size = 0;
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
@@ -3265,6 +3266,7 @@ static cat_return_state cmd_cipudpserver_query(const struct cat_command *cmd, ui
 {
     char buffer[QAT_RESPONSE_BUF_SIZE];
     int offset = 0;
+    buffer[0] = '\0';
     *data_size = 0;
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
