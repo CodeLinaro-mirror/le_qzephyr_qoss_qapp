@@ -158,6 +158,9 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
                 print("Use 'force' to reapply or 'revert' to clean up.")
                 return False
 
+    if force:
+        revert_patches()
+
     print(f"Found {len(patch_files)} patch file(s) to apply:")
     for i, pf in enumerate(patch_files, 1):
         print(f"  {i:02d}. {pf.name}")
