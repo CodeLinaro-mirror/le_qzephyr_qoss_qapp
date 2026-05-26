@@ -1,2 +1,10 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: BSD-3-Clause-Clear
+
+config SIGMADUT_TRAFFIC
+	bool "Sigma DUT UDP traffic test"
+	default n
+	depends on NET_SOCKETS
+	help
+	  Enable the Sigma DUT UDP TX/RX traffic test commands under the
+	  wificert shell group.
