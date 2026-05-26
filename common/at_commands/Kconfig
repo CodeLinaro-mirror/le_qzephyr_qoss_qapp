@@ -32,7 +32,9 @@ config QAT_TCPIP
 
 config QAT_HTTPC
 	bool "QAT HTTP Client AT Commands"
-	depends on QAT && HTTPC_AT
+	depends on QAT
+	select HTTPC_AT
+	select HTTPC_AT_TLS
 	default y
 	help
 	  Enable HTTP client AT commands for QAT module.
@@ -71,7 +73,9 @@ config QAT_HTTPSERVER
 
 config QAT_OTA
 	bool "QAT OTA Firmware Upgrade AT Commands"
-	depends on QAT && QCOM_FW_UPGRADE
+	depends on QAT
+	select QCOM_FW_UPGRADE
+	select HTTPC_AT
 	select NET_TCP
 	help
 	  Enable AT+OTAFWUP and AT+OTATRIAL commands for over-the-air firmware
