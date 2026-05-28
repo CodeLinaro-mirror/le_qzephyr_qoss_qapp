@@ -322,6 +322,11 @@ static struct {
     .exit_length_valid = true,
 };
 
+/* Throughput-test mode: when true, suppress verbose data-path LOG_INF
+ * (CIPSEND/CIPSENDDATA/recv-mode-set) to avoid log printing impacting
+ * measured throughput. Toggled via AT+QLOGCTL. */
+static bool tput_quiet = false;
+
 /*-------------------------------------------------------------------------
  * Circular Buffer Functions
  *-----------------------------------------------------------------------*/
@@ -1364,11 +1369,13 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
         send_len = (send_len <= remaining) ? send_len : remaining;
     }
 
-    LOG_INF("CIPSEND: link=%d len=%zu send_len=%zu total_sent=%zu max_len=%zu fixed_len=%d payload='%.*s'",
-            cipsend_state.link_id, len, send_len,
-            cipsend_state.total_sent, cipsend_state.max_len,
-            cipsend_state.exit_length_valid ? 1 : 0,
-            (int)send_len, (const char *)payload);
+    if (!tput_quiet) {
+        LOG_INF("CIPSEND: link=%d len=%zu send_len=%zu total_sent=%zu max_len=%zu fixed_len=%d payload='%.*s'",
+                cipsend_state.link_id, len, send_len,
+                cipsend_state.total_sent, cipsend_state.max_len,
+                cipsend_state.exit_length_valid ? 1 : 0,
+                (int)send_len, (const char *)payload);
+    }
 
     /* Nothing left to send: finish immediately */
     if (send_len == 0) {
@@ -1508,8 +1515,10 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
     int to_send = (len < actual_len) ? len : actual_len;
     int total_sent = 0;
 
-    LOG_INF("CIPSENDDATA: link=%d req_len=%d actual_len=%d to_send=%d payload='%.*s'",
-            link_id, len, actual_len, to_send, to_send, s_at_data_buf);
+    if (!tput_quiet) {
+        LOG_INF("CIPSENDDATA: link=%d req_len=%d actual_len=%d to_send=%d payload='%.*s'",
+                link_id, len, actual_len, to_send, to_send, s_at_data_buf);
+    }
 
     /* Wait for the send buffer to have space before entering the send loop. */
     struct zsock_pollfd pfd = {.fd = sock_fd, .events = ZSOCK_POLLOUT};
@@ -1648,7 +1657,9 @@ static cat_return_state cmd_ciprecvtype_set(const struct cat_command *cmd,
 
     k_mutex_unlock(&conn_mutex);
 
-    LOG_INF("Link %d recv mode set to %d", link_id, mode);
+    if (!tput_quiet) {
+        LOG_INF("Link %d recv mode set to %d", link_id, mode);
+    }
     return QAT_Response_Str(QAT_RC_OK, NULL);
 }
 
@@ -4016,6 +4027,49 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
 }
 
 /*-------------------------------------------------------------------------
+ * AT+QLOGCTL - Throughput-test log control
+ *
+ * AT+QLOGCTL=1 -> suppress verbose data-path LOG_INF (CIPSEND/CIPSENDDATA/
+ *                 recv-mode-set) so log printing does not affect throughput.
+ * AT+QLOGCTL=0 -> restore verbose logs (default).
+ * AT+QLOGCTL?  -> query current state.
+ *-----------------------------------------------------------------------*/
+static cat_return_state cmd_qlogctl_exec(const struct cat_command *cmd)
+{
+    return QAT_Response_Str(QAT_RC_OK,
+        "+QLOGCTL=<quiet>\r\n"
+        "  quiet: 0 (verbose), 1 (suppress data-path logs)\r\n");
+}
+
+static cat_return_state cmd_qlogctl_query(const struct cat_command *cmd, uint8_t *data, size_t *data_size,
+                                          const size_t max_data_size)
+{
+    char buffer[32];
+    *data_size = 0;
+    snprintf(buffer, sizeof(buffer), "+QLOGCTL:%d\r\n", tput_quiet ? 1 : 0);
+    return QAT_Response_Str(QAT_RC_OK, buffer);
+}
+
+static cat_return_state cmd_qlogctl_set(const struct cat_command *cmd,
+                                        const uint8_t *data,
+                                        const size_t data_size,
+                                        const size_t args_num)
+{
+    int quiet;
+
+    if (sscanf((char *)data, "%d", &quiet) != 1) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+QLOGCTL: Invalid parameter\r\n");
+    }
+
+    if (quiet != 0 && quiet != 1) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+QLOGCTL: Value must be 0 or 1\r\n");
+    }
+
+    tput_quiet = (quiet == 1);
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+/*-------------------------------------------------------------------------
  * Command List
  *-----------------------------------------------------------------------*/
 static struct cat_command qat_tcpip_cmds[] = {
@@ -4148,6 +4202,15 @@ static struct cat_command qat_tcpip_cmds[] = {
         .run = cmd_sntpc_exec,
         .read = cmd_sntpc_query,
         .write = cmd_sntpc_set,
+    },
+
+    /* Throughput-test log control */
+    {
+        .name = "+QLOGCTL",
+        .description = "Suppress data-path logs for throughput test",
+        .run = cmd_qlogctl_exec,
+        .read = cmd_qlogctl_query,
+        .write = cmd_qlogctl_set,
     },
 };
 
