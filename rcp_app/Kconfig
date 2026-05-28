@@ -1,0 +1,23 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+mainmenu "QCC730 RCP application"
+
+# Generate CONFIG_QUALCOMM_RCP_APP_LOG_LEVEL (used by upstream proxy sources)
+module = QUALCOMM_RCP_APP
+module-str = qualcomm_rcp_app
+source "subsys/logging/Kconfig.template.log_config"
+
+config USE_DUMMY_WIFI_MGMT_DATA
+	bool "Use dummy WiFi management data for unsupported requests"
+	default n
+
+config INCLUDE_TRANSPORT_TESTS
+	bool "Include RCP transport tests for validation"
+	default n
+
+config QUALCOMM_RCP_INIT_PRIORITY
+	int "Init priority of RCP initialization"
+	default 80
+
+source "Kconfig.zephyr"
