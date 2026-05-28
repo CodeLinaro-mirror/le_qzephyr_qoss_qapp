@@ -222,7 +222,10 @@ static int add_content_type_header(int content_type)
 }
 
 /**
- * @brief Build a flat array of "Name: Value" strings for httpc_at_request.
+ * @brief Build a flat array of "Name: Value\r\n" strings for httpc_at_request.
+ *
+ * Each string includes the mandatory CRLF terminator required by Zephyr's
+ * http_client_req(), which sends optional_headers[] entries verbatim.
  *
  * The caller must free the returned array with free_header_strings().
  *
@@ -247,9 +250,16 @@ static int build_header_strings(const char ***out_headers, uint8_t *out_count)
     }
 
     for (uint8_t i = 0; i < n; i++) {
-        /* Build "Name: Value" string */
-        size_t len = strlen(g_cfg.header_fields[i].name) + 2 + /* ": " */
-                     strlen(g_cfg.header_fields[i].value) + 1;
+        /* Build "Name: Value\r\n" string. The trailing CRLF is mandatory:
+         * Zephyr's http_client_req() writes each optional_headers[] entry
+         * verbatim (zephyr/subsys/net/lib/http/http_client.c) and immediately
+         * follows with "Content-Length: ...", so without CRLF here the two
+         * headers fuse on the wire. The streaming path in httpc_at_core.c
+         * applies an equivalent guard at send time.
+         */
+        size_t len = strlen(g_cfg.header_fields[i].name) + 2 + /* ": "   */
+                     strlen(g_cfg.header_fields[i].value) + 2 + /* "\r\n" */
+                     1;                                         /* '\0'   */
         char *s = k_malloc(len);
 
         if (!s) {
@@ -260,7 +270,7 @@ static int build_header_strings(const char ***out_headers, uint8_t *out_count)
             k_free(arr);
             return -ENOMEM;
         }
-        snprintf(s, len, "%s: %s", g_cfg.header_fields[i].name, g_cfg.header_fields[i].value);
+        snprintf(s, len, "%s: %s\r\n", g_cfg.header_fields[i].name, g_cfg.header_fields[i].value);
         arr[i] = s;
     }
 
