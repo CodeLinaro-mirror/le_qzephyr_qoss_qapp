@@ -146,6 +146,7 @@ static void reset_temp_resources(void)
     /* Reset data mode */
     g_cfg.in_data_mode = false;
     g_cfg.data_mode_cmd = HTTPC_AT_DATA_MODE_NONE;
+    g_cfg.force_stream = false;
 }
 
 /**
@@ -468,7 +469,7 @@ int httpc_at_data_mode_input(const uint8_t *data, size_t len)
 
     httpc_at_data_mode_cmd_t cmd = g_cfg.data_mode_cmd;
     bool is_post_put = (cmd == HTTPC_AT_DATA_MODE_POST || cmd == HTTPC_AT_DATA_MODE_PUT);
-    bool use_cache = (!is_post_put) || (g_cfg.data_cache == 1);
+    bool use_cache = (!is_post_put) || ((g_cfg.data_cache == 1) && !g_cfg.force_stream);
 
     if (use_cache && !g_cfg.send_buf) {
         return -EINVAL;
@@ -1143,14 +1144,21 @@ int httpc_at_handle_httppost(uint32_t op_type, uint32_t param_count, httpc_at_pa
     }
     int data_len = params[1].int_val;
 
-    int max_len = (g_cfg.data_cache == 1) ? HTTPC_AT_SEND_BUF_SIZE : HTTPC_AT_MAX_STREAM_SIZE;
-    if (data_len <= 0 || data_len > max_len) {
-        LOG_ERR("HTTPPOST: invalid length=%d (max=%d)", data_len, max_len);
+    /* The hard ceiling is the stream-mode cap. If cache mode is active but the
+     * body exceeds the (small) cache buffer, transparently fall through to stream
+     * mode for this single command — preserves the small-RAM cache default for
+     * typical small POSTs while letting larger documented bodies (e.g. 9000 B)
+     * succeed without requiring an explicit AT+HTTPNETCFG=4,0 first. */
+    if (data_len <= 0 || data_len > HTTPC_AT_MAX_STREAM_SIZE) {
+        LOG_ERR("HTTPPOST: invalid length=%d (max=%d)", data_len, HTTPC_AT_MAX_STREAM_SIZE);
         return -EINVAL;
     }
 
     k_mutex_lock(&g_mutex, K_FOREVER);
     reset_temp_resources();
+
+    bool use_cache_this_cmd = (g_cfg.data_cache == 1) && (data_len <= HTTPC_AT_SEND_BUF_SIZE);
+    g_cfg.force_stream = (g_cfg.data_cache == 1) && !use_cache_this_cmd;
 
     /* Store URL for data mode phase 2 */
     g_cfg.temp_url = httpc_strdup(url);
@@ -1159,7 +1167,7 @@ int httpc_at_handle_httppost(uint32_t op_type, uint32_t param_count, httpc_at_pa
         return -ENOMEM;
     }
 
-    if (g_cfg.data_cache == 1) {
+    if (use_cache_this_cmd) {
         /* Allocate send buffer (+1 for NUL terminator) */
         g_cfg.send_buf = k_malloc((size_t)data_len + 1);
         if (!g_cfg.send_buf) {
@@ -1241,14 +1249,19 @@ int httpc_at_handle_httpput(uint32_t op_type, uint32_t param_count, httpc_at_par
     }
     int data_len = params[2].int_val;
 
-    int max_len = (g_cfg.data_cache == 1) ? HTTPC_AT_SEND_BUF_SIZE : HTTPC_AT_MAX_STREAM_SIZE;
-    if (data_len <= 0 || data_len > max_len) {
-        LOG_ERR("HTTPPUT: invalid length=%d (max=%d)", data_len, max_len);
+    /* The hard ceiling is the stream-mode cap. If cache mode is active but the
+     * body exceeds the (small) cache buffer, transparently fall through to stream
+     * mode for this single command (same policy as HTTPPOST). */
+    if (data_len <= 0 || data_len > HTTPC_AT_MAX_STREAM_SIZE) {
+        LOG_ERR("HTTPPUT: invalid length=%d (max=%d)", data_len, HTTPC_AT_MAX_STREAM_SIZE);
         return -EINVAL;
     }
 
     k_mutex_lock(&g_mutex, K_FOREVER);
     reset_temp_resources();
+
+    bool use_cache_this_cmd = (g_cfg.data_cache == 1) && (data_len <= HTTPC_AT_SEND_BUF_SIZE);
+    g_cfg.force_stream = (g_cfg.data_cache == 1) && !use_cache_this_cmd;
 
     /* Store URL for data mode phase 2 */
     g_cfg.temp_url = httpc_strdup(url);
@@ -1257,7 +1270,7 @@ int httpc_at_handle_httpput(uint32_t op_type, uint32_t param_count, httpc_at_par
         return -ENOMEM;
     }
 
-    if (g_cfg.data_cache == 1) {
+    if (use_cache_this_cmd) {
         /* Allocate send buffer */
         g_cfg.send_buf = k_malloc((size_t)data_len + 1);
         if (!g_cfg.send_buf) {

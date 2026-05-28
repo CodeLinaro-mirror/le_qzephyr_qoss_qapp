@@ -204,6 +204,8 @@ struct httpc_at_global_cfg {
     /* --- Data mode state --- */
     httpc_at_data_mode_cmd_t data_mode_cmd; /**< Which command is collecting data */
     bool in_data_mode;                       /**< True when collecting raw data */
+    bool force_stream;                       /**< True: per-command override forcing stream mode
+                                                  (set when data_cache==1 but body > HTTPC_AT_SEND_BUF_SIZE) */
 
     /* --- Response output --- */
     httpc_at_output_cb_t output_cb;    /**< Callback to write AT responses */
