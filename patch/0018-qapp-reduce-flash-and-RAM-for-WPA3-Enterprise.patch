@@ -1,0 +1,1005 @@
+From ff4f44df57404262bc10a68a732af44bf60788a1 Mon Sep 17 00:00:00 2001
+From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
+Date: Fri, 10 Jul 2026 00:00:03 -0700
+Subject: [PATCH] qapp: reduce flash and RAM for WPA3-Enterprise on QCC730
+ fullmac
+
+QCC730 is a fullmac device: Wi-Fi firmware handles all scan, connect,
+and disconnect operations internally, leaving the host supplicant to
+run only the EAP authentication state machine.  This commit trims the
+build to reflect this, saving ~120 KB flash and ~22 KB RAM.
+
+ent_app/prj.conf changes:
+
+P0-1  CONFIG_WIFI_NM_WPA_SUPPLICANT_NO_DEBUG=y
+  Remove wpa_printf format strings from rodata (~50-70 KB flash).
+
+P0-2  CONFIG_MBEDTLS_SSL_SRV_C=n
+  QCC730 is a Wi-Fi client; TLS server-side code (ssl_tls12_server.c,
+  ssl_tls13_server.c) is unreachable at runtime (~4 KB flash).
+
+P1-1  CONFIG_WIFI_NM_WPA_SUPPLICANT_THREAD_STACK_SIZE=65536
+  Reduce supplicant thread stack from 80 KB to 64 KB (-16 KB RAM).
+  EAP-TLS (deepest stack path) passes regression at 64 KB.
+
+P2    CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC=y
+  Exclude scan.c, sme.c, bss.c, ctrl_iface.c, ctrl_iface_zephyr.c,
+  wpa_cli_cmds.c, wpa_cli_zephyr.c from the build (~101 KB flash).
+
+P3-3  CONFIG_MBEDTLS_ECP_ALL_ENABLED=n + CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED=y
+  Restrict ECP curves to secp256r1 (P-256); enterprise test cases use
+  only AKM5/WPA2-Enterprise, none require Suite B 192-bit (P-384).
+---
+ modules/hostap/CMakeLists.txt            |  34 ++-
+ modules/hostap/Kconfig                   |  19 +-
+ modules/hostap/src/bss_fullmac_stub.c    | 370 +++++++++++++++++++++++
+ modules/hostap/src/supp_api.c            | 218 ++++++++++++-
+ modules/hostap/src/supp_main.c           |  35 ++-
+ modules/mbedtls/CMakeLists.txt           |   9 +-
+ modules/mbedtls/Kconfig.mbedtls          |   7 +
+ modules/mbedtls/configs/config-mbedtls.h |   2 +
+ 8 files changed, 669 insertions(+), 25 deletions(-)
+ create mode 100644 modules/hostap/src/bss_fullmac_stub.c
+
+diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
+index 9ae7aa16702..866e5b0d1aa 100644
+--- a/modules/hostap/CMakeLists.txt
++++ b/modules/hostap/CMakeLists.txt
+@@ -120,18 +120,21 @@ target_include_directories(hostap INTERFACE
+ 
+ zephyr_library_compile_definitions(
+   TLS_DEFAULT_CIPHERS=\""DEFAULT:!EXP:!LOW"\"
+-  CONFIG_SME
+   CONFIG_NO_CONFIG_WRITE
+-  CONFIG_CTRL_IFACE
+   CONFIG_NO_RANDOM_POOL
+   CONFIG_SHA256
+   CONFIG_SHA384
+   CONFIG_SHA512
+-  CONFIG_CTRL_IFACE_ZEPHYR
+   CONFIG_SUITEB192
+   CONFIG_SUITEB
+ )
+ 
++zephyr_library_compile_definitions_ifndef(CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
++  CONFIG_SME
++  CONFIG_CTRL_IFACE
++  CONFIG_CTRL_IFACE_ZEPHYR
++)
++
+ 
+ zephyr_library_compile_definitions_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_NONE
+   CONFIG_NO_PBKDF2
+@@ -211,16 +214,8 @@ zephyr_library_sources(
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/config_none.c
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/bssid_ignore.c
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpas_glue.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/scan.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/ctrl_iface.c
+-
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/bss.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/sme.c
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpa_supplicant.c
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/events.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpa_cli_cmds.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/ctrl_iface_zephyr.c
+-  ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpa_cli_zephyr.c
+ 
+   ${HOSTAP_SRC_BASE}/rsn_supp/pmksa_cache.c
+   ${HOSTAP_SRC_BASE}/common/ptksa_cache.c
+@@ -231,6 +226,23 @@ zephyr_library_sources(
+   src/supp_events.c
+ )
+ 
++# Files excluded on fullmac: firmware handles scan/connect/disconnect
++if(NOT CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC)
++zephyr_library_sources(
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/scan.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/ctrl_iface.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/bss.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/sme.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpa_cli_cmds.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/ctrl_iface_zephyr.c
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/wpa_cli_zephyr.c
++)
++else()
++zephyr_library_sources(
++  src/bss_fullmac_stub.c
++)
++endif()
++
+ # Advanced features
+ zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_RRM
+   ${WIFI_NM_WPA_SUPPLICANT_BASE}/op_classes.c
+diff --git a/modules/hostap/Kconfig b/modules/hostap/Kconfig
+index bf9e849f07e..ac7bf02f2c5 100644
+--- a/modules/hostap/Kconfig
++++ b/modules/hostap/Kconfig
+@@ -183,7 +183,6 @@ config WIFI_NM_WPA_SUPPLICANT_CRYPTO_ALT
+ 	select MBEDTLS_ENTROPY_C
+ 	select MBEDTLS_CIPHER
+ 	select MBEDTLS_ECP_C
+-	select MBEDTLS_ECP_ALL_ENABLED
+ 	select MBEDTLS_CMAC
+ 	select MBEDTLS_PKCS5_C
+ 	select MBEDTLS_PK_WRITE_C
+@@ -415,6 +414,16 @@ config WIFI_NM_WPA_SUPPLICANT_BSS_MAX_IDLE_TIME
+ config WIFI_NM_WPA_SUPPLICANT_NO_DEBUG
+ 	bool "Disable printing of debug messages, saves code size significantly"
+ 
++config WIFI_NM_WPA_SUPPLICANT_FULLMAC
++	bool "Fullmac mode: firmware handles scan/connect/disconnect"
++	help
++	  Enable this on fullmac Wi-Fi devices (e.g. QCC730) where the
++	  firmware handles scan, connect, and disconnect internally.
++	  This removes scan.c, sme.c, bss.c, ctrl_iface.c,
++	  ctrl_iface_zephyr.c, wpa_cli_cmds.c, and wpa_cli_zephyr.c from
++	  the build, saving ~75 KB of flash. The supplicant runs only the
++	  EAP authentication layer.
++
+ 
+ config WIFI_NM_WPA_SUPPLICANT_DPP
+ 	bool "WFA Easy Connect DPP"
+@@ -439,7 +448,7 @@ config WIFI_NM_WPA_SUPPLICANT_11AX
+ 
+ config WPA_CLI
+ 	bool "WPA CLI support"
+-	default y if WIFI_NM_WPA_SUPPLICANT_CLI
++	default y if WIFI_NM_WPA_SUPPLICANT_CLI && !WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 	help
+ 	  Enable WPA CLI support for wpa_supplicant.
+ 
+@@ -492,7 +501,7 @@ endif # WIFI_NM_WPA_SUPPLICANT_BGSCAN
+ 
+ config SME
+ 	bool
+-	default y
++	default y if !WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 
+ config NO_CONFIG_WRITE
+ 	bool
+@@ -504,11 +513,11 @@ config NO_CONFIG_BLOBS
+ 
+ config CTRL_IFACE
+ 	bool
+-	default y
++	default y if !WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 
+ config CTRL_IFACE_ZEPHYR
+ 	bool
+-	default y
++	default y if !WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 
+ config NO_RANDOM_POOL
+ 	bool
+diff --git a/modules/hostap/src/bss_fullmac_stub.c b/modules/hostap/src/bss_fullmac_stub.c
+new file mode 100644
+index 00000000000..c903e81cef0
+--- /dev/null
++++ b/modules/hostap/src/bss_fullmac_stub.c
+@@ -0,0 +1,370 @@
++/*
++ * BSS table stubs and event socket helper for fullmac devices.
++ *
++ * On fullmac devices (e.g. QCC730) the firmware handles all scan/connect
++ * operations internally, so the BSS table in the host supplicant is always
++ * empty.  We still need the wpa_bss_* symbols to link because wpa_supplicant.c
++ * references them unconditionally.  The dl_list heads must be initialised so
++ * that list-iteration code does not crash on an uninitialised pointer.
++ *
++ * send_data() is the event FIFO helper used by zephyr_wifi_send_event() to
++ * deliver firmware events (connect/disconnect) to the supplicant event loop.
++ * It is normally in ctrl_iface_zephyr.c which we exclude from the FULLMAC
++ * build, so we provide a self-contained copy here.
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++#include "includes.h"
++#include "common.h"
++#include "wpa_supplicant_i.h"
++#include "wpa_supplicant/bss.h"
++#include "ctrl_iface_zephyr.h"
++
++#include <zephyr/kernel.h>
++#include <zephyr/zvfs/eventfd.h>
++
++int send_data(struct k_fifo *fifo, int sock, const char *buf, size_t len, int flags)
++{
++	struct zephyr_msg *msg;
++
++	msg = os_zalloc(sizeof(struct zephyr_msg));
++	if (msg == NULL) {
++		wpa_printf(MSG_ERROR, "malloc(ctrl_iface): %s", "out of memory");
++		return -ENOMEM;
++	}
++
++	msg->data = os_zalloc(len + 1);
++	if (msg->data == NULL) {
++		wpa_printf(MSG_ERROR, "malloc(ctrl_iface): %s", "out of memory");
++		os_free(msg);
++		return -ENOMEM;
++	}
++
++	memcpy(msg->data, buf, len);
++	msg->len = len;
++
++	k_fifo_put(fifo, msg);
++	zvfs_eventfd_write(sock, 1);
++
++	return 0;
++}
++
++int wpa_bss_init(struct wpa_supplicant *wpa_s)
++{
++	dl_list_init(&wpa_s->bss);
++	dl_list_init(&wpa_s->bss_id);
++	return 0;
++}
++
++void wpa_bss_deinit(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_bss_flush(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_bss_flush_by_age(struct wpa_supplicant *wpa_s, int age)
++{
++}
++
++void wpa_bss_update_start(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_bss_update_scan_res(struct wpa_supplicant *wpa_s,
++			     struct wpa_scan_res *res,
++			     struct os_reltime *fetch_time)
++{
++}
++
++void wpa_bss_update_end(struct wpa_supplicant *wpa_s, struct scan_info *info,
++			int new_scan)
++{
++}
++
++void wpa_bss_remove(struct wpa_supplicant *wpa_s, struct wpa_bss *bss,
++		    const char *reason)
++{
++}
++
++struct wpa_bss *wpa_bss_get(struct wpa_supplicant *wpa_s, const u8 *bssid,
++			    const u8 *ssid, size_t ssid_len)
++{
++	return NULL;
++}
++
++struct wpa_bss *wpa_bss_get_bssid(struct wpa_supplicant *wpa_s,
++				  const u8 *bssid)
++{
++	return NULL;
++}
++
++struct wpa_bss *wpa_bss_get_bssid_latest(struct wpa_supplicant *wpa_s,
++					 const u8 *bssid)
++{
++	return NULL;
++}
++
++struct wpa_bss *wpa_bss_get_p2p_dev_addr(struct wpa_supplicant *wpa_s,
++					 const u8 *dev_addr)
++{
++	return NULL;
++}
++
++struct wpa_bss *wpa_bss_get_id(struct wpa_supplicant *wpa_s, unsigned int id)
++{
++	return NULL;
++}
++
++struct wpa_bss *wpa_bss_get_id_range(struct wpa_supplicant *wpa_s,
++				     unsigned int idf, unsigned int idl)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_ie(const struct wpa_bss *bss, u8 ie)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_ie_beacon(const struct wpa_bss *bss, u8 ie)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_ie_ext(const struct wpa_bss *bss, u8 ext)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_vendor_ie(const struct wpa_bss *bss, u32 vendor_type)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_vendor_ie_beacon(const struct wpa_bss *bss,
++					u32 vendor_type)
++{
++	return NULL;
++}
++
++struct wpabuf *wpa_bss_get_vendor_ie_multi(const struct wpa_bss *bss,
++					   u32 vendor_type)
++{
++	return NULL;
++}
++
++struct wpabuf *wpa_bss_get_vendor_ie_multi_beacon(const struct wpa_bss *bss,
++						   u32 vendor_type)
++{
++	return NULL;
++}
++
++int wpa_bss_get_max_rate(const struct wpa_bss *bss)
++{
++	return 0;
++}
++
++int wpa_bss_get_bit_rates(const struct wpa_bss *bss, u8 **rates)
++{
++	return -1;
++}
++
++struct wpa_bss_anqp *wpa_bss_anqp_alloc(void)
++{
++	return NULL;
++}
++
++int wpa_bss_anqp_unshare_alloc(struct wpa_bss *bss)
++{
++	return -1;
++}
++
++const u8 *wpa_bss_get_fils_cache_id(const struct wpa_bss *bss)
++{
++	return NULL;
++}
++
++int wpa_bss_ext_capab(const struct wpa_bss *bss, unsigned int capab)
++{
++	return 0;
++}
++
++int wpa_bss_parse_basic_ml_element(struct wpa_supplicant *wpa_s,
++				   struct wpa_bss *bss,
++				   u8 *ap_mld_addr,
++				   u16 *missing_links,
++				   struct wpa_ssid *ssid,
++				   u8 *ap_mld_id)
++{
++	return -1;
++}
++
++u16 wpa_bss_parse_reconf_ml_element(struct wpa_supplicant *wpa_s,
++				    struct wpa_bss *bss)
++{
++	return 0;
++}
++
++const u8 *wpa_bss_get_rsne(struct wpa_supplicant *wpa_s,
++			   const struct wpa_bss *bss, struct wpa_ssid *ssid,
++			   bool mlo)
++{
++	return NULL;
++}
++
++const u8 *wpa_bss_get_rsnxe(struct wpa_supplicant *wpa_s,
++			    const struct wpa_bss *bss, struct wpa_ssid *ssid,
++			    bool mlo)
++{
++	return NULL;
++}
++
++/* BSS notification stub (defined in bss.c, used by wpa_supplicant.c) */
++void notify_bss_changes(struct wpa_supplicant *wpa_s, u32 changes,
++			const struct wpa_bss *bss)
++{
++}
++
++/*
++ * Scan stubs for fullmac mode.
++ * These symbols are defined in scan.c which is excluded from the fullmac
++ * build.  The firmware handles all scanning; the host supplicant never
++ * initiates or processes scan results.
++ */
++#include "wpa_supplicant/scan.h"
++
++int wpa_supplicant_enabled_networks(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++void wpa_supplicant_req_scan(struct wpa_supplicant *wpa_s, int sec, int usec)
++{
++}
++
++int wpa_supplicant_delayed_sched_scan(struct wpa_supplicant *wpa_s,
++				      int sec, int usec)
++{
++	return 0;
++}
++
++int wpa_supplicant_req_sched_scan(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++void wpa_supplicant_cancel_scan(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_supplicant_cancel_delayed_sched_scan(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_supplicant_cancel_sched_scan(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpa_supplicant_notify_scanning(struct wpa_supplicant *wpa_s, int scanning)
++{
++}
++
++int wpa_supplicant_trigger_scan(struct wpa_supplicant *wpa_s,
++				struct wpa_driver_scan_params *params,
++				bool default_ies, bool next)
++{
++	return -1;
++}
++
++struct wpa_scan_results *
++wpa_supplicant_get_scan_results(struct wpa_supplicant *wpa_s,
++				struct scan_info *info, int new_scan,
++				const u8 *bssid)
++{
++	return NULL;
++}
++
++int wpa_supplicant_update_scan_results(struct wpa_supplicant *wpa_s,
++				       const u8 *bssid)
++{
++	return 0;
++}
++
++void scan_only_handler(struct wpa_supplicant *wpa_s,
++		       struct wpa_scan_results *scan_res)
++{
++}
++
++int wpas_scan_scheduled(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++int wpas_start_pno(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++int wpas_stop_pno(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++void wpas_scan_reset_sched_scan(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpas_scan_restart_sched_scan(struct wpa_supplicant *wpa_s)
++{
++}
++
++void wpas_mac_addr_rand_scan_clear(struct wpa_supplicant *wpa_s,
++				   unsigned int type)
++{
++}
++
++int wpas_abort_ongoing_scan(struct wpa_supplicant *wpa_s)
++{
++	return 0;
++}
++
++unsigned int wpas_get_est_tpt(const struct wpa_supplicant *wpa_s,
++			      const u8 *ies, size_t ies_len, int rate,
++			      int snr, int freq, enum chan_width *max_cw)
++{
++	return 0;
++}
++
++void wpa_supplicant_set_default_scan_ies(struct wpa_supplicant *wpa_s)
++{
++}
++
++int wpa_add_scan_freqs_list(struct wpa_supplicant *wpa_s,
++			    enum hostapd_hw_mode band,
++			    struct wpa_driver_scan_params *params,
++			    bool is_6ghz, bool only_6ghz_psc,
++			    bool exclude_radar)
++{
++	return 0;
++}
++
++int wpas_channel_width_rssi_bump(const u8 *ies, size_t ies_len,
++				 enum chan_width cw)
++{
++	return 0;
++}
++
++int wpas_adjust_snr_by_chanwidth(const u8 *ies, size_t ies_len,
++				 enum chan_width max_cw, int snr)
++{
++	return snr;
++}
++
++int wpas_sched_scan_plans_set(struct wpa_supplicant *wpa_s, const char *cmd)
++{
++	return 0;
++}
++
+diff --git a/modules/hostap/src/supp_api.c b/modules/hostap/src/supp_api.c
+index ea1c64c7b28..6a89cb07c42 100644
+--- a/modules/hostap/src/supp_api.c
++++ b/modules/hostap/src/supp_api.c
+@@ -22,6 +22,14 @@
+ #include "supp_main.h"
+ #include "supp_api.h"
+ #include "wpa_cli_zephyr.h"
++#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
++#include "driver_i.h"
++/* Forward declarations for fullmac direct-API calls (avoids notify.h → p2p.h
++ * which would conflict with the local WPS_PBC enum value).
++ */
++struct wpa_ssid;
++void wpas_notify_network_added(struct wpa_supplicant *wpa_s, struct wpa_ssid *ssid);
++#endif
+ #ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
+ #include "eap_peer/eap.h"
+ #endif
+@@ -80,6 +88,8 @@ static void supp_shell_connect_status(struct k_work *work);
+ static K_WORK_DELAYABLE_DEFINE(wpa_supp_status_work,
+ 		supp_shell_connect_status);
+ 
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
++
+ #define wpa_cli_cmd_v(cmd, ...)                                                                    \
+ 	({                                                                                         \
+ 		bool status;                                                                       \
+@@ -94,6 +104,171 @@ static K_WORK_DELAYABLE_DEFINE(wpa_supp_status_work,
+ 		status;                                                                            \
+ 	})
+ 
++#else /* CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC */
++
++/*
++ * On fullmac devices ctrl_iface.c / wpa_cli_zephyr.c are not compiled in.
++ * This dispatcher parses the traditional "COMMAND [args...]" string and
++ * calls the appropriate wpa_supplicant internal API directly.
++ *
++ * Supported patterns (exhaustive list used by wpas_add_and_config_network):
++ *   remove_network all
++ *   remove_network <id>
++ *   set_network <id> <field> [<value>]
++ *   enable_network <id>
++ *   select_network <id>
++ *   set <field> <value>
++ *   disconnect
++ */
++
++/* Extract the next whitespace-delimited word from *p into dst (nul-terminated).
++ * Advances *p past the word and trailing whitespace.
++ * Returns false if the string is empty.
++ */
++static bool _next_word(const char **p, char *dst, size_t dst_size)
++{
++	const char *s = *p;
++	size_t n;
++
++	while (*s == ' ')
++		s++;
++	if (*s == '\0') {
++		*p = s;
++		return false;
++	}
++	n = 0;
++	while (*s && *s != ' ' && n + 1 < dst_size)
++		dst[n++] = *s++;
++	dst[n] = '\0';
++	while (*s == ' ')
++		s++;
++	*p = s;
++	return true;
++}
++
++/* Strip one layer of surrounding double-quotes from *s.
++ * wpa_config_set() expects unquoted values for string fields.
++ */
++static const char *_strip_quotes(const char *s, char *buf, size_t bufsz)
++{
++	size_t len = strlen(s);
++
++	if (len >= 2 && s[0] == '"' && s[len - 1] == '"') {
++		size_t inner = len - 2;
++		if (inner >= bufsz)
++			inner = bufsz - 1;
++		memcpy(buf, s + 1, inner);
++		buf[inner] = '\0';
++		return buf;
++	}
++	return s;
++}
++
++static int _fullmac_wpa_cmd_v(struct wpa_supplicant *wpa_s,
++			      const char *fmt, ...)
++{
++	char cmd[512];
++	va_list ap;
++	const char *p;
++	char word0[64], word1[64], word2[64];
++	char stripbuf[256];
++
++	va_start(ap, fmt);
++	vsnprintf(cmd, sizeof(cmd), fmt, ap);
++	va_end(ap);
++
++	p = cmd;
++	if (!_next_word(&p, word0, sizeof(word0)))
++		return -1;
++
++	/* remove_network all | remove_network <id> */
++	if (os_strcasecmp(word0, "remove_network") == 0) {
++		if (!_next_word(&p, word1, sizeof(word1)))
++			return -1;
++		if (os_strcmp(word1, "all") == 0)
++			return wpa_supplicant_remove_all_networks(wpa_s);
++		return wpa_supplicant_remove_network(wpa_s, atoi(word1));
++	}
++
++	/* set_network <id> <field> [<value>] */
++	if (os_strcasecmp(word0, "set_network") == 0) {
++		if (!_next_word(&p, word1, sizeof(word1)))
++			return -1;
++		if (!_next_word(&p, word2, sizeof(word2)))
++			return -1;
++		int id = atoi(word1);
++		struct wpa_ssid *ssid = wpa_config_get_network(wpa_s->conf, id);
++		if (!ssid) {
++			wpa_printf(MSG_ERROR, "FULLMAC: set_network: no network id=%d", id);
++			return -1;
++		}
++		/* p now points to the value (may contain spaces, may be quoted).
++		 * wpa_config_set() calls wpa_config_parse_string() internally
++		 * which expects the value WITH surrounding quotes for string
++		 * fields (e.g. ssid, passphrase).  Pass p verbatim.
++		 */
++		const char *val = (*p != '\0') ? p : "";
++		return wpa_config_set(ssid, word2, val, 0);
++	}
++
++	/* enable_network <id> */
++	if (os_strcasecmp(word0, "enable_network") == 0) {
++		if (!_next_word(&p, word1, sizeof(word1)))
++			return -1;
++		int id = atoi(word1);
++		struct wpa_ssid *ssid = wpa_config_get_network(wpa_s->conf, id);
++		wpa_supplicant_enable_network(wpa_s, ssid);
++		return 0;
++	}
++
++	/* select_network <id> */
++	if (os_strcasecmp(word0, "select_network") == 0) {
++		if (!_next_word(&p, word1, sizeof(word1)))
++			return -1;
++		int id = atoi(word1);
++		struct wpa_ssid *ssid = wpa_config_get_network(wpa_s->conf, id);
++		wpa_supplicant_select_network(wpa_s, ssid);
++		return 0;
++	}
++
++	/* set <field> <value> */
++	if (os_strcasecmp(word0, "set") == 0) {
++		if (!_next_word(&p, word1, sizeof(word1)))
++			return -1;
++		if (os_strcmp(word1, "openssl_ciphers") == 0) {
++			os_free(wpa_s->conf->openssl_ciphers);
++			const char *val = _strip_quotes(p, stripbuf, sizeof(stripbuf));
++			wpa_s->conf->openssl_ciphers = os_strdup(val);
++		}
++		return 0;
++	}
++
++	/* disconnect */
++	if (os_strcasecmp(word0, "disconnect") == 0) {
++		wpa_supplicant_deauthenticate(wpa_s, WLAN_REASON_DEAUTH_LEAVING);
++		return 0;
++	}
++
++	wpa_printf(MSG_WARNING, "FULLMAC: unhandled cmd: %s", word0);
++	return -1;
++}
++
++#define wpa_cli_cmd_v(cmd, ...)                                                                    \
++	({                                                                                         \
++		bool status;                                                                       \
++                                                                                                   \
++		if (_fullmac_wpa_cmd_v(wpa_s, cmd, ##__VA_ARGS__) < 0) {                           \
++			wpa_printf(MSG_ERROR, "Failed to execute fullmac cmd: %s", cmd);           \
++			status = false;                                                            \
++		} else {                                                                           \
++			status = true;                                                             \
++		}                                                                                  \
++                                                                                                   \
++		status;                                                                            \
++	})
++
++#endif /* CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC */
++
+ static struct wpa_supplicant *get_wpa_s_handle(const struct device *dev)
+ {
+ 	struct net_if *iface = net_if_lookup_by_dev(dev);
+@@ -636,11 +811,25 @@ int wpas_add_and_config_network(struct wpa_supplicant *wpa_s,
+ 		goto out;
+ 	}
+ 
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 	ret = z_wpa_ctrl_add_network(wpa_s->ctrl_conn, &resp);
+ 	if (ret) {
+ 		wpa_printf(MSG_ERROR, "Failed to add network");
+ 		goto out;
+ 	}
++#else
++	{
++		struct wpa_ssid *new_ssid = wpa_config_add_network(wpa_s->conf);
++		if (!new_ssid) {
++			wpa_printf(MSG_ERROR, "Failed to add network");
++			ret = -1;
++			goto out;
++		}
++		wpa_config_set_network_defaults(new_ssid);
++		wpas_notify_network_added(wpa_s, new_ssid);
++		resp.network_id = new_ssid->id;
++	}
++#endif
+ 
+ 	wpa_printf(MSG_DEBUG, "NET added: %d", resp.network_id);
+ 
+@@ -1405,10 +1594,12 @@ int supplicant_status(const struct device *dev, struct wifi_iface_status *status
+ 	if (wpa_s->wpa_state >= WPA_ASSOCIATED) {
+ 		struct wpa_ssid *ssid = wpa_s->current_ssid;
+ 		u8 channel;
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 		struct signal_poll_resp signal_poll;
++		struct status_resp cli_status;
++#endif
+ 		u8 *_ssid;
+ 		size_t ssid_len;
+-		struct status_resp cli_status;
+ 		int proto;
+ 		int key_mgmt;
+ 		int sae_pwe;
+@@ -1432,6 +1623,7 @@ int supplicant_status(const struct device *dev, struct wifi_iface_status *status
+ 		status->channel = channel;
+ 
+ 		if (ssid_len == 0) {
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 			int _res = z_wpa_ctrl_status(wpa_s->ctrl_conn, &cli_status);
+ 
+ 			if (_res < 0) {
+@@ -1441,6 +1633,11 @@ int supplicant_status(const struct device *dev, struct wifi_iface_status *status
+ 			}
+ 
+ 			_ssid = cli_status.ssid;
++#else
++			/* On fullmac use the last saved connection params as fallback */
++			ssid_len = last_wifi_conn_params.ssid_length;
++			_ssid = last_wifi_conn_params.ssid;
++#endif
+ 		}
+ 
+ 		os_memcpy(status->ssid, _ssid, ssid_len);
+@@ -1461,6 +1658,7 @@ int supplicant_status(const struct device *dev, struct wifi_iface_status *status
+ 
+ 		status->rssi = -WPA_INVALID_NOISE;
+ 		if (status->iface_mode == WIFI_MODE_INFRA) {
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 			ret = z_wpa_ctrl_signal_poll(wpa_s->ctrl_conn, &signal_poll);
+ 			if (!ret) {
+ 				status->rssi = signal_poll.rssi;
+@@ -1469,6 +1667,17 @@ int supplicant_status(const struct device *dev, struct wifi_iface_status *status
+ 				wpa_printf(MSG_WARNING, "%s: Failed to read signal poll info",
+ 						   __func__);
+ 			}
++#else
++			struct wpa_signal_info si;
++			ret = wpa_drv_signal_poll(wpa_s, &si);
++			if (!ret) {
++				status->rssi = si.data.signal;
++				status->current_phy_tx_rate = (float)si.data.current_tx_rate / 1000.0f;
++			} else {
++				wpa_printf(MSG_WARNING, "%s: Failed to read signal poll info",
++						   __func__);
++			}
++#endif
+ 		}
+ 
+ 		conn_info = os_zalloc(sizeof(struct wpa_conn_info));
+@@ -2136,7 +2345,9 @@ out:
+ static int supplicant_wps_pin(const struct device *dev, struct wifi_wps_config_params *params)
+ {
+ 	struct wpa_supplicant *wpa_s;
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 	char *get_pin_cmd = "WPS_PIN get";
++#endif
+ 	int ret = -1;
+ 
+ 	k_mutex_lock(&wpa_supplicant_mutex, K_FOREVER);
+@@ -2149,9 +2360,14 @@ static int supplicant_wps_pin(const struct device *dev, struct wifi_wps_config_p
+ 	}
+ 
+ 	if (params->oper == WIFI_WPS_PIN_GET) {
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 		if (zephyr_wpa_cli_cmd_resp(wpa_s->ctrl_conn, get_pin_cmd, params->pin)) {
+ 			goto out;
+ 		}
++#else
++		wpa_printf(MSG_ERROR, "WPS_PIN_GET not supported in fullmac mode");
++		goto out;
++#endif
+ 	} else if (params->oper == WIFI_WPS_PIN_SET) {
+ 		if (!wpa_cli_cmd_v("wps_check_pin %s", params->pin)) {
+ 			goto out;
+diff --git a/modules/hostap/src/supp_main.c b/modules/hostap/src/supp_main.c
+index 13f8714c111..240f4a38b73 100644
+--- a/modules/hostap/src/supp_main.c
++++ b/modules/hostap/src/supp_main.c
+@@ -310,6 +310,22 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+ 
+ 	LOG_DBG("Adding interface %s [%d] (%p)", ifname, net_if_get_by_iface(iface), iface);
+ 
++#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
++	{
++		struct wpa_interface iface_params;
++
++		os_memset(&iface_params, 0, sizeof(iface_params));
++		iface_params.ifname = ifname;
++		iface_params.driver = "zephyr";
++
++		wpa_s = wpa_supplicant_add_iface(ctx->supplicant, &iface_params, NULL);
++		if (wpa_s == NULL) {
++			LOG_ERR("Failed to add iface %s", ifname);
++			ret = -EINVAL;
++			goto out;
++		}
++	}
++#else
+ 	ret = zephyr_wpa_cli_global_cmd_v("interface_add %s %s %s %s",
+ 					  ifname, "zephyr", "zephyr", "zephyr");
+ 	if (ret) {
+@@ -326,6 +342,7 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+ 		LOG_ERR("Failed to add iface %s", ifname);
+ 		goto out;
+ 	}
++#endif
+ 
+ 	wpa_s->conf->filter_ssids = 1;
+ 	wpa_s->conf->ap_scan = 1;
+@@ -336,12 +353,6 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+ 		net_if_get_name(iface, ctx->if_name, CONFIG_NET_INTERFACE_NAME_LEN);
+ 	}
+ 
+-	ret = zephyr_wpa_ctrl_init(wpa_s);
+-	if (ret) {
+-		LOG_ERR("Failed to initialize supplicant control interface");
+-		goto out;
+-	}
+-
+ 	ret = wifi_nm_register_mgd_type_iface(wifi_nm_get_instance("wifi_supplicant"),
+ 					      WIFI_TYPE_STA,
+ 					      iface);
+@@ -351,6 +362,14 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+ 		goto out;
+ 	}
+ 
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
++	ret = zephyr_wpa_ctrl_init(wpa_s);
++	if (ret) {
++		LOG_ERR("Failed to initialize supplicant control interface");
++		goto out;
++	}
++#endif
++
+ 	supplicant_generate_state_event(ifname, NET_EVENT_SUPPLICANT_CMD_IFACE_ADDED, 0);
+ 
+ 	if (get_iface_count(ctx) == 1) {
+@@ -711,7 +730,9 @@ static void handler(void)
+ 		LOG_WRN("Failed to add CLI FST ctrl");
+ 	}
+ #endif
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 	zephyr_global_wpa_ctrl_init();
++#endif
+ 
+ 	register_supplicant_event_socket(ctx);
+ 
+@@ -728,7 +749,9 @@ static void handler(void)
+ 
+ 	eloop_unregister_read_sock(ctx->sock);
+ 
++#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
+ 	zephyr_global_wpa_ctrl_deinit();
++#endif
+ 
+ 	fst_global_deinit();
+ 
+diff --git a/modules/mbedtls/CMakeLists.txt b/modules/mbedtls/CMakeLists.txt
+index b7582244196..549daeba874 100644
+--- a/modules/mbedtls/CMakeLists.txt
++++ b/modules/mbedtls/CMakeLists.txt
+@@ -214,14 +214,19 @@ zephyr_interface_library_named(mbedTLS)
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_msg.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_ticket.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls12_client.c
+-      ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls12_server.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls13_client.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls13_generic.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls13_keys.c
+-      ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls13_server.c
+       ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls.c
+     )
+ 
++    if(CONFIG_MBEDTLS_SSL_SRV_C)
++      list(APPEND mbedtls_source
++        ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls12_server.c
++        ${ZEPHYR_CURRENT_MODULE_DIR}/library/ssl_tls13_server.c
++      )
++    endif()
++
+     zephyr_library_sources(${mbedtls_source})
+ 
+     zephyr_library_link_libraries(
+diff --git a/modules/mbedtls/Kconfig.mbedtls b/modules/mbedtls/Kconfig.mbedtls
+index fa33f9eba58..e9dcc82ebc4 100644
+--- a/modules/mbedtls/Kconfig.mbedtls
++++ b/modules/mbedtls/Kconfig.mbedtls
+@@ -36,6 +36,13 @@ if MBEDTLS_SSL_PROTO_TLS1_2 || MBEDTLS_SSL_PROTO_TLS1_3
+ config MBEDTLS_SSL_ALPN
+ 	bool "Support for setting the supported Application Layer Protocols"
+ 
++config MBEDTLS_SSL_SRV_C
++	bool "TLS server support"
++	default y
++	help
++	  Include TLS 1.2/1.3 server-side code. Disable to save flash
++	  on client-only devices (e.g. Wi-Fi station using EAP).
++
+ endif # MBEDTLS_SSL_PROTO_TLS1_2 || MBEDTLS_SSL_PROTO_TLS1_3
+ 
+ endmenu # TLS
+diff --git a/modules/mbedtls/configs/config-mbedtls.h b/modules/mbedtls/configs/config-mbedtls.h
+index 0b52143e3aa..537a044dd2b 100644
+--- a/modules/mbedtls/configs/config-mbedtls.h
++++ b/modules/mbedtls/configs/config-mbedtls.h
+@@ -76,7 +76,9 @@
+ 
+ /* Common modules required for TLS 1.2 and 1.3 */
+ #define MBEDTLS_SSL_TLS_C
++#if defined(CONFIG_MBEDTLS_SSL_SRV_C)
+ #define MBEDTLS_SSL_SRV_C
++#endif
+ #define MBEDTLS_SSL_CLI_C
+ 
+ /* This is not supported by Mbed TLS in TLS 1.3 mode
+-- 
+2.43.0
+

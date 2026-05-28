@@ -3,6 +3,22 @@
 
 cmake_minimum_required(VERSION 3.20.0)
 
+# Apply workspace patches before Zephyr loads Kconfig.
+# Runs at CMake configure time; no-op if patches are already applied.
+find_program(PYTHON_CMD NAMES python3 python)
+if(PYTHON_CMD)
+  get_filename_component(_patch_script
+    "${CMAKE_CURRENT_SOURCE_DIR}/../patch/apply_patches.py" ABSOLUTE)
+  execute_process(
+    COMMAND "${PYTHON_CMD}" "${_patch_script}" apply
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    RESULT_VARIABLE _patch_result
+  )
+  if(NOT _patch_result EQUAL 0)
+    message(FATAL_ERROR "apply_patches.py failed (exit ${_patch_result})")
+  endif()
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(ent_app)
 
