@@ -9,7 +9,7 @@ index d5ca46d8b97..be15ccdbd6a 100644
 +	/** Cancel ongoing WPS operation */
 +	WIFI_WPS_CANCEL = 3,
  };
- 
+
 +/** Maximum number of channels that can be specified for a WPS scan. */
 +#define WIFI_WPS_MAX_CHANNELS 3
 +
@@ -26,7 +26,7 @@ index d5ca46d8b97..be15ccdbd6a 100644
 +	/** Number of valid entries in channels[]. */
 +	uint8_t channel_count;
  };
- 
+
  /** Wi-Fi AP status
 diff --git a/subsys/net/l2/wifi/wifi_shell.c b/subsys/net/l2/wifi/wifi_shell.c
 index 46f64dcb4f0..3aac9493741 100644
@@ -46,10 +46,10 @@ index 46f64dcb4f0..3aac9493741 100644
 +		{"help",  no_argument,       0, 'h'},
 +		{0, 0, 0, 0}
 +	};
- 
+
  	context.sh = sh;
 +	params.oper = WIFI_WPS_PBC;
- 
+
 -	if (argc == 1) {
 -		params.oper = WIFI_WPS_PBC;
 -	} else {
@@ -116,12 +116,12 @@ index 46f64dcb4f0..3aac9493741 100644
 +			return -EINVAL;
 +		}
  	}
- 
+
  	if (net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface, &params, sizeof(params))) {
 @@ -2455,6 +2619,23 @@ static int cmd_wifi_wps_pin(const struct shell *sh, size_t argc, char *argv[])
  	return 0;
  }
- 
+
 +static int cmd_wifi_wps_cancel(const struct shell *sh, size_t argc, char *argv[])
 +{
 +	struct net_if *iface = get_iface(IFACE_TYPE_STA, argc, argv);
@@ -143,7 +143,7 @@ index 46f64dcb4f0..3aac9493741 100644
  {
  	struct net_if *iface = get_iface(IFACE_TYPE_SAP, argc, argv);
 @@ -4181,9 +4382,16 @@ SHELL_SUBCMD_ADD((wifi), version, NULL,
- 
+
  SHELL_SUBCMD_ADD((wifi), wps_pbc, NULL,
  		 "Start a WPS PBC connection.\n"
 -		 "[-i, --iface=<interface index>] : Interface index.\n",
@@ -158,13 +158,13 @@ index 46f64dcb4f0..3aac9493741 100644
  		 cmd_wifi_wps_pbc,
 -		 1, 2);
 +		 1, 7);
- 
+
  SHELL_SUBCMD_ADD((wifi), wps_pin, NULL,
  		 "Set and get WPS pin.\n"
 @@ -4192,6 +4400,12 @@ SHELL_SUBCMD_ADD((wifi), wps_pin, NULL,
  		 cmd_wifi_wps_pin,
  		 1, 3);
- 
+
 +SHELL_SUBCMD_ADD((wifi), wps_cancel, NULL,
 +		 "Cancel ongoing WPS operation.\n"
 +		 "[-i, --iface=<interface index>] : Interface index.\n",
@@ -177,8 +177,8 @@ index 46f64dcb4f0..3aac9493741 100644
 diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
 --- a/modules/hostap/CMakeLists.txt
 +++ b/modules/hostap/CMakeLists.txt
-@@ -901,2 +901,22 @@ endif() # !CONFIG_WIFI_NM_WPA_SUPPLICANT_MINIMAL
- 
+@@ -901,2 +901,45 @@ endif() # !CONFIG_WIFI_NM_WPA_SUPPLICANT_MINIMAL
+
  endif()
 +# QCC730 host-driven WPS enrollee (mutually exclusive with WIFI_NM_WPA_SUPPLICANT_WPS)
 +if(CONFIG_WIFI_QCOM_WPS)
@@ -199,6 +199,29 @@ diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
 +  endif()
 +  zephyr_library_compile_definitions(CONFIG_WPS)
 +endif()
++
++# QCC730 host-driven P2P (built on top of QCOM_WPS which supplies wps/l2/crypto)
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_P2P_EXT)
++  zephyr_library_sources(
++    ${HOSTAP_SRC_BASE}/p2p/p2p.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_build.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_dev_disc.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_go_neg.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_group.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_invitation.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_parse.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_pd.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_sd.c
++    ${HOSTAP_SRC_BASE}/p2p/p2p_utils.c
++    ${HOSTAP_SRC_BASE}/common/ieee802_11_common.c
++    ${HOSTAP_SRC_BASE}/common/gas.c
++    ${HOSTAP_SRC_BASE}/utils/uuid.c
++  )
++endif()
++
++zephyr_library_compile_definitions_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_P2P_NO_DEBUG
++  CONFIG_P2P_NO_DEBUG
++)
 +
 diff --git a/modules/hostap/src/wps_registrar_stub.c b/modules/hostap/src/wps_registrar_stub.c
 new file mode 100644
