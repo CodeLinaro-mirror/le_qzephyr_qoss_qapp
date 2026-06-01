@@ -170,7 +170,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
     validation_failed = False
     for pf in patch_files:
         result = run(
-            ['git', 'apply', '--check', '--ignore-whitespace', str(pf)],
+            ['git', 'apply', '--check', '--ignore-whitespace', '--recount', str(pf)],
             cwd=repo_path,
             check=False,
             capture_output=True,
@@ -196,7 +196,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
     for i, pf in enumerate(patch_files, 1):
         print(f"\n[{i}/{len(patch_files)}] Applying: {pf.name}")
         result = run(
-            ['git', 'apply', '--ignore-whitespace', str(pf)],
+            ['git', 'apply', '--ignore-whitespace', '--recount', str(pf)],
             cwd=repo_path,
             check=False,
             capture_output=True,
