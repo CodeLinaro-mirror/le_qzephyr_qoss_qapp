@@ -1,12 +1,12 @@
-.. zephyr:code-sample:: qcli_app
-   :name: Qcli App
+.. zephyr:code-sample:: ent_app
+   :name: ent App
 
    Qualcomm command line interface
 
 Overview
 ********
 
-Qcom CLI APP.
+Qcom ENT APP.
 
 Building and Running
 ********************
@@ -14,7 +14,7 @@ Building and Running
 This application can be built and executed as follows:
 
 .. zephyr-app-commands::
-   :zephyr-app: qapp/qcli_app
+   :zephyr-app: qapp/ent_app
    :host-os: unix
    :board: qcc730evbx
    :goals: run
