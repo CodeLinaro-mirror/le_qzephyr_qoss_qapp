@@ -1,7 +1,7 @@
 sample:
-  description: Qcom cli app
+  description: Qcom ent app
     application
-  name: qcli app 
+  name: ent app
 common:
   tags: introduction
   harness: console
