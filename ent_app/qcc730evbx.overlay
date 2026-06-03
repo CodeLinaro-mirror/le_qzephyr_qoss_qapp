@@ -2,14 +2,14 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  *
- * Board overlay for qcc730mi: add a LittleFS cert partition on external QSPI
- * NOR flash (qspi_nor_flash3, GT25Q32AU 4 MB) at offset 0x3000, size 64 KB.
+ * Board overlay for qcc730evbx: add a LittleFS cert partition on external QSPI
+ * NOR flash (qspi_nor_flash2, GD25WQ32E 4 MB) at offset 0x3000, size 64 KB.
  *
- * This file is auto-included by the Zephyr build system for the qcc730mi
+ * This file is auto-included by the Zephyr build system for the qcc730evbx
  * board when building ent_app.
  */
 
-&qspi_nor_flash3 {
+&qspi_nor_flash2 {
 	status = "okay";
 	partitions {
 		compatible = "fixed-partitions";
