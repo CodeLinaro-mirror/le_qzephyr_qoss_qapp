@@ -20,7 +20,7 @@ hello_world_app=(
 )
 if [ ! -f SRC-IOE-SDK.tar.gz ]; then
     tar --exclude=.git --exclude=.gitignore -czpf SRC-IOE-SDK.tar.gz modules/hal/qcom modules/lib/hostap \
-    zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6 modules/lib/cAT
+    zephyr modules/fs/littlefs modules/crypto/mbedtls qapp qcc730 modules/debug/segger modules/lib/zcbor modules/hal/cmsis_6 modules/lib/cAT connectedhomeip modules/lib/qtcapy
 fi
 if [ -d prebuilt_HY11 ]; then
     echo "It is HY11 build,copy lib to folder modules\hal\qcom\zephyr\blobs"
@@ -32,6 +32,7 @@ if [ -d prebuilt_HY11 ]; then
     for d in "${subdirs[@]}"; do
         echo "=== enter $d and build ==="
         cd "$d"
+        mkdir -p build
         west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
         west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
         west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
@@ -42,6 +43,7 @@ if [ -d prebuilt_HY11 ]; then
     for app_path in "${hello_world_app[@]}"; do
         echo "=== enter $app_path and build ==="
         cd "$app_path"
+        mkdir -p build
         west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
         west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
         west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
@@ -64,6 +66,7 @@ cd qapp
 for d in "${subdirs[@]}"; do
     echo "=== enter $d and build ==="
     cd "$d"
+    mkdir -p build
     west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
     west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
     west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
@@ -75,6 +78,7 @@ cd $basedirs
 for app_path in "${hello_world_app[@]}"; do
     echo "=== enter $app_path and build ==="
     cd "$app_path"
+    mkdir -p build
     west build -b qcc730mi -d build/qcc730mi | tee build/build_qcc730mi.log
     west build -b qcc730mx -d build/qcc730mx | tee build/build_qcc730mx.log
     west build -b qcc730evbi -d build/qcc730evbi | tee build/build_qcc730evbi.log
