@@ -92,10 +92,9 @@ typedef struct {
     size_t offset;
 } mqttc_pubraw_t;
 
-static mqttc_session_t g_sessions[MQTTC_AT_SESSIONS];
-static K_THREAD_STACK_ARRAY_DEFINE(g_recv_stacks, MQTTC_AT_SESSIONS, MQTTC_AT_RECV_STACK);
+static mqttc_session_t *g_sessions[MQTTC_AT_SESSIONS];
 static int g_recv_mode; /* 0=string, 1=hex */
-static mqttc_pubraw_t g_pubraw;
+static mqttc_pubraw_t *g_pubraw;
 
 static mqttc_at_output_cb_t g_output_cb;
 static void *g_output_user_data;
@@ -288,10 +287,20 @@ static int mqttc_prepare_tls(mqttc_session_t *s)
  * MQTT event callback
  * ---------------------------------------------------------------------- */
 
+static int session_to_sid(const mqttc_session_t *s)
+{
+    for (int i = 0; i < MQTTC_AT_SESSIONS; i++) {
+        if (g_sessions[i] == s) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
 {
     mqttc_session_t *s = CONTAINER_OF(client, mqttc_session_t, client);
-    int sid = (int)(s - g_sessions);
+    int sid = session_to_sid(s);
 
     switch (evt->type) {
     case MQTT_EVT_CONNACK:
@@ -451,7 +460,7 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
 static void mqttc_recv_thread_fn(void *arg1, void *arg2, void *arg3)
 {
     mqttc_session_t *s = (mqttc_session_t *)arg1;
-    int sid = (int)(s - g_sessions);
+    int sid = session_to_sid(s);
 
     ARG_UNUSED(arg2);
     ARG_UNUSED(arg3);
@@ -524,12 +533,8 @@ int mqttc_at_core_init(mqttc_at_output_cb_t output_cb, void *user_data)
     g_output_cb = output_cb;
     g_output_user_data = user_data;
     memset(g_sessions, 0, sizeof(g_sessions));
-    memset(&g_pubraw, 0, sizeof(g_pubraw));
+    g_pubraw = NULL;
     g_recv_mode = 0;
-
-    for (int i = 0; i < MQTTC_AT_SESSIONS; i++) {
-        g_sessions[i].recv_stack = g_recv_stacks[i];
-    }
 
     return 0;
 }
@@ -547,23 +552,28 @@ int mqttc_at_core_init_session(int sid, bool use_ssl, const char *ca_file, const
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (s->in_use) {
+    if (g_sessions[sid] != NULL) {
         return -EALREADY;
     }
 
-    if (ca_file && strlen(ca_file) >= sizeof(s->ca_file)) {
+    if (ca_file && strlen(ca_file) >= MQTTC_AT_MAX_CERT_PATH_LEN) {
         return -ENAMETOOLONG;
     }
-    if (cert_file && strlen(cert_file) >= sizeof(s->cert_file)) {
+    if (cert_file && strlen(cert_file) >= MQTTC_AT_MAX_CERT_PATH_LEN) {
         return -ENAMETOOLONG;
     }
-    if (key_file && strlen(key_file) >= sizeof(s->key_file)) {
+    if (key_file && strlen(key_file) >= MQTTC_AT_MAX_CERT_PATH_LEN) {
         return -ENAMETOOLONG;
     }
 
+    s = k_malloc(sizeof(mqttc_session_t));
+    if (!s) {
+        LOG_ERR("sid %d: failed to alloc session (%zu B)", sid, sizeof(mqttc_session_t));
+        return -ENOMEM;
+    }
     memset(s, 0, sizeof(*s));
-    s->recv_stack = g_recv_stacks[sid];
+    g_sessions[sid] = s;
+
     s->state = MQTT_STATE_INIT;
     s->in_use = true;
     s->use_ssl = use_ssl;
@@ -595,8 +605,8 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use) {
+    s = g_sessions[sid];
+    if (s == NULL) {
         return -ENODEV;
     }
     if (s->state == MQTT_STATE_CONNECTED) {
@@ -612,6 +622,11 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
             k_thread_abort(&s->recv_thread);
         }
         s->recv_thread_started = false;
+        /* Plan B: free stack from previous connection */
+        if (s->recv_stack) {
+            k_thread_stack_free(s->recv_stack);
+            s->recv_stack = NULL;
+        }
     }
 
     /* Resolve host */
@@ -663,6 +678,18 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
         return rc;
     }
 
+    /* Plan B: allocate recv thread stack from heap */
+    s->recv_stack = k_thread_stack_alloc(MQTTC_AT_RECV_STACK, 0);
+    if (!s->recv_stack) {
+        LOG_ERR("sid %d: failed to alloc recv stack (%u B)", sid, MQTTC_AT_RECV_STACK);
+#if MQTTC_AT_TLS_SUPPORTED
+        if (s->use_ssl) {
+            mqttc_unload_tls_credentials(s);
+        }
+#endif
+        return -ENOMEM;
+    }
+
     if (s->use_ssl) {
 #if defined(CONFIG_MQTT_LIB_TLS)
         s->client.transport.type = MQTT_TRANSPORT_SECURE;
@@ -671,6 +698,8 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
         s->client.transport.tls.config.sec_tag_count = s->sec_tag_count;
         s->client.transport.tls.config.hostname = s->host;
 #else
+        k_thread_stack_free(s->recv_stack);
+        s->recv_stack = NULL;
         return -ENOTSUP;
 #endif
     } else {
@@ -680,6 +709,8 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
     rc = mqtt_connect(&s->client);
     if (rc < 0) {
         LOG_ERR("sid %d: mqtt_connect failed: %d", sid, rc);
+        k_thread_stack_free(s->recv_stack);
+        s->recv_stack = NULL;
 #if MQTTC_AT_TLS_SUPPORTED
         if (s->use_ssl) {
             mqttc_unload_tls_credentials(s);
@@ -709,8 +740,8 @@ int mqttc_at_core_subscribe(int sid, const char *topic, uint8_t qos)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use || s->state != MQTT_STATE_CONNECTED) {
+    s = g_sessions[sid];
+    if (s == NULL || s->state != MQTT_STATE_CONNECTED) {
         return -ENOTCONN;
     }
 
@@ -766,8 +797,8 @@ int mqttc_at_core_publish(int sid, const char *topic, uint8_t qos, const uint8_t
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use || s->state != MQTT_STATE_CONNECTED) {
+    s = g_sessions[sid];
+    if (s == NULL || s->state != MQTT_STATE_CONNECTED) {
         return -ENOTCONN;
     }
 
@@ -813,8 +844,8 @@ int mqttc_at_core_unsubscribe(int sid, const char *topic)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use || s->state != MQTT_STATE_CONNECTED) {
+    s = g_sessions[sid];
+    if (s == NULL || s->state != MQTT_STATE_CONNECTED) {
         return -ENOTCONN;
     }
 
@@ -872,8 +903,8 @@ int mqttc_at_core_disconnect(int sid)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use) {
+    s = g_sessions[sid];
+    if (s == NULL) {
         return -ENODEV;
     }
     if (s->state != MQTT_STATE_CONNECTED) {
@@ -891,6 +922,11 @@ int mqttc_at_core_disconnect(int sid)
     if (s->recv_thread_started) {
         k_thread_join(&s->recv_thread, K_MSEC(2000));
         s->recv_thread_started = false;
+    }
+    /* Plan B: free recv stack */
+    if (s->recv_stack) {
+        k_thread_stack_free(s->recv_stack);
+        s->recv_stack = NULL;
     }
 #if MQTTC_AT_TLS_SUPPORTED
     if (s->use_ssl) {
@@ -911,8 +947,8 @@ int mqttc_at_core_destroy(int sid)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use) {
+    s = g_sessions[sid];
+    if (s == NULL) {
         return -ENODEV;
     }
 
@@ -931,6 +967,11 @@ int mqttc_at_core_destroy(int sid)
         }
         s->recv_thread_started = false;
     }
+    /* Plan B: free recv stack */
+    if (s->recv_stack) {
+        k_thread_stack_free(s->recv_stack);
+        s->recv_stack = NULL;
+    }
 
 #if MQTTC_AT_TLS_SUPPORTED
     if (s->use_ssl) {
@@ -938,9 +979,10 @@ int mqttc_at_core_destroy(int sid)
     }
 #endif
 
-    memset(s, 0, sizeof(*s));
-    s->recv_stack = g_recv_stacks[sid];
+    /* Plan A: free session struct */
     mqttc_output_urc("\r\n+EVT:MQTT_DESTROYED:%d\r\n", sid);
+    k_free(s);
+    g_sessions[sid] = NULL;
     return 0;
 }
 
@@ -952,8 +994,8 @@ int mqttc_at_core_query_conn(int sid, char *buf, size_t buf_len)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use) {
+    s = g_sessions[sid];
+    if (s == NULL) {
         snprintf(buf, buf_len, "+MQTTCONN:%d,%d,TCP,\"\",0\r\n", sid, MQTT_STATE_INIT);
     } else {
         snprintf(buf, buf_len, "+MQTTCONN:%d,%d,%s,\"%s\",%d\r\n", sid, (int)s->state, mqttc_transport_scheme(s),
@@ -971,8 +1013,8 @@ int mqttc_at_core_query_sub(int sid, char *buf, size_t buf_len)
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use || s->sub_count == 0) {
+    s = g_sessions[sid];
+    if (s == NULL || s->sub_count == 0) {
         written = snprintf(buf, buf_len, "+MQTTSUB:%d,%d,\"\",0\r\n", sid, (int)s->state);
         return written;
     }
@@ -994,9 +1036,13 @@ void mqttc_at_core_set_recv_mode(int mode) { g_recv_mode = mode; }
  * PUBRAW data mode
  * ---------------------------------------------------------------------- */
 
-bool mqttc_at_core_is_in_data_mode(void) { return g_pubraw.active; }
+bool mqttc_at_core_is_in_data_mode(void) { return g_pubraw != NULL; }
 
-void mqttc_at_core_cancel_data_mode(void) { g_pubraw.active = false; }
+void mqttc_at_core_cancel_data_mode(void)
+{
+    k_free(g_pubraw);
+    g_pubraw = NULL;
+}
 
 int mqttc_at_core_start_pubraw(int sid, const char *topic, size_t length, uint8_t qos, uint8_t retain)
 {
@@ -1006,12 +1052,12 @@ int mqttc_at_core_start_pubraw(int sid, const char *topic, size_t length, uint8_
         return -EINVAL;
     }
 
-    s = &g_sessions[sid];
-    if (!s->in_use || s->state != MQTT_STATE_CONNECTED) {
+    s = g_sessions[sid];
+    if (s == NULL || s->state != MQTT_STATE_CONNECTED) {
         return -ENOTCONN;
     }
 
-    if (g_pubraw.active) {
+    if (g_pubraw != NULL) {
         return -EBUSY;
     }
     if (length == 0) {
@@ -1021,14 +1067,18 @@ int mqttc_at_core_start_pubraw(int sid, const char *topic, size_t length, uint8_
         return -E2BIG;
     }
 
-    memset(&g_pubraw, 0, sizeof(g_pubraw));
-    g_pubraw.active = true;
-    g_pubraw.session_id = sid;
-    strlcpy(g_pubraw.topic, topic, sizeof(g_pubraw.topic));
-    g_pubraw.qos = qos;
-    g_pubraw.retain = retain;
-    g_pubraw.expected_len = length;
-    g_pubraw.offset = 0;
+    g_pubraw = k_malloc(sizeof(mqttc_pubraw_t));
+    if (!g_pubraw) {
+        return -ENOMEM;
+    }
+    memset(g_pubraw, 0, sizeof(*g_pubraw));
+    g_pubraw->active = true;
+    g_pubraw->session_id = sid;
+    strlcpy(g_pubraw->topic, topic, sizeof(g_pubraw->topic));
+    g_pubraw->qos = qos;
+    g_pubraw->retain = retain;
+    g_pubraw->expected_len = length;
+    g_pubraw->offset = 0;
     return 0;
 }
 
@@ -1037,22 +1087,29 @@ int mqttc_at_core_data_mode_input(const uint8_t *data, size_t len)
     size_t remaining;
     size_t to_copy;
 
-    if (!g_pubraw.active) {
+    if (g_pubraw == NULL) {
         LOG_INF("data_mode_input: not active, ignoring %zu bytes", len);
         return -EINVAL;
     }
 
-    remaining = g_pubraw.expected_len - g_pubraw.offset;
+    remaining = g_pubraw->expected_len - g_pubraw->offset;
     to_copy = MIN(len, remaining);
-    LOG_INF("data_mode_input: got %zu bytes, copying %zu, offset %zu/%zu", len, to_copy, g_pubraw.offset,
-            g_pubraw.expected_len);
-    memcpy(g_pubraw.buf + g_pubraw.offset, data, to_copy);
-    g_pubraw.offset += to_copy;
+    LOG_INF("data_mode_input: got %zu bytes, copying %zu, offset %zu/%zu", len, to_copy, g_pubraw->offset,
+            g_pubraw->expected_len);
+    memcpy(g_pubraw->buf + g_pubraw->offset, data, to_copy);
+    g_pubraw->offset += to_copy;
 
-    if (g_pubraw.offset >= g_pubraw.expected_len) {
-        int rc = mqttc_at_core_publish(g_pubraw.session_id, g_pubraw.topic, g_pubraw.qos, g_pubraw.buf,
-                                       g_pubraw.expected_len, g_pubraw.retain);
-        g_pubraw.active = false;
+    if (g_pubraw->offset >= g_pubraw->expected_len) {
+        int sid = g_pubraw->session_id;
+        const char *topic = g_pubraw->topic;
+        uint8_t qos = g_pubraw->qos;
+        uint8_t retain = g_pubraw->retain;
+        size_t expected_len = g_pubraw->expected_len;
+        uint8_t *buf = g_pubraw->buf;
+
+        int rc = mqttc_at_core_publish(sid, topic, qos, buf, expected_len, retain);
+        k_free(g_pubraw);
+        g_pubraw = NULL;
         LOG_INF("data_mode_input: publish rc=%d", rc);
         if (rc < 0) {
             return rc;

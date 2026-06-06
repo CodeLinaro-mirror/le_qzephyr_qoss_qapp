@@ -236,6 +236,7 @@ int httpc_at_init(httpc_at_output_cb_t output_cb, void *user_data);
  */
 void httpc_at_deinit(void);
 
+#ifdef CONFIG_QAT_HTTPC
 /*-------------------------------------------------------------------------
  * AT Command Handler Functions
  * (Called by the AT infrastructure layer after parameter parsing)
@@ -452,6 +453,8 @@ bool httpc_at_is_in_data_mode(void);
  * @return Pointer to global config (do not modify directly)
  */
 const struct httpc_at_global_cfg *httpc_at_get_config(void);
+
+#endif /* CONFIG_QAT_HTTPC */
 
 #ifdef __cplusplus
 }

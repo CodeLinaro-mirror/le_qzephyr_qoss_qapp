@@ -31,6 +31,7 @@ LOG_MODULE_REGISTER(httpc_at_handler, LOG_LEVEL_DBG);
  * @return Heap-allocated copy, or NULL on allocation failure.
  *         Caller must free with k_free().
  */
+#ifdef CONFIG_QAT_HTTPC
 static char *httpc_strdup(const char *s)
 {
     size_t len = strlen(s) + 1;
@@ -41,6 +42,7 @@ static char *httpc_strdup(const char *s)
     }
     return copy;
 }
+#endif /* CONFIG_QAT_HTTPC */
 
 /*-------------------------------------------------------------------------
  * Global state
@@ -65,6 +67,7 @@ static void release_ssl_if_needed(const char *url);
  * - output_cb: transport layer (UART in production, test capture in tests)
  * - LOG_INF:   development visibility
  */
+#ifdef CONFIG_QAT_HTTPC
 static void httpc_at_output_str(const char *str)
 {
     if (!str) {
@@ -96,6 +99,7 @@ static void httpc_at_output_fmt(const char *fmt, ...)
     va_end(args);
     httpc_at_output_str(buf);
 }
+#endif /* CONFIG_QAT_HTTPC */
 
 /*-------------------------------------------------------------------------
  * Private: resource management
@@ -149,6 +153,7 @@ static void reset_temp_resources(void)
     g_cfg.force_stream = false;
 }
 
+#ifdef CONFIG_QAT_HTTPC
 /**
  * @brief Add a header field from a "Name: Value" string.
  *
@@ -347,6 +352,7 @@ static int prepare_ssl_if_needed(const char *url)
 
     return 0;
 }
+#endif /* CONFIG_QAT_HTTPC */
 
 static void release_ssl_if_needed(const char *url)
 {
@@ -376,6 +382,7 @@ struct body_stream_ctx {
     bool prefix_emitted;
 };
 
+#ifdef CONFIG_QAT_HTTPC
 static void body_stream_cb(const char *data, size_t len, void *user_data)
 {
     struct body_stream_ctx *ctx = (struct body_stream_ctx *)user_data;
@@ -392,6 +399,7 @@ static void body_stream_cb(const char *data, size_t len, void *user_data)
     }
     ctx->bytes_written += len;
 }
+#endif /* CONFIG_QAT_HTTPC */
 
 /*-------------------------------------------------------------------------
  * Module lifecycle
@@ -465,6 +473,7 @@ void httpc_at_deinit(void)
     LOG_INF("HTTPC AT handler deinitialized");
 }
 
+#ifdef CONFIG_QAT_HTTPC
 /*-------------------------------------------------------------------------
  * Data mode interface
  *-----------------------------------------------------------------------*/
@@ -1551,3 +1560,5 @@ int httpc_at_handle_httpnetcfg(uint32_t op_type, uint32_t param_count, httpc_at_
  *-----------------------------------------------------------------------*/
 
 const struct httpc_at_global_cfg *httpc_at_get_config(void) { return &g_cfg; }
+
+#endif /* CONFIG_QAT_HTTPC */
