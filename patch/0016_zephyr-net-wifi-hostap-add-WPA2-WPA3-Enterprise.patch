@@ -1,25 +1,77 @@
-From b4f7140d4d35f91f5e5cd5b4e5a88143758694d9 Mon Sep 17 00:00:00 2001
+From ea89c53c1de09241eb22b26eeb5ebd0390fbfe58 Mon Sep 17 00:00:00 2001
 From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
-Date: Sun, 17 May 2026 01:17:54 -0700
-Subject: [PATCH] zephyr: net: wifi: hostap: add WPA2/WPA3-Enterprise
- (802.1X/EAP) support
+Date: Fri, 5 Jun 2026 00:02:41 -0700
+Subject: [PATCH] wifi: enterprise: add WPA3-ENT PEAP/MSCHAPv2, fix optional
+ creds and TTLS
 
-Add changes across the Zephyr networking stack, hostap integration layer,
-and Wi-Fi shell to enable WPA2/WPA3-Enterprise authentication on QCC730.
+Add WIFI_SECURITY_TYPE_EAP_WPA3_ENT_PEAP_MSCHAPV2 security type for
+WPA3-Enterprise (802.1X + PMF) with PEAP/MSCHAPv2 as the EAP method.
+Register it in the EAP config table and validation path.
 
-Change-Id: I4b37c6529f35f3b1074be4a428b47706cfbcb1cf
+Introduce supplicant_config_enterprise_network(), a new entry point for
+drivers that manage 802.11 auth/assoc directly (e.g. fullmac). It calls
+wpas_add_and_config_network() with do_connect=false so wpa_supplicant is
+pre-configured before qapi_WLAN_Commit() fires, avoiding a race where
+EVENT_ASSOC arrives before the EAP network is registered. The do_connect
+parameter is threaded through all existing call sites (STA and AP) with
+do_connect=true to preserve prior behavior.
+
+Fix optional enterprise credential handling: client cert/key, phase-2
+cert/key, anonymous_identity, and key_passwd are now each guarded by a
+length check before being pushed to wpa_supplicant. This prevents
+(e.g. PEAP/MSCHAPv2 needs no client certificate).
+
+Fix EAP-TTLS phase-2 method string: "auth=MSCHAPV2" is only valid when
+the inner method is MSCHAPV2 tunneled inside PEAP; for TTLS the correct
+wpa_supplicant keyword is "autheap=MSCHAPV2".
+
+Fix default eap_ver initialisation to 0 in __wifi_args_to_params(); the
+previous value of 1 caused PEAP to negotiate PEAPv1 by default, which
+some RADIUS servers reject.
+
+Move wifi_enterprise_cert_sec_tags enum from wifi_certs.c into the
+public wifi_certs.h header so that out-of-tree cert loader modules can
+use the same tag values without duplication. Add public declarations for
+wifi_load_certs_from_fs(), wifi_list_certs(), and wifi_clear_certs().
+
+Extend wifi_certs.c process_certificates() to treat -ENOENT as
+"credential not registered" rather than a hard error, allowing
+phase-2 certs to be absent for methods that do not require them.
+
+Add wifi load_certs shell subcommand (CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES
++ CONFIG_FILE_SYSTEM_LITTLEFS) with getopt_long parsing:
+-c/--ca, -k/--key, -e/--cert, -p/--key-pass, -l/--list, --clear.
+This replaces the former ad-hoc /lfs path syntax.
+
+Fix EVENT_EAPOL_RX memory leak in supp_main.c: the src and data buffers
+allocated by the event producer were never freed in the socket handler
+cleanup path.
+
+Add ETH_P_EAPOL to the supported protocol list in sockets_packet.c so
+that EAPOL frames can be received on a raw packet socket.
+
+Conditionalise optional hostap crypto sources in CMakeLists.txt:
+aes-eax (EAP-IKEv2 only), fips_prf_internal and milenage (EAP-SIM/AKA
+only) are now compiled only when the corresponding EAP method Kconfig is
+enabled, reducing flash usage for typical enterprise deployments.
+
+Remove the unconditional "select NET_CONNECTION_MANAGER" from
+MCUMGR_TRANSPORT_UDP Kconfig; this dependency was pulling in connection
+manager even for configurations that do not use it.
+
+Change-Id: I1f5d7ea0ee375aaf9eeee50f960d5eafee3d4e89
 ---
  include/zephyr/net/wifi.h                |   2 +
- include/zephyr/net/wifi_certs.h          |  15 ++
+ include/zephyr/net/wifi_certs.h          |  55 +++++++
  modules/hostap/CMakeLists.txt            |  61 +++++++-
  modules/hostap/src/supp_api.c            | 182 +++++++++++++++--------
  modules/hostap/src/supp_api.h            |  11 ++
  modules/hostap/src/supp_main.c           |   3 +
  subsys/mgmt/mcumgr/transport/Kconfig.udp |   1 -
- subsys/net/l2/wifi/wifi_certs.c          |  10 ++
- subsys/net/l2/wifi/wifi_shell.c          |  33 +++-
+ subsys/net/l2/wifi/wifi_certs.c          |  21 ++-
+ subsys/net/l2/wifi/wifi_shell.c          | 108 +++++++++++++-
  subsys/net/lib/sockets/sockets_packet.c  |   3 +-
- 10 files changed, 256 insertions(+), 65 deletions(-)
+ 10 files changed, 371 insertions(+), 76 deletions(-)
 
 diff --git a/include/zephyr/net/wifi.h b/include/zephyr/net/wifi.h
 index 704c8976092..4b4f0d20453 100644
@@ -35,26 +87,66 @@ index 704c8976092..4b4f0d20453 100644
  	/** @cond INTERNAL_HIDDEN */
  	__WIFI_SECURITY_TYPE_AFTER_LAST,
 diff --git a/include/zephyr/net/wifi_certs.h b/include/zephyr/net/wifi_certs.h
-index ea9e02cf104..ea7fdda8427 100644
+index ea9e02cf104..991eb09e4cb 100644
 --- a/include/zephyr/net/wifi_certs.h
 +++ b/include/zephyr/net/wifi_certs.h
-@@ -35,4 +35,19 @@ int wifi_set_enterprise_credentials(struct net_if *iface, bool is_ap);
+@@ -35,4 +35,59 @@ int wifi_set_enterprise_credentials(struct net_if *iface, bool is_ap);
   */
  void wifi_clear_enterprise_credentials(void);
  
++#ifdef CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES
++/**
++ * @brief TLS credential sec_tags used for enterprise certificates.
++ *
++ * Both wifi_certs.c and the platform cert loader must use these values —
++ * define them here once rather than duplicating in each file.
++ */
++enum wifi_enterprise_cert_sec_tags {
++	WIFI_CERT_CA_SEC_TAG = 0x1020001,
++	WIFI_CERT_CLIENT_KEY_SEC_TAG,
++	WIFI_CERT_SERVER_KEY_SEC_TAG,
++	WIFI_CERT_CLIENT_SEC_TAG,
++	WIFI_CERT_SERVER_SEC_TAG,
++	/* Phase 2 */
++	WIFI_CERT_CA_P2_SEC_TAG,
++	WIFI_CERT_CLIENT_KEY_P2_SEC_TAG,
++	WIFI_CERT_CLIENT_P2_SEC_TAG,
++};
++#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES */
++
 +#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
 +    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
++
++struct shell; /* forward declaration — avoids pulling in shell headers */
++
 +/**
-+ * @brief Load EAP-TLS certificates from a LittleFS directory.
++ * @brief Load EAP-TLS certificates from specified file paths.
 + *
-+ * Reads ca.pem, client-key.pem, and client.pem from @p dir and registers
-+ * them in the TLS credentials store.  LittleFS is mounted lazily at /lfs
-+ * on the first call.
++ * Each path parameter is optional; pass NULL to skip that credential.
++ * LittleFS is mounted lazily on the first call.  Previously loaded
++ * credentials for the same tag are replaced; others are left intact.
 + *
-+ * @param dir Path to the directory (e.g. "/lfs")
++ * @param ca_path   Path to CA certificate PEM file, or NULL
++ * @param key_path  Path to client private key PEM file, or NULL
++ * @param cert_path Path to client certificate PEM file, or NULL
++ * @param key_pass  Passphrase for an encrypted private key, or NULL
 + * @return 0 on success, negative errno on failure
 + */
-+int wifi_load_certs_from_fs(const char *dir);
++int wifi_load_certs_from_fs(const char *ca_path, const char *key_path,
++                             const char *cert_path, const char *key_pass);
++
++/**
++ * @brief Show loaded credential status and LittleFS file listing.
++ *
++ * @param sh Shell instance for output
++ */
++void wifi_list_certs(const struct shell *sh);
++
++/**
++ * @brief Unload all certificates from the TLS credentials store.
++ */
++void wifi_clear_certs(void);
++
 +#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
 +
  #endif /* WIFI_CERTS_H__ */
@@ -462,10 +554,28 @@ index 19de5cf3ce5..1d7e8a1c221 100644
  	  Enables handling of SMP commands received over UDP.
  	  Will start a thread for listening on the configured UDP port.
 diff --git a/subsys/net/l2/wifi/wifi_certs.c b/subsys/net/l2/wifi/wifi_certs.c
-index 545010cbf77..248752b9829 100644
+index 545010cbf77..3fb927e80c0 100644
 --- a/subsys/net/l2/wifi/wifi_certs.c
 +++ b/subsys/net/l2/wifi/wifi_certs.c
-@@ -84,6 +84,16 @@ static int process_certificates(struct wifi_cert_data *certs, size_t cert_count)
+@@ -18,17 +18,6 @@ static struct wifi_enterprise_creds_params enterprise_creds_params = { 0 };
+ 
+ #ifdef CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES
+ #include <zephyr/net/tls_credentials.h>
+-enum wifi_enterprise_cert_sec_tags {
+-	WIFI_CERT_CA_SEC_TAG = 0x1020001,
+-	WIFI_CERT_CLIENT_KEY_SEC_TAG,
+-	WIFI_CERT_SERVER_KEY_SEC_TAG,
+-	WIFI_CERT_CLIENT_SEC_TAG,
+-	WIFI_CERT_SERVER_SEC_TAG,
+-	/* Phase 2 */
+-	WIFI_CERT_CA_P2_SEC_TAG,
+-	WIFI_CERT_CLIENT_KEY_P2_SEC_TAG,
+-	WIFI_CERT_CLIENT_P2_SEC_TAG,
+-};
+ 
+ struct wifi_cert_data {
+ 	enum tls_credential_type type;
+@@ -84,6 +73,16 @@ static int process_certificates(struct wifi_cert_data *certs, size_t cert_count)
  		uint8_t *cert_tmp;
  
  		err = tls_credential_get(certs[i].sec_tag, certs[i].type, NULL, &len);
@@ -483,7 +593,7 @@ index 545010cbf77..248752b9829 100644
  			LOG_ERR("Failed to get credential tag: %d length, err: %d",
  				certs[i].sec_tag, err);
 diff --git a/subsys/net/l2/wifi/wifi_shell.c b/subsys/net/l2/wifi/wifi_shell.c
-index 46f64dcb4f0..ae68a0b4e98 100644
+index 46f64dcb4f0..9c974f8483a 100644
 --- a/subsys/net/l2/wifi/wifi_shell.c
 +++ b/subsys/net/l2/wifi/wifi_shell.c
 @@ -643,7 +643,7 @@ static int __wifi_args_to_params(const struct shell *sh, size_t argc, char *argv
@@ -495,7 +605,7 @@ index 46f64dcb4f0..ae68a0b4e98 100644
  	params->ignore_broadcast_ssid = 0;
  	params->bandwidth = WIFI_FREQ_BANDWIDTH_20MHZ;
  	params->verify_peer_cert = false;
-@@ -1009,6 +1009,27 @@ static int cmd_wifi_disconnect(const struct shell *sh, size_t argc,
+@@ -1009,6 +1009,92 @@ static int cmd_wifi_disconnect(const struct shell *sh, size_t argc,
  	return 0;
  }
  
@@ -504,18 +614,83 @@ index 46f64dcb4f0..ae68a0b4e98 100644
 +static int cmd_wifi_load_certs(const struct shell *sh, size_t argc,
 +                               char *argv[])
 +{
-+	const char *path = (argc > 1) ? argv[1] : "/lfs";
++	const char *ca_path = NULL;
++	const char *key_path = NULL;
++	const char *cert_path = NULL;
++	const char *key_pass = NULL;
++	bool do_list = false;
++	bool do_clear = false;
++	struct getopt_state *state;
++	int opt, opt_index = 0;
 +	int ret;
++	static const struct option long_options[] = {
++		{"ca",       required_argument, 0, 'c'},
++		{"key",      required_argument, 0, 'k'},
++		{"cert",     required_argument, 0, 'e'},
++		{"key-pass", required_argument, 0, 'p'},
++		{"list",     no_argument,       0, 'l'},
++		/* 'x' is intentionally absent from the short-opts string —
++		 * --clear has no short-form alias to avoid accidental use. */
++		{"clear",    no_argument,       0, 'x'},
++		{NULL, 0, NULL, 0}
++	};
 +
-+	ret = wifi_load_certs_from_fs(path);
++	while ((opt = getopt_long(argc, argv, "c:k:e:p:l",
++				  long_options, &opt_index)) != -1) {
++		state = getopt_state_get();
++		switch (opt) {
++		case 'c':
++			ca_path = state->optarg;
++			break;
++		case 'k':
++			key_path = state->optarg;
++			break;
++		case 'e':
++			cert_path = state->optarg;
++			break;
++		case 'p':
++			key_pass = state->optarg;
++			break;
++		case 'l':
++			do_list = true;
++			break;
++		case 'x':
++			do_clear = true;
++			break;
++		default:
++			shell_help(sh);
++			return -ENOEXEC;
++		}
++	}
++
++	if (do_clear) {
++		wifi_clear_certs();
++		PR("Certificates cleared.\n");
++		return 0;
++	}
++
++	if (do_list) {
++		wifi_list_certs(sh);
++		return 0;
++	}
++
++	if (!ca_path && !key_path && !cert_path) {
++		shell_help(sh);
++		return -ENOEXEC;
++	}
++
++	if (key_pass && !key_path) {
++		PR_ERROR("load_certs: --key-pass requires --key\n");
++		return -ENOEXEC;
++	}
++
++	ret = wifi_load_certs_from_fs(ca_path, key_path, cert_path, key_pass);
 +	if (ret < 0) {
-+		PR_ERROR("load-certs: failed (%d) — check that the LittleFS image is "
-+			 "flashed and that ca.pem, client-key.pem, client.pem exist "
-+			 "in %s\n", ret, path);
++		PR_ERROR("load_certs: failed (%d)\n", ret);
 +		return ret;
 +	}
 +
-+	PR("Certificates loaded from %s\n", path);
++	PR("Certificates loaded successfully.\n");
 +	return 0;
 +}
 +#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
@@ -523,18 +698,28 @@ index 46f64dcb4f0..ae68a0b4e98 100644
  static int wifi_scan_args_to_params(const struct shell *sh,
  				    size_t argc,
  				    char *argv[],
-@@ -4039,6 +4060,16 @@ SHELL_SUBCMD_ADD((wifi), disconnect, NULL,
+@@ -4039,6 +4125,26 @@ SHELL_SUBCMD_ADD((wifi), disconnect, NULL,
  		 cmd_wifi_disconnect,
  		 1, 2);
  
 +#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
 +    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
 +SHELL_SUBCMD_ADD((wifi), load_certs, NULL,
-+		 "Load enterprise certificates from LittleFS.\n"
-+		 "[path] : Directory containing ca.pem, client-key.pem, client.pem.\n"
-+		 "         Default: /lfs\n",
++		 "Manage EAP-TLS certificates in LittleFS.\n"
++		 "  -c, --ca       <path>  Load CA certificate (PEM)\n"
++		 "  -k, --key      <path>  Load client private key (PEM)\n"
++		 "  -e, --cert     <path>  Load client certificate (PEM)\n"
++		 "  -p, --key-pass <pass>  Passphrase for encrypted private key\n"
++		 "                         (visible in logs — development use only)\n"
++		 "  -l, --list             Show loaded credentials and LittleFS files\n"
++		 "      --clear            Unload all credentials from memory\n"
++		 "Examples:\n"
++		 "  wifi load_certs -c /lfs/ca.pem\n"
++		 "  wifi load_certs -k /lfs/client.key -p secret -e /lfs/client.crt\n"
++		 "  wifi load_certs --list\n"
++		 "  wifi load_certs --clear\n",
 +		 cmd_wifi_load_certs,
-+		 1, 2);
++		 1, 10);
 +#endif /* CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES && CONFIG_FILE_SYSTEM_LITTLEFS */
 +
  SHELL_SUBCMD_ADD((wifi), mode, NULL,
