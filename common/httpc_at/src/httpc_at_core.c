@@ -35,6 +35,98 @@ static uint8_t *g_recv_buf;
 static bool     g_core_initialized;
 
 /* -------------------------------------------------------------------------
+ * Persistent connection cache (HTTP/1.1 keep-alive)
+ *
+ * CR 4563321: previously httpc_at_execute() opened a fresh socket per request
+ * and closed it unconditionally, so N consecutive AT+HTTPGET calls produced N
+ * TCP SYNs and N TLS handshakes. To honour HTTP/1.1 keep-alive we cache the
+ * connected socket keyed by (host, port, is_https, family, auth_type) and reuse
+ * it when the next request targets the same endpoint. The cache is invalidated
+ * (socket closed) on any transport error and torn down at core deinit. A reused
+ * socket that the server has idle-closed is detected when http_client_req()
+ * fails on the reused fd; httpc_at_execute() then drops the cache and retries
+ * once with a fresh connection.
+ * ---------------------------------------------------------------------- */
+struct keepalive_conn {
+	int                  sock;        /* -1 when no cached connection */
+	char                 host[128];
+	int                  port;
+	bool                 is_https;
+	sa_family_t          family;
+	httpc_at_auth_type_t auth_type;
+};
+
+static struct keepalive_conn g_keepalive = { .sock = -1 };
+
+/**
+ * @brief Close and invalidate any cached keep-alive connection.
+ */
+static void keepalive_close(void)
+{
+	if (g_keepalive.sock >= 0) {
+		zsock_close(g_keepalive.sock);
+		g_keepalive.sock = -1;
+	}
+}
+
+void httpc_at_core_close_keepalive(void)
+{
+	keepalive_close();
+}
+
+/**
+ * @brief Return a reusable cached socket for this endpoint, or -1.
+ *
+ * Matches on host/port/scheme/family/auth_type. On any mismatch the existing
+ * cached connection (if any) is closed, because only one persistent connection
+ * is cached at a time.
+ */
+static int keepalive_take(const char *host, int port, bool is_https,
+			  sa_family_t family, httpc_at_auth_type_t auth_type)
+{
+	if (g_keepalive.sock < 0) {
+		return -1;
+	}
+
+	if (g_keepalive.port == port &&
+	    g_keepalive.is_https == is_https &&
+	    g_keepalive.family == family &&
+	    g_keepalive.auth_type == auth_type &&
+	    strncmp(g_keepalive.host, host, sizeof(g_keepalive.host)) == 0) {
+		int sock = g_keepalive.sock;
+
+		/* Detach: the caller now owns the fd until it re-stores it. */
+		g_keepalive.sock = -1;
+		LOG_DBG("keep-alive: reusing socket %d for %s:%d", sock, host, port);
+		return sock;
+	}
+
+	/* Different endpoint — drop the stale cached connection. */
+	LOG_DBG("keep-alive: endpoint changed, closing cached socket %d",
+		g_keepalive.sock);
+	keepalive_close();
+	return -1;
+}
+
+/**
+ * @brief Cache a connected socket for reuse by the next request.
+ */
+static void keepalive_store(int sock, const char *host, int port, bool is_https,
+			    sa_family_t family, httpc_at_auth_type_t auth_type)
+{
+	/* Replace any previously-cached connection. */
+	keepalive_close();
+
+	g_keepalive.sock      = sock;
+	g_keepalive.port      = port;
+	g_keepalive.is_https  = is_https;
+	g_keepalive.family    = family;
+	g_keepalive.auth_type = auth_type;
+	snprintf(g_keepalive.host, sizeof(g_keepalive.host), "%s", host);
+	LOG_DBG("keep-alive: cached socket %d for %s:%d", sock, host, port);
+}
+
+/* -------------------------------------------------------------------------
  * Response callback
  * ---------------------------------------------------------------------- */
 
@@ -45,6 +137,7 @@ struct response_ctx {
 	httpc_at_output_cb_t      output_cb;
 	void                     *output_user_data;
 	struct httpc_at_response  *resp;
+	bool                      body_seen;  /* true once any body byte streamed to output (CR 4563321) */
 };
 
 /**
@@ -66,10 +159,13 @@ static int http_response_cb(struct http_response *rsp,
 	struct response_ctx *ctx = (struct response_ctx *)user_data;
 
 	/* Stream body fragment to AT output */
-	if (rsp->body_frag_len > 0 && ctx->output_cb) {
-		ctx->output_cb((const char *)rsp->body_frag_start,
-			       rsp->body_frag_len,
-			       ctx->output_user_data);
+	if (rsp->body_frag_len > 0) {
+		ctx->body_seen = true;
+		if (ctx->output_cb) {
+			ctx->output_cb((const char *)rsp->body_frag_start,
+				       rsp->body_frag_len,
+				       ctx->output_user_data);
+		}
 	}
 
 	/* On final call, fill response struct */
@@ -638,6 +734,8 @@ void httpc_at_core_deinit(void)
 		return;
 	}
 
+	keepalive_close();
+
 	if (g_recv_buf) {
 		k_free(g_recv_buf);
 		g_recv_buf = NULL;
@@ -645,6 +743,50 @@ void httpc_at_core_deinit(void)
 
 	g_core_initialized = false;
 	LOG_INF("httpc_at_core deinitialized");
+}
+
+/**
+ * @brief Create a socket and connect to host:port, with the Zephyr 4.3.0 TCP
+ *        net_context race retry (zsock_connect() ENOENT → reopen + backoff).
+ *
+ * @return connected socket fd (>= 0) or negative errno.
+ */
+static int httpc_at_open_connection(bool is_https, sa_family_t connect_family,
+				    httpc_at_auth_type_t auth_type,
+				    const char *host, int port)
+{
+	int sock = -1;
+	int ret;
+	int _attempt;
+
+	for (_attempt = 0; _attempt < 10; _attempt++) {
+		sock = create_http_socket(is_https, connect_family, auth_type, host);
+		if (sock < 0) {
+			LOG_ERR("Failed to create socket: %d", sock);
+			return sock;
+		}
+
+		ret = resolve_and_connect(sock, host, port, connect_family);
+		if (ret == 0) {
+			return sock; /* Connected successfully */
+		}
+
+		zsock_close(sock);
+		sock = -1;
+
+		if (ret != -ENOENT || _attempt == 9) {
+			LOG_ERR("Failed to connect to %s:%d: %d",
+				host, port, ret);
+			return ret;
+		}
+
+		LOG_WRN("zsock_connect() ENOENT (TCP context race), "
+			"retry %d/10 after %d ms",
+			_attempt + 1, 100 * _attempt);
+		k_sleep(K_MSEC(100 * _attempt));
+	}
+
+	return -ENOENT;
 }
 
 int httpc_at_execute(const struct httpc_at_request *req,
@@ -745,36 +887,25 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	 *   same ENOENT symptom. The timeout is passed to http_client_req()
 	 *   instead, which handles it internally.
 	 */
-	sock = -1;
-	{
-		int _attempt;
+	/*
+	 * Acquire a connected socket. Prefer a cached keep-alive connection to
+	 * the same endpoint (CR 4563321); otherwise open a fresh one. A reused
+	 * socket may have been idle-closed by the server, so track whether the
+	 * socket was reused — if the request later fails on a reused socket, we
+	 * transparently reopen and retry once below.
+	 */
+	bool reused;
 
-		for (_attempt = 0; _attempt < 10; _attempt++) {
-			sock = create_http_socket(is_https, connect_family, req->auth_type, host);
-			if (sock < 0) {
-				LOG_ERR("Failed to create socket: %d", sock);
-				return sock;
-			}
-
-			ret = resolve_and_connect(sock, host, port, connect_family);
-			if (ret == 0) {
-				break; /* Connected successfully */
-			}
-
-			zsock_close(sock);
-			sock = -1;
-
-			if (ret != -ENOENT || _attempt == 9) {
-				LOG_ERR("Failed to connect to %s:%d: %d",
-					host, port, ret);
-				return ret;
-			}
-
-			LOG_WRN("zsock_connect() ENOENT (TCP context race), "
-				"retry %d/10 after %d ms",
-				_attempt + 1, 100 * _attempt);
-			k_sleep(K_MSEC(100 * _attempt));
+	sock = keepalive_take(host, port, is_https, connect_family, req->auth_type);
+	if (sock >= 0) {
+		reused = true;
+	} else {
+		sock = httpc_at_open_connection(is_https, connect_family,
+						req->auth_type, host, port);
+		if (sock < 0) {
+			return sock;
 		}
+		reused = false;
 	}
 
 	/* --- Map httpc_at_method_t to Zephyr enum http_method --- */
@@ -816,6 +947,7 @@ int httpc_at_execute(const struct httpc_at_request *req,
 		.output_cb        = output_cb,
 		.output_user_data = output_user_data,
 		.resp             = resp,
+		.body_seen        = false,
 	};
 
 	/* Initialize response struct */
@@ -867,12 +999,58 @@ int httpc_at_execute(const struct httpc_at_request *req,
 
 	ret = http_client_req(sock, &http_req, timeout_ms, &rsp_ctx);
 
-	zsock_close(sock);
+	/*
+	 * Keep-alive stale-socket recovery (CR 4563321): if the request failed
+	 * on a *reused* socket, the server most likely idle-closed the
+	 * connection (e.g. Apache KeepAliveTimeout). Drop the dead socket,
+	 * reopen a fresh connection, and retry the request exactly once. A
+	 * fresh socket that fails is a genuine error and is not retried here.
+	 *
+	 * The transparent retry is only safe when (a) the method is idempotent
+	 * (GET/HEAD) — re-issuing POST/PUT could duplicate server-side effects —
+	 * and (b) no response body has been streamed to the AT output yet —
+	 * otherwise the retry would emit a second response concatenated onto the
+	 * partial first one. When either guard fails, the stale socket is closed
+	 * and the transport error is returned to the caller (see below).
+	 */
+	bool retry_safe = (req->method == HTTPC_AT_METHOD_GET ||
+			   req->method == HTTPC_AT_METHOD_HEAD) &&
+			  !rsp_ctx.body_seen;
+	if (ret < 0 && reused && retry_safe) {
+		LOG_WRN("http_client_req() failed on reused socket (%d), "
+			"reopening connection and retrying once", ret);
+		zsock_close(sock);
+
+		sock = httpc_at_open_connection(is_https, connect_family,
+						req->auth_type, host, port);
+		if (sock < 0) {
+			return sock;
+		}
+		reused = false;
+
+		if (resp) {
+			resp->status_code    = 0;
+			resp->content_length = 0;
+			resp->received_bytes = 0;
+			resp->complete       = false;
+		}
+
+		ret = http_client_req(sock, &http_req, timeout_ms, &rsp_ctx);
+	}
 
 	if (ret < 0) {
+		/* Transport error — do not cache a broken connection. */
+		zsock_close(sock);
 		LOG_ERR("http_client_req() failed: %d", ret);
 		return ret;
 	}
+
+	/*
+	 * Success: cache the still-open socket for HTTP/1.1 keep-alive reuse by
+	 * the next request to the same endpoint, instead of closing it.
+	 */
+	keepalive_store(sock, host, port, is_https, connect_family,
+			req->auth_type);
 
 	if (resp) {
 		LOG_DBG("HTTP request complete: status=%d body=%zu bytes",

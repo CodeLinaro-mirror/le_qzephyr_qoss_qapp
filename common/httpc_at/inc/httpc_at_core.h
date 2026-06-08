@@ -218,6 +218,16 @@ int httpc_at_core_init(void);
  */
 void httpc_at_core_deinit(void);
 
+/**
+ * @brief Close and invalidate any cached HTTP/1.1 keep-alive connection.
+ *
+ * Must be called whenever the TLS credential configuration changes
+ * (e.g. AT+HTTPSSLCFG), so that a subsequent HTTPS request to a previously
+ * cached endpoint does not reuse a socket established under the old
+ * credentials. Safe to call when no connection is cached. (CR 4563321)
+ */
+void httpc_at_core_close_keepalive(void);
+
 #ifdef __cplusplus
 }
 #endif
