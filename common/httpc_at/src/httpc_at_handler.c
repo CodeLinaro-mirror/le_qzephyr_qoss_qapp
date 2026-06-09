@@ -1446,6 +1446,13 @@ int httpc_at_handle_httpsslcfg(uint32_t op_type, uint32_t param_count, httpc_at_
         g_cfg.tls_creds_loaded = false;
     }
 
+    /*
+     * TLS credentials are changing — drop any cached keep-alive connection so
+     * a later HTTPS request to a previously cached endpoint cannot reuse a
+     * socket built under the old credentials. (CR 4563321)
+     */
+    httpc_at_core_close_keepalive();
+
     g_cfg.https_auth_type = (httpc_at_auth_type_t)scheme;
 
     /* Clear existing file paths */
