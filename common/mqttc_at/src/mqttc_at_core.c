@@ -540,6 +540,61 @@ int mqttc_at_core_init(mqttc_at_output_cb_t output_cb, void *user_data)
 }
 
 /* -------------------------------------------------------------------------
+ * Session teardown helper
+ *
+ * Fully reclaims g_sessions[sid]: disconnects if still connected, terminates
+ * the recv thread, frees its stack, unloads TLS credentials, k_free()s the
+ * session struct and NULLs the slot. Shared by mqttc_at_core_destroy() and the
+ * stale-slot reclaim path in mqttc_at_core_init_session().
+ *
+ * emit_destroyed_urc: when true, emits +EVT:MQTT_DESTROYED (explicit DESTROY);
+ * when false, the slot is reclaimed silently (re-init of a stale slot).
+ * ---------------------------------------------------------------------- */
+static void mqttc_session_teardown(int sid, bool emit_destroyed_urc)
+{
+    mqttc_session_t *s = g_sessions[sid];
+    struct mqtt_disconnect_param disc_param = {0};
+
+    if (s == NULL) {
+        return;
+    }
+
+    if (s->state == MQTT_STATE_CONNECTED) {
+        k_mutex_lock(&s->lock, K_FOREVER);
+        mqtt_disconnect(&s->client, &disc_param);
+        mqtt_abort(&s->client);
+        k_mutex_unlock(&s->lock);
+        s->state = MQTT_STATE_DISCONNECT;
+    }
+
+    if (s->recv_thread_started) {
+        /* Try graceful join first (thread checks state each 100ms loop) */
+        if (k_thread_join(&s->recv_thread, K_MSEC(500)) != 0) {
+            k_thread_abort(&s->recv_thread);
+        }
+        s->recv_thread_started = false;
+    }
+    /* Plan B: free recv stack */
+    if (s->recv_stack) {
+        k_thread_stack_free(s->recv_stack);
+        s->recv_stack = NULL;
+    }
+
+#if MQTTC_AT_TLS_SUPPORTED
+    if (s->use_ssl) {
+        mqttc_unload_tls_credentials(s);
+    }
+#endif
+
+    /* Plan A: free session struct */
+    if (emit_destroyed_urc) {
+        mqttc_output_urc("\r\n+EVT:MQTT_DESTROYED:%d\r\n", sid);
+    }
+    k_free(s);
+    g_sessions[sid] = NULL;
+}
+
+/* -------------------------------------------------------------------------
  * Public API — session operations
  * ---------------------------------------------------------------------- */
 
@@ -553,7 +608,15 @@ int mqttc_at_core_init_session(int sid, bool use_ssl, const char *ca_file, const
     }
 
     if (g_sessions[sid] != NULL) {
-        return -EALREADY;
+        /* A slot is already allocated. If the session is actively CONNECTED,
+         * reject the re-init (caller must DESTROY first). Otherwise the slot is
+         * stale (INIT/DISCONNECT after a dropped connection or a
+         * disconnect-without-destroy): reclaim it silently so the re-init
+         * succeeds idempotently instead of returning -EALREADY. (CR 4563318) */
+        if (g_sessions[sid]->state == MQTT_STATE_CONNECTED) {
+            return -EALREADY;
+        }
+        mqttc_session_teardown(sid, false);
     }
 
     if (ca_file && strlen(ca_file) >= MQTTC_AT_MAX_CERT_PATH_LEN) {
@@ -940,49 +1003,15 @@ int mqttc_at_core_disconnect(int sid)
 
 int mqttc_at_core_destroy(int sid)
 {
-    mqttc_session_t *s;
-    struct mqtt_disconnect_param disc_param = {0};
-
     if (sid < 0 || sid >= MQTTC_AT_SESSIONS) {
         return -EINVAL;
     }
 
-    s = g_sessions[sid];
-    if (s == NULL) {
+    if (g_sessions[sid] == NULL) {
         return -ENODEV;
     }
 
-    if (s->state == MQTT_STATE_CONNECTED) {
-        k_mutex_lock(&s->lock, K_FOREVER);
-        mqtt_disconnect(&s->client, &disc_param);
-        mqtt_abort(&s->client);
-        k_mutex_unlock(&s->lock);
-        s->state = MQTT_STATE_DISCONNECT;
-    }
-
-    if (s->recv_thread_started) {
-        /* Try graceful join first (thread checks state each 100ms loop) */
-        if (k_thread_join(&s->recv_thread, K_MSEC(500)) != 0) {
-            k_thread_abort(&s->recv_thread);
-        }
-        s->recv_thread_started = false;
-    }
-    /* Plan B: free recv stack */
-    if (s->recv_stack) {
-        k_thread_stack_free(s->recv_stack);
-        s->recv_stack = NULL;
-    }
-
-#if MQTTC_AT_TLS_SUPPORTED
-    if (s->use_ssl) {
-        mqttc_unload_tls_credentials(s);
-    }
-#endif
-
-    /* Plan A: free session struct */
-    mqttc_output_urc("\r\n+EVT:MQTT_DESTROYED:%d\r\n", sid);
-    k_free(s);
-    g_sessions[sid] = NULL;
+    mqttc_session_teardown(sid, true);
     return 0;
 }
 
