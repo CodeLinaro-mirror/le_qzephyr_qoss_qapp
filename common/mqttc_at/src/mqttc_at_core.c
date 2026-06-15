@@ -11,6 +11,7 @@
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/net/dns_resolve.h>
+#include <zephyr/net/net_if.h>
 #if defined(CONFIG_MQTT_LIB_TLS) && defined(CONFIG_TLS_CREDENTIALS)
 #include <zephyr/net/tls_credentials.h>
 #define MQTTC_AT_TLS_SUPPORTED 1
@@ -42,7 +43,7 @@ typedef enum {
 
 typedef struct {
     struct mqtt_client client;
-    struct sockaddr_in broker_addr;
+    struct sockaddr_storage broker_addr;
     uint8_t rx_buf[512];
     uint8_t tx_buf[512];
     mqttc_state_t state;
@@ -512,10 +513,10 @@ static void mqttc_recv_thread_fn(void *arg1, void *arg2, void *arg3)
  * DNS resolution helper
  * ---------------------------------------------------------------------- */
 
-static int mqttc_resolve_host(const char *host, uint16_t port, struct sockaddr_in *addr)
+static int mqttc_resolve_host(const char *host, uint16_t port, struct sockaddr_storage *addr)
 {
     struct zsock_addrinfo hints = {
-        .ai_family = AF_INET,
+        .ai_family   = AF_UNSPEC,
         .ai_socktype = SOCK_STREAM,
     };
     struct zsock_addrinfo *res = NULL;
@@ -529,8 +530,28 @@ static int mqttc_resolve_host(const char *host, uint16_t port, struct sockaddr_i
         return -ENOENT;
     }
 
-    memcpy(addr, res->ai_addr, sizeof(*addr));
+    memcpy(addr, res->ai_addr, res->ai_addrlen);
     zsock_freeaddrinfo(res);
+
+    /* link-local IPv6 (fe80::/10) requires sin6_scope_id to identify the
+     * outgoing interface. zsock_getaddrinfo() leaves it 0 for literal
+     * addresses, so fill it from the default (WiFi) interface. */
+    if (addr->ss_family == AF_INET6) {
+        struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)addr;
+
+        if (a6->sin6_scope_id == 0) {
+            struct net_if *iface = net_if_get_first_wifi();
+
+            if (!iface) {
+                iface = net_if_get_default();
+            }
+            if (iface) {
+                a6->sin6_scope_id = (uint32_t)net_if_get_by_iface(iface);
+                LOG_DBG("link-local IPv6: set scope_id=%u", a6->sin6_scope_id);
+            }
+        }
+    }
+
     return 0;
 }
 
