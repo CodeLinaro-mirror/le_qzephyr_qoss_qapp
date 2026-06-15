@@ -387,6 +387,9 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE) {
             struct mqtt_puback_param ack = {.message_id = p->message_id};
             mqtt_publish_qos1_ack(client, &ack);
+        } else if (p->message.topic.qos == MQTT_QOS_2_EXACTLY_ONCE) {
+            struct mqtt_pubrec_param pubrec = {.message_id = p->message_id};
+            mqtt_publish_qos2_receive(client, &pubrec);
         }
 
         copy_len = MIN((size_t)topic_len, sizeof(topic_copy) - 1);
@@ -416,6 +419,13 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,0,%s,\"%s\",%d\r\n", sid, mqttc_transport_scheme(s), s->host,
                          s->port);
         break;
+
+    case MQTT_EVT_PUBREC: {
+        const struct mqtt_pubrec_param *pubrec = &evt->param.pubrec;
+        struct mqtt_pubrel_param pubrel = {.message_id = pubrec->message_id};
+        mqtt_publish_qos2_release(&s->client, &pubrel);
+        break;
+    }
 
     case MQTT_EVT_PUBCOMP:
         mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,0,%s,\"%s\",%d\r\n", sid, mqttc_transport_scheme(s), s->host,
