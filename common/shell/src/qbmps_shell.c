@@ -228,7 +228,6 @@ static bool wakeup_cb_bcmc_filter_dtim(uint16_t type, bool bm_cast, void *wifi_f
         }
 
         struct net_udp_hdr  *udp = (struct net_udp_hdr *)(ip_frame +NET_IPV4H_LEN);
-        uint16_t src_port = ntohs(udp->src_port);
         uint16_t dst_port = ntohs(udp->dst_port);
 
         // whitelist for UDP dst port

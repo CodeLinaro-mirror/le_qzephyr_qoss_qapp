@@ -588,14 +588,14 @@ bool if_os_default_tasks(char *name)
     return false;
 }
 
-static void suspend_thread_cb(struct k_thread *thread, void *user_data)
+static void suspend_thread_cb(const struct k_thread *thread, void *user_data)
 {
-    const char *name = k_thread_name_get(thread);
+    const char *name = k_thread_name_get((struct k_thread *)thread);
 
     if (name) {
         if (if_os_default_tasks((char *)name)) {
             /*printk("Suspending task: %s\n", name);*/
-            k_thread_suspend(thread);
+            k_thread_suspend((struct k_thread *)thread);
         }
     }
     return;
@@ -608,14 +608,14 @@ void suspend_all_os_default_tasks(void)
 }
 
 /* callback for k_thread_foreach */
-static void resume_thread_cb(struct k_thread *thread, void *user_data)
+static void resume_thread_cb(const struct k_thread *thread, void *user_data)
 {
-    const char *name = k_thread_name_get(thread);
+    const char *name = k_thread_name_get((struct k_thread *)thread);
 
     if (name) {
         if (if_os_default_tasks((char *)name)) {
             /*printk("Resuming tasks: %s\n", name);*/
-            k_thread_resume(thread);
+            k_thread_resume((struct k_thread *)thread);
         }
     }
     return;
