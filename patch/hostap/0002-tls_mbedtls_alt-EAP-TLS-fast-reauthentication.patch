@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
+Date: Fri, 12 Jun 2026 09:24:00 -0700
+Subject: [PATCH] tls_mbedtls_alt: EAP/TLS fast reauthentication (Stage 1)
+
+Add TLS session-ID resumption so a same-boot reconnect performs an
+abbreviated TLS handshake (skipping the certificate exchange) for both
+EAP-TLS and PEAP. The EAP envelope and the firmware-owned 4-way handshake
+are unchanged.
+
+Milestone 0 refuted tls_connection reuse across reconnect: the EAP state
+machine destroys the tls_connection and creates a fresh one (different
+pointer). The session is therefore cached in the file-scope tls_ctx_global
+(process lifetime, "Route A+") rather than in struct tls_connection, and
+re-offered via mbedtls_ssl_set_session() at BOTH connection-birth points:
+tls_mbedtls_ssl_setup() (the conn-create reconnect path) and
+tls_connection_shutdown() (the reauth path, if hostap ever reuses conn).
+
+Resumption is detected on the non-ticket path (MBEDTLS_SSL_SESSION_TICKETS
+is OFF) by comparing the negotiated session_id against the offered one, and
+exposed via conn->resumed (the MSG_DEBUG line; authoritative correctness is
+the on-wire handshake shape). The peer-cert copy held by mbedtls_ssl_session
+is freed before each refresh and in tls_deinit to avoid a leak.
+
+Host-side only: no firmware/QAPI change, EAPOL-Key stays on the firmware
+path, no SME migration. Requires no Kconfig change (MBEDTLS_SSL_CLI_C
+already on). Server side: FreeRADIUS EAP tls-config requires
+cache { enable=yes; name; persist_dir } for the AP to echo the session_id.
+
+---
+ src/crypto/tls_mbedtls_alt.c | 63 ++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
+--- a/src/crypto/tls_mbedtls_alt.c
++++ b/src/crypto/tls_mbedtls_alt.c
+@@ -172,6 +172,9 @@
+     unsigned int crl_reload_interval;
+     uint32_t refcnt;
+     struct tls_config init_conf;
++
++    unsigned int has_saved : 1; /* saved_session holds a valid session for fast reauth */
++    mbedtls_ssl_session saved_session; /* global TLS session cache; persists across conn deinit */
+ };
+ 
+ static struct tls_global tls_ctx_global;
+@@ -376,6 +379,9 @@
+     if (++tls_ctx_global.refcnt > 1)
+         return &tls_ctx_global;
+ 
++    mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
++    tls_ctx_global.has_saved = 0;
++
+ #if !defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG)
+     tls_ctx_global.ctr_drbg = crypto_mbedtls_ctr_drbg();
+ #endif
+@@ -410,6 +416,7 @@
+     char *openssl_ciphers; /*(allocated in tls_init())*/
+     *(const char **)&openssl_ciphers = tls_ctx_global.init_conf.openssl_ciphers;
+     os_free(openssl_ciphers);
++    mbedtls_ssl_session_free(&tls_ctx_global.saved_session);
+ #ifdef MBEDTLS_SSL_SESSION_TICKETS
+     mbedtls_ssl_ticket_free(&tls_ctx_global.ticket_ctx);
+ #endif
+@@ -559,9 +566,18 @@
+ #endif
+         tls_connection_deinit_expkey(conn);
+ 
+-    /* RFE: prepare for session resumption? (see doc in crypto/tls.h) */
+-
+-    return mbedtls_ssl_session_reset(&conn->ssl);
++    /* Fast reauth (Route A+): re-offer session from global cache so the
++     * next client_hello carries the prior session_id even after conn recreation. */
++    int _reset = mbedtls_ssl_session_reset(&conn->ssl);
++    if (_reset != 0)
++        return _reset;
++
++    if (tls_ctx_global.has_saved) {
++        int _ss = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
++        wpa_printf(MSG_DEBUG, "MTLS: fast-reauth set_session (reauth) ret=%d", _ss);
++        /* Non-fatal on failure: handshake proceeds as full. */
++    }
++    return 0;
+ }
+ 
+ static int tls_wpabuf_resize_put_data(struct wpabuf **buf, const unsigned char *data, size_t dlen)
+@@ -643,6 +659,15 @@
+     if (conn->verify_peer)
+         mbedtls_ssl_set_verify(&conn->ssl, tls_mbedtls_verify_cb, conn);
+ 
++    /* Fast reauth (Route A+): offer the saved session from the global cache so
++     * the first client_hello from this new conn carries the prior session_id. */
++    if (tls_ctx_global.has_saved) {
++        ret = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
++        wpa_printf(MSG_DEBUG, "MTLS: fast-reauth set_session (init) ret=%d", ret);
++        /* Non-fatal: handshake proceeds as full on failure. */
++        ret = 0;
++    }
++
+     return 0;
+ }
+ 
+@@ -2175,6 +2200,40 @@
+     {
+         case 0:
+             conn->established = 1;
++
++            /* Fast reauth (Route A+): cache session in global so it persists
++             * across conn deinit/init cycles (conn is recreated on reconnect). */
++            {
++                mbedtls_ssl_session cur_session;
++                mbedtls_ssl_session_init(&cur_session);
++                if (mbedtls_ssl_get_session(&conn->ssl, &cur_session) == 0) {
++                    /* Spec §3a: detect resumption via session-ID match. */
++                    if (tls_ctx_global.has_saved &&
++                        cur_session.MBEDTLS_PRIVATE(id_len) > 0 &&
++                        cur_session.MBEDTLS_PRIVATE(id_len) ==
++                            tls_ctx_global.saved_session.MBEDTLS_PRIVATE(id_len) &&
++                        os_memcmp(cur_session.MBEDTLS_PRIVATE(id),
++                                  tls_ctx_global.saved_session.MBEDTLS_PRIVATE(id),
++                                  cur_session.MBEDTLS_PRIVATE(id_len)) == 0) {
++                        conn->resumed = 1;
++                    }
++                    /* Refresh: free prior session to avoid peer-cert leak. */
++                    if (tls_ctx_global.has_saved) {
++                        mbedtls_ssl_session_free(&tls_ctx_global.saved_session);
++                        mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
++                        tls_ctx_global.has_saved = 0;
++                    }
++                    /* Transfer ownership into the global cache. */
++                    os_memcpy(&tls_ctx_global.saved_session, &cur_session, sizeof(cur_session));
++                    tls_ctx_global.has_saved = 1;
++                    /* Do NOT free cur_session — ownership transferred. */
++                } else {
++                    mbedtls_ssl_session_free(&cur_session);
++                }
++            }
++            wpa_printf(MSG_DEBUG, "MTLS: fast-reauth resumed=%d has_saved=%d",
++                       conn->resumed, tls_ctx_global.has_saved);
++
+             if (conn->push_buf == NULL)
+                 /* Need to return something to get final TLS ACK. */
+                 conn->push_buf = wpabuf_alloc(0);
