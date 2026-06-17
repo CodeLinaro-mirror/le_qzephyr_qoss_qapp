@@ -83,7 +83,8 @@ int mqttc_at_handle_mqttinit(uint32_t op_type, uint32_t param_count, mqttc_at_pa
     int rc;
 
     if (op_type == MQTTC_AT_OP_EXEC) {
-        mqttc_output("+MQTTINIT=<session_id>,<TCP|SSL>[,<\"ca_file\">,<\"cert_file\">,<\"key_file\">]\r\n");
+        mqttc_output("+MQTTINIT=<session_id>,<TCP|SSL>[,<\"ca_file\">,<\"cert_file\">,<\"key_file\">]\r\n"
+                     "  SSL without ca_file: encrypted but no broker verification\r\n");
         return 0;
     }
 
@@ -105,12 +106,15 @@ int mqttc_at_handle_mqttinit(uint32_t op_type, uint32_t param_count, mqttc_at_pa
 
     if (strcmp(params[1].str_val, "SSL") == 0 || strcmp(params[1].str_val, "ssl") == 0) {
         use_ssl = true;
-        if (param_count != 3 && param_count != 5) {
-            LOG_ERR("MQTTINIT: SSL requires <ca_file> or <ca_file>,<cert_file>,<key_file>");
+        /* param_count == 2: SSL only (no cert — encrypted, peer_verify=NONE)
+         * param_count == 3: SSL + ca_file (server verification)
+         * param_count == 5: SSL + ca_file + client cert + client key (mutual TLS) */
+        if (param_count != 2 && param_count != 3 && param_count != 5) {
+            LOG_ERR("MQTTINIT: SSL takes 0, 1, or 3 cert params");
             return -EINVAL;
         }
-        if (params[2].str_val[0] == '\0') {
-            LOG_ERR("MQTTINIT: ca_file must not be empty");
+        if (param_count >= 3 && params[2].str_val[0] == '\0') {
+            LOG_ERR("MQTTINIT: ca_file must not be empty when provided");
             return -EINVAL;
         }
         if (param_count == 5 && (params[3].str_val[0] == '\0' || params[4].str_val[0] == '\0')) {
