@@ -119,7 +119,9 @@ uint8_t cmd_shell_char_received()
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "bmps_enable", 11) == 0) {
             cmd_shell_exec(buf);
-        } else if (strncmp(buf, "rx_mqtt", 2) == 0) {
+        } else if (strncmp(buf, "rx_mqtt", 7) == 0) {
+            cmd_shell_exec(buf);
+        } else if (strncmp(buf, "mqtt_pub_loop", 13) == 0) {
             cmd_shell_exec(buf);
         } else if (strncmp(buf, "httptest", 8) == 0) {
             cmd_shell_exec(buf);

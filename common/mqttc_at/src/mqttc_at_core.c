@@ -88,7 +88,7 @@ typedef struct {
     char topic[MQTTC_AT_MAX_TOPIC_LEN];
     uint8_t qos;
     uint8_t retain;
-    uint8_t buf[MQTTC_AT_MAX_PAYLOAD_LEN];
+    uint8_t *buf;        /* dynamically allocated to expected_len */
     size_t expected_len;
     size_t offset;
 } mqttc_pubraw_t;
@@ -340,50 +340,52 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         const struct mqtt_publish_param *p = &evt->param.publish;
         const char *topic_str = (const char *)p->message.topic.topic.utf8;
         uint16_t topic_len = p->message.topic.topic.size;
-        uint32_t total_payload_len = p->message.payload.len;
-        uint32_t payload_len = total_payload_len;
+        uint32_t total_len = p->message.payload.len;
         char topic_copy[MQTTC_AT_MAX_TOPIC_LEN];
-        uint8_t drain_buf[64];
         size_t copy_len;
-        int rc;
 
-        if (payload_len > MQTTC_AT_MAX_PAYLOAD_LEN) {
-            LOG_WRN("sid %d: publish payload too large (%u), truncating", sid, payload_len);
-            payload_len = MQTTC_AT_MAX_PAYLOAD_LEN;
+        copy_len = MIN((size_t)topic_len, sizeof(topic_copy) - 1);
+        memcpy(topic_copy, topic_str, copy_len);
+        topic_copy[copy_len] = '\0';
+
+        /* Reuse the static payload_buf as a rolling chunk buffer.
+         * Read and output in MQTTC_AT_MAX_PAYLOAD_LEN-byte chunks — no large
+         * allocation needed regardless of total message size. */
+        uint32_t remaining = total_len;
+        bool first_chunk = true;
+
+        /* Output URC header once before streaming payload */
+        if (g_recv_mode == 0) {
+            mqttc_output_urc("\r\n+EVT:MQTT_SUBRECV:%d,\"%s\",%u,",
+                             sid, topic_copy, total_len);
+        } else {
+            mqttc_output_urc("\r\n+EVT:MQTT_SUBRECVHEX:%d,\"%s\",%u,",
+                             sid, topic_copy, total_len);
         }
 
-        rc = mqtt_read_publish_payload_blocking(client, s->payload_buf, payload_len);
-        if (rc < 0) {
-            LOG_ERR("sid %d: mqtt_read_publish_payload_blocking failed: %d", sid, rc);
-            break;
-        }
-        if ((uint32_t)rc != payload_len) {
-            LOG_WRN("sid %d: short read %d/%u, draining and dropping", sid, rc, payload_len);
-            uint32_t remaining = total_payload_len - (uint32_t)rc;
-            while (remaining > 0) {
-                uint32_t chunk = MIN(remaining, sizeof(drain_buf));
-                int drained = mqtt_read_publish_payload_blocking(client, drain_buf, chunk);
-                if (drained <= 0) {
-                    break;
-                }
-                remaining -= (uint32_t)drained;
+        while (remaining > 0) {
+            uint32_t chunk = MIN(remaining, (uint32_t)MQTTC_AT_MAX_PAYLOAD_LEN);
+            int rc = mqtt_read_publish_payload_blocking(client, s->payload_buf, chunk);
+            if (rc <= 0) {
+                LOG_ERR("sid %d: read payload failed: %d", sid, rc);
+                break;
             }
-            break;
-        }
+            s->payload_buf[rc] = '\0';
+            remaining -= (uint32_t)rc;
 
-        /* Drain any excess beyond truncation point to keep stream in sync */
-        if (total_payload_len > payload_len) {
-            uint32_t excess = total_payload_len - payload_len;
-            while (excess > 0) {
-                uint32_t chunk = MIN(excess, sizeof(drain_buf));
-                int drained = mqtt_read_publish_payload_blocking(client, drain_buf, chunk);
-                if (drained <= 0) {
-                    break;
+            if (g_recv_mode == 0) {
+                mqttc_output((const char *)s->payload_buf);
+            } else {
+                /* Build hex for this chunk into hex_buf and output */
+                for (int i = 0; i < rc; i++) {
+                    snprintf(&s->hex_buf[i * 2], 3, "%02X", s->payload_buf[i]);
                 }
-                excess -= (uint32_t)drained;
+                s->hex_buf[rc * 2] = '\0';
+                mqttc_output(s->hex_buf);
             }
+            (void)first_chunk;
         }
-        s->payload_buf[payload_len] = '\0';
+        mqttc_output("\r\n");
 
         if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE) {
             struct mqtt_puback_param ack = {.message_id = p->message_id};
@@ -391,27 +393,6 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         } else if (p->message.topic.qos == MQTT_QOS_2_EXACTLY_ONCE) {
             struct mqtt_pubrec_param pubrec = {.message_id = p->message_id};
             mqtt_publish_qos2_receive(client, &pubrec);
-        }
-
-        copy_len = MIN((size_t)topic_len, sizeof(topic_copy) - 1);
-        memcpy(topic_copy, topic_str, copy_len);
-        topic_copy[copy_len] = '\0';
-
-        if (g_recv_mode == 0) {
-            /* String mode — split output to avoid 256-byte URC buffer truncation */
-            mqttc_output_urc("\r\n+EVT:MQTT_SUBRECV:%d,\"%s\",%u,", sid, topic_copy, payload_len);
-            mqttc_output((const char *)s->payload_buf);
-            mqttc_output("\r\n");
-        } else {
-            /* Hex mode — build hex in s->hex_buf (BSS, not stack) and output in pieces
-             * to avoid the 256-byte mqttc_output_urc buffer truncating large payloads */
-            for (uint32_t i = 0; i < payload_len; i++) {
-                snprintf(&s->hex_buf[i * 2], 3, "%02X", s->payload_buf[i]);
-            }
-            s->hex_buf[payload_len * 2] = '\0';
-            mqttc_output_urc("\r\n+EVT:MQTT_SUBRECVHEX:%d,\"%s\",%u,", sid, topic_copy, payload_len);
-            mqttc_output(s->hex_buf);
-            mqttc_output("\r\n");
         }
         break;
     }
@@ -1100,8 +1081,11 @@ bool mqttc_at_core_is_in_data_mode(void) { return g_pubraw != NULL; }
 
 void mqttc_at_core_cancel_data_mode(void)
 {
-    k_free(g_pubraw);
-    g_pubraw = NULL;
+    if (g_pubraw) {
+        k_free(g_pubraw->buf);
+        k_free(g_pubraw);
+        g_pubraw = NULL;
+    }
 }
 
 int mqttc_at_core_start_pubraw(int sid, const char *topic, size_t length, uint8_t qos, uint8_t retain)
@@ -1123,7 +1107,8 @@ int mqttc_at_core_start_pubraw(int sid, const char *topic, size_t length, uint8_
     if (length == 0) {
         return -EINVAL;
     }
-    if (length > MQTTC_AT_MAX_PAYLOAD_LEN) {
+    if (length > MQTTC_AT_MAX_PUBRAW_LEN) {
+        LOG_ERR("PUBRAW length %zu exceeds max %d", length, MQTTC_AT_MAX_PUBRAW_LEN);
         return -E2BIG;
     }
 
@@ -1152,6 +1137,17 @@ int mqttc_at_core_data_mode_input(const uint8_t *data, size_t len)
         return -EINVAL;
     }
 
+    /* Allocate buf on first chunk */
+    if (g_pubraw->buf == NULL) {
+        g_pubraw->buf = k_malloc(g_pubraw->expected_len);
+        if (!g_pubraw->buf) {
+            LOG_ERR("data_mode_input: failed to alloc %zu bytes", g_pubraw->expected_len);
+            k_free(g_pubraw);
+            g_pubraw = NULL;
+            return -ENOMEM;
+        }
+    }
+
     remaining = g_pubraw->expected_len - g_pubraw->offset;
     to_copy = MIN(len, remaining);
     LOG_INF("data_mode_input: got %zu bytes, copying %zu, offset %zu/%zu", len, to_copy, g_pubraw->offset,
@@ -1168,6 +1164,7 @@ int mqttc_at_core_data_mode_input(const uint8_t *data, size_t len)
         uint8_t *buf = g_pubraw->buf;
 
         int rc = mqttc_at_core_publish(sid, topic, qos, buf, expected_len, retain);
+        k_free(g_pubraw->buf);
         k_free(g_pubraw);
         g_pubraw = NULL;
         LOG_INF("data_mode_input: publish rc=%d", rc);

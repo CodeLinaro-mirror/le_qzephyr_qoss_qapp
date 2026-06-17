@@ -122,6 +122,22 @@ uint8_t rx_quit = 0;
 
 /* HTTP test variables */
 static int http_mode = -1;
+
+/* ============================================================================
+ * MQTT Publish Loop Test
+ * ============================================================================ */
+
+typedef struct {
+    uint32_t interval_ms;
+    uint32_t payload_len;
+    uint32_t num_packets;
+    char topic[128];
+} mqtt_pub_loop_param_t;
+
+static mqtt_pub_loop_param_t *mqtt_pub_loop_param = NULL;
+static uint8_t mqtt_pub_loop_quit = 0;
+static volatile uint8_t mqtt_pub_response_cmplt = 0;
+static volatile uint8_t mqtt_pub_datamode_ready = 0;
 static int http_send_num_temp = 0;
 static int http_send_num = 0;
 static int http_send_num_max = 10;
@@ -571,6 +587,17 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
                 /* Parse response if parser is enabled */
                 if (qat_demo_parser_enable == 1) {
                     atcmd_response_handler(ret, (char *)qcc730_atcmd->rx_buf);
+                }
+
+                /* Detect data-mode prompt '>' and 'OK' for mqtt_pub_loop */
+                {
+                    char *p = (char *)qcc730_atcmd->rx_buf;
+                    while (*p == '\r' || *p == '\n' || *p == ' ')
+                        p++;
+                    if (*p == '>')
+                        mqtt_pub_datamode_ready = 1;
+                    if (strncmp(p, "OK", 2) == 0)
+                        mqtt_pub_response_cmplt = 1;
                 }
                 break;
             case RING_DATA:
@@ -1235,6 +1262,182 @@ int cmd_bmps_enable(int argc, char **argv)
 
 #ifdef SHELL_FEATURE
 
+void atcmd_response_parser_EVT_MQTTPUBSUC(int argc, uint32_t **argv, char *orig_cmd)
+{
+    (void)argc; (void)argv; (void)orig_cmd;
+    mqtt_pub_response_cmplt = 1;
+}
+
+void atcmd_response_parser_EVT_MQTTPUBFAIL(int argc, uint32_t **argv, char *orig_cmd)
+{
+    (void)argc; (void)argv;
+    mqtt_pub_response_cmplt = 1;
+    printf("MQTT pub failed: %s\r\n", orig_cmd);
+}
+
+static void atcmd_demo_mqtt_pub_loop(void *arg)
+{
+    (void)arg;
+    uint32_t seq = 0;
+    uint32_t total_sent = 0;
+    uint32_t total_fail = 0;
+    char at_cmd[256];
+    uint8_t *payload = NULL;
+    uint32_t payload_len = mqtt_pub_loop_param->payload_len;
+    uint32_t interval_ms = mqtt_pub_loop_param->interval_ms;
+    uint32_t num_packets = mqtt_pub_loop_param->num_packets;
+
+    uint32_t start_tick = qc_osal_uptime_get_ms();
+
+    payload = qc_osal_malloc(payload_len);
+    if (payload == NULL) {
+        printf("mqtt_pub_loop: malloc payload failed\r\n");
+        goto exit;
+    }
+    for (uint32_t i = 0; i < payload_len; i++) {
+        payload[i] = '0' + (i % 10);
+    }
+
+    printf("mqtt_pub_loop: start, topic=%s, len=%d, interval=%dms, num=%d\r\n",
+           mqtt_pub_loop_param->topic, payload_len, interval_ms, num_packets);
+
+    while (!mqtt_pub_loop_quit && (num_packets == 0 || seq < num_packets)) {
+        seq++;
+        printf("publish start seq=%d\r\n", seq);
+
+        /* Step 1: send AT+MQTTPUBRAW and wait for '>' */
+        snprintf(at_cmd, sizeof(at_cmd),
+                 "AT+MQTTPUBRAW=0,\"%s\",%d,0,0\r",
+                 mqtt_pub_loop_param->topic, payload_len);
+
+        mqtt_pub_datamode_ready = 0;
+        atcmd_send((uint8_t *)at_cmd, strlen(at_cmd));
+        {
+            uint32_t wait_ms = 0;
+            while (mqtt_pub_datamode_ready == 0 && wait_ms < 15000) {
+                qc_osal_msleep(1);
+                wait_ms++;
+            }
+        }
+
+        if (!mqtt_pub_datamode_ready) {
+            printf("mqtt_pub_loop: timeout waiting for '>' at seq=%d\r\n", seq);
+            total_fail++;
+            goto next;
+        }
+
+        /* Step 2: send payload */
+        atcmd_send(payload, payload_len);
+
+        uint32_t wait_resp_tick = qc_osal_uptime_get_ms();
+        printf("publish wait resp seq=%d\r\n", seq);
+
+        /* Step 3: wait for +EVT:MQTT_PUBSUC / PUBFAIL */
+        {
+            uint32_t wait_ms = 0;
+            mqtt_pub_response_cmplt = 0;
+            while (mqtt_pub_response_cmplt == 0 && wait_ms < 15000) {
+                qc_osal_msleep(1);
+                wait_ms++;
+            }
+        }
+
+        uint32_t cmplt_tick = qc_osal_uptime_get_ms();
+        printf("publish cmplt seq=%d, delta=%dms\r\n", seq, cmplt_tick - wait_resp_tick);
+
+        if (mqtt_pub_response_cmplt) {
+            total_sent++;
+        } else {
+            printf("mqtt_pub_loop: pub timeout at seq=%d\r\n", seq);
+            total_fail++;
+        }
+
+        if (seq % 100 == 0) {
+            uint32_t elapsed = qc_osal_uptime_get_ms() - start_tick;
+            printf("mqtt_pub_loop: progress seq=%d, sent=%d, fail=%d, elapsed=%dms\r\n",
+                   seq, total_sent, total_fail, elapsed);
+        }
+
+next:
+        if (!mqtt_pub_loop_quit && (num_packets == 0 || seq < num_packets))
+            qc_osal_msleep(interval_ms);
+    }
+
+    {
+        uint32_t elapsed = qc_osal_uptime_get_ms() - start_tick;
+        printf("\r\n=== mqtt_pub_loop result ===\r\n");
+        printf("Total sent: %d\r\n", total_sent);
+        printf("Total fail: %d\r\n", total_fail);
+        printf("Total time: %d ms\r\n", elapsed);
+        if (elapsed > 0)
+            printf("Avg rate: %d msg/s\r\n", total_sent * 1000 / elapsed);
+        printf("============================\r\n");
+    }
+
+exit:
+    if (payload)
+        qc_osal_free(payload);
+    mqtt_pub_loop_quit = 0;
+    printf("mqtt_pub_loop: thread exit\r\n");
+    /* Thread entry returning is sufficient to terminate in this OSAL */
+}
+
+int test_mqtt_pub_loop(int argc, char **argv)
+{
+    qc_osal_thread_t xHandle = NULL;
+    int index = 1;
+
+    if (mqtt_pub_loop_param == NULL) {
+        mqtt_pub_loop_param = qc_osal_malloc(sizeof(mqtt_pub_loop_param_t));
+        memset(mqtt_pub_loop_param, 0, sizeof(mqtt_pub_loop_param_t));
+        mqtt_pub_loop_param->interval_ms = 300;
+        mqtt_pub_loop_param->payload_len = 6144;
+        mqtt_pub_loop_param->num_packets = 0;
+        strlcpy(mqtt_pub_loop_param->topic, "qcom/test", sizeof(mqtt_pub_loop_param->topic));
+    }
+
+    if (argc < 2) {
+        printf("\nUsage: mqtt_pub_loop [options]\r\n");
+        printf("  -i <ms>    interval in milliseconds (default 300)\r\n");
+        printf("  -l <bytes> payload length (default 6144)\r\n");
+        printf("  -n <num>   number of packets, 0=infinite (default 0)\r\n");
+        printf("  -t <topic> topic (default qcom/test)\r\n");
+        printf("  stop       stop the test\r\n");
+        return 0;
+    }
+
+    while (index < argc) {
+        if (strcmp(argv[index], "-i") == 0 && index + 1 < argc) {
+            mqtt_pub_loop_param->interval_ms = (uint32_t)atoi(argv[++index]);
+        } else if (strcmp(argv[index], "-l") == 0 && index + 1 < argc) {
+            mqtt_pub_loop_param->payload_len = (uint32_t)atoi(argv[++index]);
+        } else if (strcmp(argv[index], "-n") == 0 && index + 1 < argc) {
+            mqtt_pub_loop_param->num_packets = (uint32_t)atoi(argv[++index]);
+        } else if (strcmp(argv[index], "-t") == 0 && index + 1 < argc) {
+            strlcpy(mqtt_pub_loop_param->topic, argv[++index], sizeof(mqtt_pub_loop_param->topic));
+        } else if (strcmp(argv[index], "stop") == 0) {
+            mqtt_pub_loop_quit = 1;
+            printf("mqtt_pub_loop: stopping...\r\n");
+            return 0;
+        }
+        index++;
+    }
+
+    mqtt_pub_loop_quit = 0;
+    struct qc_osal_thread_config cfg = {
+        .name       = "mqtt_pub_loop",
+        .stack_size = 2048,
+        .priority   = 6,
+        .entry      = atcmd_demo_mqtt_pub_loop,
+        .arg        = NULL,
+    };
+    if (qc_osal_thread_create(&xHandle, &cfg) != QC_OSAL_EOK) {
+        printf("mqtt_pub_loop: thread creation failed\r\n");
+    }
+
+    return 0;
+}
+
 void atcmd_add_evt_parser(void)
 {
     atcmd_parser_func_add("+EVT:MQTT_SUBRECV", (void *)atcmd_response_parser_EVT_MQTTSUBRECV,
@@ -1243,6 +1446,10 @@ void atcmd_add_evt_parser(void)
                           "parse EVT_MQTTSUBRECVHEX response", QAT_EVT_TYPE);
     atcmd_parser_func_add("+EVT:OTAFWUP_FIN", (void *)atcmd_response_parser_EVT_OTAFWUP_FIN,
                           "parse EVT_OTAFWUP_FIN response", QAT_EVT_TYPE);
+    atcmd_parser_func_add("+EVT:MQTT_PUBSUC", (void *)atcmd_response_parser_EVT_MQTTPUBSUC,
+                          "parse EVT_MQTT_PUBSUC response", QAT_EVT_TYPE);
+    atcmd_parser_func_add("+EVT:MQTT_PUBFAIL", (void *)atcmd_response_parser_EVT_MQTTPUBFAIL,
+                          "parse EVT_MQTT_PUBFAIL response", QAT_EVT_TYPE);
     atcmd_parser_func_add("+EVT:lp_presleep", (void *)atcmd_response_parser_EVT_DSLEEP_PRE, "parse DSLEEP response",
                           QAT_EVT_TYPE);
     atcmd_parser_func_add("+EVT:lp_sleepfail", (void *)atcmd_response_parser_EVT_DSLEEP_FAIL, "parse DSLEEP response",
@@ -1333,6 +1540,7 @@ void atcmd_demo_register_commands(void)
     cmd_shell_add("tx", (void *)test_atcmd_tx, "tx");
     cmd_shell_add("rx_mqtt", (void *)test_atcmd_rx_mqtt, "rx_mqtt");
     cmd_shell_add("tx_loop", (void *)test_atcmd_tx_loop, "tx stress test");
+    cmd_shell_add("mqtt_pub_loop", (void *)test_mqtt_pub_loop, "MQTT publish loop test");
     cmd_shell_add("net_tx_loop", (void *)test_net_tx_loop, "network online-data throughput test");
     cmd_shell_add("httptest", (void *)test_http, "http test");
     cmd_shell_add("bmps_enable", (void *)cmd_bmps_enable, "Enable/disable BMPS (0=disable/wakeup, 1=enable)");
