@@ -235,18 +235,21 @@ static int mqttc_load_tls_credentials(mqttc_session_t *s)
 {
     int rc;
 
-    if (s->ca_file[0] == '\0') {
-        return -EINVAL;
-    }
     if ((s->cert_file[0] == '\0') != (s->key_file[0] == '\0')) {
         return -EINVAL;
     }
 
-    rc = mqttc_load_credential(s->ca_file, s->sec_tags[0], TLS_CREDENTIAL_CA_CERTIFICATE, &s->ca_buf);
-    if (rc < 0) {
-        goto fail;
+    /* ca_file is optional: if absent, SSL is used without broker verification */
+    if (s->ca_file[0] != '\0') {
+        rc = mqttc_load_credential(s->ca_file, s->sec_tags[0],
+                                   TLS_CREDENTIAL_CA_CERTIFICATE, &s->ca_buf);
+        if (rc < 0) {
+            goto fail;
+        }
+        s->sec_tag_count = 1;
+    } else {
+        s->sec_tag_count = 0;
     }
-    s->sec_tag_count = 1;
 
     if (s->cert_file[0] != '\0') {
         rc = mqttc_load_credential(s->cert_file, s->sec_tags[1], TLS_CREDENTIAL_PUBLIC_CERTIFICATE, &s->cert_buf);
@@ -768,10 +771,23 @@ int mqttc_at_core_connect(int sid, const char *host, uint16_t port, const char *
     if (s->use_ssl) {
 #if defined(CONFIG_MQTT_LIB_TLS)
         s->client.transport.type = MQTT_TRANSPORT_SECURE;
-        s->client.transport.tls.config.peer_verify = TLS_PEER_VERIFY_REQUIRED;
-        s->client.transport.tls.config.sec_tag_list = s->sec_tags;
+        /* Verify broker cert only when a CA certificate was loaded.
+         * AT+MQTTINIT=0,SSL               → no CA → NONE (encrypted, no auth)
+         * AT+MQTTINIT=0,SSL,"/lfs/ca.crt" → has CA → REQUIRED
+         *
+         * When no CA is loaded (sec_tag_count==0) also clear hostname:
+         * setting TLS_HOSTNAME with VERIFY_NONE causes mbedTLS to still
+         * attempt SNI/cert-CN matching internally, which triggers
+         * ERR_SSL_PRIVATE_KEY_REQUIRED when the broker sends a
+         * CertificateRequest (even with require_certificate false). */
+        s->client.transport.tls.config.peer_verify =
+            (s->sec_tag_count > 0) ? TLS_PEER_VERIFY_REQUIRED
+                                   : TLS_PEER_VERIFY_NONE;
+        s->client.transport.tls.config.sec_tag_list  =
+            (s->sec_tag_count > 0) ? s->sec_tags : NULL;
         s->client.transport.tls.config.sec_tag_count = s->sec_tag_count;
-        s->client.transport.tls.config.hostname = s->host;
+        s->client.transport.tls.config.hostname =
+            (s->sec_tag_count > 0) ? s->host : NULL;
 #else
         k_thread_stack_free(s->recv_stack);
         s->recv_stack = NULL;
