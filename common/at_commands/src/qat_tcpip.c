@@ -3441,6 +3441,93 @@ static cat_return_state cmd_cipudpserver_set(const struct cat_command *cmd,
 
 /*-------------------------------------------------------------------------
  * AT+DNSC - DNS Client Management
+ *
+ * Use Zephyr's native async dns_resolve_name() API, mirroring the FreeRTOS
+ * reference which calls dns_gethostbyname() with a callback and returns OK
+ * immediately.  The result arrives later as +EVT:dns_get or +EVT:dns_fail.
+ *
+ * For gethostbyname2 with v4v6/v6v4, two queries (A + AAAA) are submitted.
+ * An atomic flag ensures only the first result fires the EVT.
+ */
+#define DNSC_RESOLVE_TIMEOUT_MS 10000
+
+/* user_data passed to dns_resolve_name(); heap-allocated per query */
+struct dnsc_query_ctx {
+    char hostname[DNSC_SERVER_LEN];
+    int  prefer;          /* 0=any, 4=prefer-v4, 6=prefer-v6 */
+    atomic_t responded;   /* set to 1 once EVT has been sent   */
+    atomic_t refcount;    /* number of in-flight queries; free when reaches 0 */
+};
+
+static void dnsc_found_cb(enum dns_resolve_status status,
+                          struct dns_addrinfo *info, void *user_data)
+{
+    struct dnsc_query_ctx *qctx = (struct dnsc_query_ctx *)user_data;
+
+    if (status == DNS_EAI_INPROGRESS && info) {
+        /* For v4v6/v6v4: skip if the address family doesn't match preference,
+         * unless no preferred address has arrived yet (we'll accept any). */
+        bool want_v4 = (qctx->prefer == 4);
+        bool want_v6 = (qctx->prefer == 6);
+        bool is_v4   = (info->ai_family == AF_INET);
+        bool is_v6   = (info->ai_family == AF_INET6);
+
+        if ((want_v4 && !is_v4) || (want_v6 && !is_v6)) {
+            /* wrong family for this preference — wait for the other query */
+            return;
+        }
+
+        /* Claim the response slot; bail if another query already responded */
+        if (atomic_cas(&qctx->responded, 0, 1) == false) {
+            return;
+        }
+
+        char ip_str[INET6_ADDRSTRLEN];
+        if (is_v4) {
+            struct sockaddr_in *a4 = (struct sockaddr_in *)&info->ai_addr;
+            zsock_inet_ntop(AF_INET, &a4->sin_addr, ip_str, sizeof(ip_str));
+        } else {
+            struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)&info->ai_addr;
+            zsock_inet_ntop(AF_INET6, &a6->sin6_addr, ip_str, sizeof(ip_str));
+        }
+
+        char response[256];
+        snprintf(response, sizeof(response), "+EVT:dns_get:%s,%s\r\n",
+                 qctx->hostname, ip_str);
+        QAT_Response_Str(QAT_RC_QUIET, response);
+        return;
+    }
+
+    /* Terminal status: ALLDONE, CANCELED, FAIL, NODATA, or other error.
+     * Decrement refcount; the last query to finish frees qctx. */
+    bool first_to_finish = atomic_cas(&qctx->responded, 0, 1);
+
+    if (atomic_dec(&qctx->refcount) == 1) {
+        /* We are the last in-flight query */
+        if (first_to_finish) {
+            /* No other query sent an EVT yet — send dns_fail */
+            char response[256];
+            snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", qctx->hostname);
+            QAT_Response_Str(QAT_RC_QUIET, response);
+        }
+        k_free(qctx);
+    }
+}
+
+/* Submit an async DNS query.  Returns 0 if the query was accepted (EVT will
+ * follow asynchronously), or <0 on immediate failure. */
+static int dnsc_resolve_submit(const char *hostname, enum dns_query_type qtype,
+                               struct dnsc_query_ctx *qctx)
+{
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
+    if (!ctx) {
+        return -ENODEV;
+    }
+    return dns_resolve_name(ctx, hostname, qtype, NULL,
+                            dnsc_found_cb, qctx, DNSC_RESOLVE_TIMEOUT_MS);
+}
+
+/*-------------------------------------------------------------------------
  *-----------------------------------------------------------------------*/
 
 static cat_return_state cmd_dnsc_exec(const struct cat_command *cmd)
@@ -3459,7 +3546,7 @@ static cat_return_state cmd_dnsc_query(const struct cat_command *cmd,
                                        uint8_t *data, size_t *data_size,
                                        const size_t max_data_size)
 {
-    char buffer[256];
+    char buffer[256] = {0};
     int offset = 0;
 
     *data_size = 0;
@@ -3472,7 +3559,7 @@ static cat_return_state cmd_dnsc_query(const struct cat_command *cmd,
         }
     }
 
-    return QAT_Response_Str(QAT_RC_OK, buffer);
+    return QAT_Response_Str(QAT_RC_OK, offset > 0 ? buffer : NULL);
 }
 
 static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
@@ -3517,32 +3604,23 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: DNS server not found\r\n");
 
     } else if (strcmp(subcmd, "gethostbyname") == 0) {
-        /* Per AT guide: response OK then event +EVT:dns_get:<hostname>,<ip_host> or +EVT:dns_fail:<hostname> */
-        struct zsock_addrinfo hints = {0};
-        struct zsock_addrinfo *res = NULL;
-
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_socktype = SOCK_STREAM;
-
-        int ret = zsock_getaddrinfo(param, NULL, &hints, &res);
-        if (ret != 0) {
+        /* Per AT guide: return OK immediately; result arrives as
+         * +EVT:dns_get:<hostname>,<ip> or +EVT:dns_fail:<hostname> */
+        struct dnsc_query_ctx *qctx = k_malloc(sizeof(*qctx));
+        if (!qctx) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: out of memory\r\n");
+        }
+        strlcpy(qctx->hostname, param, sizeof(qctx->hostname));
+        qctx->prefer = 0;
+        atomic_set(&qctx->responded, 0);
+        atomic_set(&qctx->refcount, 1);
+        int ret = dnsc_resolve_submit(param, DNS_QUERY_TYPE_A, qctx);
+        if (ret < 0) {
+            LOG_WRN("DNSC: gethostbyname submit failed: %d", ret);
+            k_free(qctx);
             snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", param);
             QAT_Response_Str(QAT_RC_QUIET, response);
-            return QAT_Response_Str(QAT_RC_OK, NULL);
         }
-
-        char ip_str[INET6_ADDRSTRLEN];
-        if (res->ai_family == AF_INET) {
-            struct sockaddr_in *a4 = (struct sockaddr_in *)res->ai_addr;
-            zsock_inet_ntop(AF_INET, &a4->sin_addr, ip_str, sizeof(ip_str));
-        } else {
-            struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)res->ai_addr;
-            zsock_inet_ntop(AF_INET6, &a6->sin6_addr, ip_str, sizeof(ip_str));
-        }
-        zsock_freeaddrinfo(res);
-
-        snprintf(response, sizeof(response), "+EVT:dns_get:%s,%s\r\n", param, ip_str);
-        QAT_Response_Str(QAT_RC_QUIET, response);
         return QAT_Response_Str(QAT_RC_OK, NULL);
 
     } else if (strcmp(subcmd, "gethostbyname2") == 0) {
@@ -3556,60 +3634,69 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
                                     "                                       iptype: v4, v6 , v4v6, v6v4 \r\n");
         }
 
-        int family = AF_UNSPEC;
-        if (strcmp(iptype, "v4") == 0) {
-            family = AF_INET;
-        } else if (strcmp(iptype, "v6") == 0) {
-            family = AF_INET6;
-        } else if (strcmp(iptype, "v4v6") == 0 || strcmp(iptype, "v6v4") == 0) {
-            family = AF_UNSPEC;
-        } else {
+        if (strcmp(iptype, "v4") != 0 && strcmp(iptype, "v6") != 0 &&
+            strcmp(iptype, "v4v6") != 0 && strcmp(iptype, "v6v4") != 0) {
             return QAT_Response_Str(QAT_RC_ERROR, "+DNSC:invalid type.\r\n");
         }
 
-        struct zsock_addrinfo hints = {0};
-        struct zsock_addrinfo *res = NULL;
-        hints.ai_family = family;
-        hints.ai_socktype = SOCK_STREAM;
-
-        int ret = zsock_getaddrinfo(hostname, NULL, &hints, &res);
-        if (ret != 0) {
-            snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", hostname);
-            QAT_Response_Str(QAT_RC_QUIET, response);
-            return QAT_Response_Str(QAT_RC_OK, NULL);
-        }
-
-        /* Pick address based on preference order for v4v6/v6v4 */
-        struct zsock_addrinfo *pick = res;
-
-        if (strcmp(iptype, "v4v6") == 0) {
-            for (struct zsock_addrinfo *ai = res; ai != NULL; ai = ai->ai_next) {
-                if (ai->ai_family == AF_INET) {
-                    pick = ai;
-                    break;
-                }
+        /* For v4/v6 single-family queries, submit one query.
+         * For v4v6/v6v4, submit both A and AAAA; the callback picks the
+         * preferred family first and the atomic flag prevents duplicate EVTs. */
+        if (strcmp(iptype, "v4") == 0) {
+            struct dnsc_query_ctx *qctx = k_malloc(sizeof(*qctx));
+            if (!qctx) {
+                return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: out of memory\r\n");
             }
-        } else if (strcmp(iptype, "v6v4") == 0) {
-            for (struct zsock_addrinfo *ai = res; ai != NULL; ai = ai->ai_next) {
-                if (ai->ai_family == AF_INET6) {
-                    pick = ai;
-                    break;
-                }
+            strlcpy(qctx->hostname, hostname, sizeof(qctx->hostname));
+            qctx->prefer = 0;
+            atomic_set(&qctx->responded, 0);
+            atomic_set(&qctx->refcount, 1);
+            int ret = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_A, qctx);
+            if (ret < 0) {
+                k_free(qctx);
+                snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", hostname);
+                QAT_Response_Str(QAT_RC_QUIET, response);
             }
-        }
-
-        char ip_str[INET6_ADDRSTRLEN];
-        if (pick->ai_family == AF_INET) {
-            struct sockaddr_in *a4 = (struct sockaddr_in *)pick->ai_addr;
-            zsock_inet_ntop(AF_INET, &a4->sin_addr, ip_str, sizeof(ip_str));
+        } else if (strcmp(iptype, "v6") == 0) {
+            struct dnsc_query_ctx *qctx = k_malloc(sizeof(*qctx));
+            if (!qctx) {
+                return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: out of memory\r\n");
+            }
+            strlcpy(qctx->hostname, hostname, sizeof(qctx->hostname));
+            qctx->prefer = 0;
+            atomic_set(&qctx->responded, 0);
+            atomic_set(&qctx->refcount, 1);
+            int ret = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_AAAA, qctx);
+            if (ret < 0) {
+                k_free(qctx);
+                snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", hostname);
+                QAT_Response_Str(QAT_RC_QUIET, response);
+            }
         } else {
-            struct sockaddr_in6 *a6 = (struct sockaddr_in6 *)pick->ai_addr;
-            zsock_inet_ntop(AF_INET6, &a6->sin6_addr, ip_str, sizeof(ip_str));
+            /* v4v6 or v6v4: shared qctx, two queries, first preferred family wins */
+            int prefer = (strcmp(iptype, "v4v6") == 0) ? 4 : 6;
+            struct dnsc_query_ctx *qctx = k_malloc(sizeof(*qctx));
+            if (!qctx) {
+                return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: out of memory\r\n");
+            }
+            strlcpy(qctx->hostname, hostname, sizeof(qctx->hostname));
+            qctx->prefer = prefer;
+            atomic_set(&qctx->responded, 0);
+            atomic_set(&qctx->refcount, 2);
+            int r4 = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_A,    qctx);
+            int r6 = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_AAAA, qctx);
+            if (r4 < 0) {
+                atomic_dec(&qctx->refcount);
+            }
+            if (r6 < 0) {
+                atomic_dec(&qctx->refcount);
+            }
+            if (r4 < 0 && r6 < 0) {
+                k_free(qctx);
+                snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", hostname);
+                QAT_Response_Str(QAT_RC_QUIET, response);
+            }
         }
-        zsock_freeaddrinfo(res);
-
-        snprintf(response, sizeof(response), "+EVT:dns_get:%s,%s\r\n", hostname, ip_str);
-        QAT_Response_Str(QAT_RC_QUIET, response);
         return QAT_Response_Str(QAT_RC_OK, NULL);
 
     } else {
