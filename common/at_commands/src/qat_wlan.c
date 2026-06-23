@@ -2311,8 +2311,11 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
         return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:Failed to get WiFi interface");
     }
 
-    /* ap_sta requires the SAP device to already be in AP mode. Transition: station -> ap -> ap_sta */
-    if (strcmp(mode_str, "ap_sta") == 0) {
+    /* ap_sta requires the SAP device to already be in AP mode.
+     * Transition: station -> ap -> ap_sta
+     * If the device is already in AP mode (e.g. AT+CWSOFTAP was called),
+     * skip the pre-set to avoid -EINVAL from the firmware. */
+    if (strcmp(mode_str, "ap_sta") == 0 && g_wifi_ctx.op_mode != DEV_MODE_AP_E) {
         params.opmode = "ap";
         params.hidden_ssid = "0";
         ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface,
@@ -2331,6 +2334,23 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
     if (ret) {
         LOG_ERR("Set op mode to %s failed: %d", mode_str, ret);
         return QAT_Response_Str(QAT_RC_ERROR, "+CWMODE:Failed to set operating mode");
+    }
+
+    /* When switching from ap_sta back to ap-only, bring down the STA
+     * interface explicitly — the firmware no longer drives it but
+     * Zephyr's net_if keeps carrier=ON until told otherwise.
+     * Conversely, when switching from ap to ap_sta, bring the STA
+     * interface back up so it can associate. */
+    if (dev_mode == DEV_MODE_AP_E && g_wifi_ctx.op_mode == DEV_MODE_AP_STA_E) {
+        struct net_if *sta_iface = net_if_get_wifi_sta();
+        if (sta_iface) {
+            net_eth_carrier_off(sta_iface);
+        }
+    } else if (dev_mode == DEV_MODE_AP_STA_E) {
+        struct net_if *sta_iface = net_if_get_wifi_sta();
+        if (sta_iface) {
+            net_eth_carrier_on(sta_iface);
+        }
     }
 
     g_wifi_ctx.op_mode = dev_mode;
