@@ -1001,6 +1001,137 @@ static int cmd_set_rsp_rate(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+static int cmd_wnm_sleep(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct wifi_wnm_sleep_params params = {0};
+    int err = 0;
+
+    if (argc < 2) {
+        shell_error(ctx, "Usage: qwifi wnm_sleep <enter [interval_ms] | exit>");
+        return -EINVAL;
+    }
+
+    if (strcmp(argv[1], "enter") == 0) {
+        params.action = WIFI_WNM_SLEEP_ENTER;
+        if (argc >= 3) {
+            params.interval_ms = shell_strtoul(argv[2], 10, &err);
+            if (err) {
+                shell_error(ctx, "Invalid interval_ms: %s", argv[2]);
+                return err;
+            }
+        }
+    } else if (strcmp(argv[1], "exit") == 0) {
+        params.action = WIFI_WNM_SLEEP_EXIT;
+    } else {
+        shell_error(ctx, "Unknown action '%s'. Use 'enter' or 'exit'.", argv[1]);
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_WNM_SLEEP, iface, &params, sizeof(params))) {
+        shell_error(ctx, "WNM sleep %s failed", argv[1]);
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "WNM sleep %s requested (interval=%u ms)",
+                argv[1], params.interval_ms);
+    return 0;
+}
+
+static int cmd_wnm_ap_capable(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct wifi_wnm_status status = {0};
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_WNM_STATUS, iface, &status, sizeof(status))) {
+        shell_error(ctx, "Failed to query WNM status");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "AP WNM Sleep capable: %s", status.ap_capable ? "yes" : "no");
+    return 0;
+}
+
+static int cmd_wnm_stats(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct wifi_wnm_status st = {0};
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_WNM_STATUS, iface, &st, sizeof(st))) {
+        shell_error(ctx, "Failed to query WNM status");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "WNM Sleep stats:");
+    shell_print(ctx, "  enabled           : %s", st.enabled ? "yes" : "no");
+    shell_print(ctx, "  sleeping          : %s", st.sleeping ? "yes" : "no");
+    shell_print(ctx, "  ap_capable        : %s", st.ap_capable ? "yes" : "no");
+    shell_print(ctx, "  interval_ms       : %u", st.interval_ms);
+    shell_print(ctx, "  enter_req_sent    : %u", st.enter_req_sent);
+    shell_print(ctx, "  enter_rsp_rcvd    : %u", st.enter_rsp_rcvd);
+    shell_print(ctx, "  exit_req_sent     : %u", st.exit_req_sent);
+    shell_print(ctx, "  exit_rsp_rcvd     : %u", st.exit_rsp_rcvd);
+    shell_print(ctx, "  wakeup_sta_data   : %u", st.wakeup_sta_data);
+    shell_print(ctx, "  wakeup_tim        : %u", st.wakeup_tim);
+    shell_print(ctx, "  wakeup_bss_idle   : %u", st.wakeup_bss_idle_timer);
+    return 0;
+}
+
+static int cmd_bss_max_idle(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    int err = 0;
+    uint32_t seconds;
+
+    if (argc != 2) {
+        shell_error(ctx, "Usage: qwifi bss_max_idle <mili seconds>");
+        return -EINVAL;
+    }
+
+    seconds = shell_strtoul(argv[1], 10, &err);
+    if (err) {
+        shell_error(ctx, "Invalid seconds value: %s", argv[1]);
+        return err;
+    }
+
+    /* Call via Zephyr net_mgmt -> driver -> propwifi */
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_WNM_SET_BSS_MAX_IDLE, iface, &seconds, sizeof(seconds))) {
+        shell_error(ctx, "Failed to set BSS Max Idle Period");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "BSS Max Idle Period set to %u ms (takes effect at next association)",
+                seconds);
+    return 0;
+}
+
+static int cmd_wnm_enable(const struct shell *ctx, size_t argc, char **argv)
+{
+    struct net_if *iface = net_if_get_wifi_sta();
+    int err = 0;
+    uint32_t enable;
+
+    if (argc != 2) {
+        shell_error(ctx, "Usage: qwifi wnm_enable <0|1>");
+        return -EINVAL;
+    }
+
+    enable = shell_strtoul(argv[1], 10, &err);
+    if (err || enable > 1) {
+        shell_error(ctx, "Invalid value '%s'; use 0 or 1", argv[1]);
+        return -EINVAL;
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_WNM_SET_ENABLE, iface, &enable, sizeof(enable))) {
+        shell_error(ctx, "Failed to set WNM enable");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "WNM sleep mode %s (takes effect at next association)",
+                enable ? "enabled" : "disabled");
+    return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
                                              "Set the transmit power in dbm.\n"
@@ -1144,6 +1275,27 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Set Rsp rate to 6Mbps or 6.5Mbps.\n"
 					     "Usage: qwifi set_rsp_rate | <rate_idx = 8:6Mbps or 16:6.5Mbps>\n",
                                              cmd_set_rsp_rate, 2, 0),
+                               SHELL_CMD_ARG(wnm_sleep, NULL,
+                                             "Enter or exit WNM Sleep Mode.\n"
+                                             "Usage: qwifi wnm_sleep enter [interval_ms]\n"
+                                             "       qwifi wnm_sleep exit\n",
+                                             cmd_wnm_sleep, 2, 1),
+                               SHELL_CMD_ARG(wnm_ap_capable, NULL,
+                                             "Query whether connected AP supports WNM Sleep Mode.\n"
+                                             "Usage: qwifi wnm_ap_capable\n",
+                                             cmd_wnm_ap_capable, 1, 0),
+                               SHELL_CMD_ARG(wnm_stats, NULL,
+                                             "Show WNM Sleep Mode statistics.\n"
+                                             "Usage: qwifi wnm_stats\n",
+                                             cmd_wnm_stats, 1, 0),
+                               SHELL_CMD_ARG(bss_max_idle, NULL,
+                                             "Set BSS Max Idle Period. Takes effect at next association.\n"
+                                             "Usage: qwifi bss_max_idle <mili seconds>\n",
+                                             cmd_bss_max_idle, 2, 0),
+                               SHELL_CMD_ARG(wnm_enable, NULL,
+                                             "Enable or disable WNM Sleep Mode. Must be set before association.\n"
+                                             "Usage: qwifi wnm_enable <0|1>\n",
+                                             cmd_wnm_enable, 2, 0),
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
