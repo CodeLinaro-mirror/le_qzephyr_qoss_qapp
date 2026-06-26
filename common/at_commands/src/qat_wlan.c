@@ -1254,6 +1254,11 @@ static cat_return_state cmd_wlan_ap_enable_set(const struct cat_command *cmd, co
         return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Passphrase required for encrypted AP");
     }
 
+    /* Validate security type: only 0 (OPEN) and 1 (WPA2-PSK) are supported for AP */
+    if (security > WIFI_SECURITY_TYPE_PSK) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWSOFTAP:Invalid security type (0=OPEN, 1=WPA2-PSK)");
+    }
+
     /* Get the SAP (SoftAP) interface using dedicated API */
     ap_iface = net_if_get_wifi_sap();
 
@@ -1322,7 +1327,7 @@ static cat_return_state cmd_wlan_ap_enable_exec(const struct cat_command *cmd)
         "+CWSOFTAP=<ht_config>,<channel>,<ssid>[,<security>[,<passphrase>]]\r\n"
         "  ht_config: disable | ht20\r\n"
         "  channel: 1-14 or 36-165 (0=auto)\r\n"
-        "  security: 0=open, 1=WPA2-PSK, 3=WPA3-SAE (optional)\r\n"
+        "  security: 0=open, 1=WPA2-PSK\r\n"
         "  passphrase: required when security>0 (optional)");
 }
 
