@@ -68,6 +68,7 @@ typedef struct {
     char passphrase[65]; /* From +CWPWD */
     uint8_t passphrase_len;
     bool security_set;   /* Flag to indicate if security params are set */
+    bool ps_enabled;     /* AT+PS=1 has been issued and BMPS is active */
 } wifi_context_t;
 
 /*-------------------------------------------------------------------------
@@ -224,6 +225,7 @@ void qat_ps_exit(void)
 
     /* Acquire PM lock to prevent re-entering low power state */
     pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES);
+    g_wifi_ctx.ps_enabled = false;
     LOG_INF("Power save exited, PM lock acquired");
 
     QAT_Response_Str(QAT_RC_QUIET, "+PS: exit.\r\n");
@@ -355,7 +357,7 @@ static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
         
     case NET_EVENT_WIFI_CONNECT_RESULT: {
         const struct wifi_status *status = (const struct wifi_status *)cb->info;
-        
+
         if (status->status == 0) {
             struct wifi_iface_status iface_status = {0};
             int ret;
@@ -367,21 +369,29 @@ static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
                 g_wifi_ctx.iface = iface;
             }
             k_mutex_unlock(&g_wifi_ctx.mutex);
-            
+
+            /* Reconnect complete — release S2RAM lock acquired at disconnect so
+             * BMPS + S2RAM can resume.  Only release if BMPS is active (ps_enabled),
+             * otherwise the lock was placed by AT+PS=0 / qat_ps_exit and must stay. */
+            if (g_wifi_ctx.ps_enabled &&
+                pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES)) {
+                pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES);
+            }
+
             /* Get interface status to retrieve BSSID */
-            ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &iface_status, 
+            ret = net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, iface, &iface_status,
                           sizeof(iface_status));
             if (ret == 0) {
                 snprintf(buffer, sizeof(buffer),
                         "+EVT:wlan_conned:%02x:%02x:%02x:%02x:%02x:%02x",
-                        (uint8_t)iface_status.bssid[0], (uint8_t)iface_status.bssid[1], 
-                        (uint8_t)iface_status.bssid[2], (uint8_t)iface_status.bssid[3], 
+                        (uint8_t)iface_status.bssid[0], (uint8_t)iface_status.bssid[1],
+                        (uint8_t)iface_status.bssid[2], (uint8_t)iface_status.bssid[3],
                         (uint8_t)iface_status.bssid[4], (uint8_t)iface_status.bssid[5]);
             } else {
                 snprintf(buffer, sizeof(buffer), "+EVT:wlan_conned");
             }
             QAT_Response_Str(QAT_RC_QUIET, buffer);
-            
+
             /* DHCP start is now driven by NET_EVENT_IF_UP in if_event_handler */
         } else {
             snprintf(buffer, sizeof(buffer), "+EVT:wlan_conn_failed:%d", status->status);
@@ -389,14 +399,22 @@ static void wifi_mgmt_event_handler(struct net_mgmt_event_callback *cb,
         }
         break;
     }
-    
+
     case NET_EVENT_WIFI_DISCONNECT_RESULT: {
         k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
         g_wifi_ctx.connected = false;
         k_mutex_unlock(&g_wifi_ctx.mutex);
-        
+
+        /* Block S2RAM during reconnect to prevent qapi_WLAN_Suspend() being
+         * called while the driver is reconnecting.  Released on connect success
+         * above.  Guard with ps_enabled so AT+PS=0 paths are not affected. */
+        if (g_wifi_ctx.ps_enabled &&
+            !pm_policy_state_lock_is_active(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES)) {
+            pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_RAM, PM_ALL_SUBSTATES);
+        }
+
         QAT_Response_Str(QAT_RC_QUIET, "+EVT:wlan_disconn");
-        
+
         /* DHCP stop is now driven by NET_EVENT_IF_DOWN in if_event_handler */
         break;
     }
@@ -2489,24 +2507,13 @@ static cat_return_state cmd_ps_set(const struct cat_command *cmd, const uint8_t 
         LOG_INF("PM_STATE_SUSPEND_TO_RAM lock released to allow low power state");
     }
 
-    /* Step 5: Clear WiFi device busy flag so S2RAM can proceed.
-     * PM_DEVICE_ACTION_RESUME sets pm_device_busy to defer sleep until WiFi
-     * re-initializes. By the time AT+PS=1 is processed, WiFi has fully resumed.
-     * BMPS beacon cycles are reported as PM_WLAN_ACTIVITY_ACTIVE, so the
-     * activity callback never fires IDLE to clear this flag automatically. */
-    if (enable) {
-        const struct device *wifi_dev = net_if_get_device(g_wifi_ctx.iface);
-        if (wifi_dev && pm_device_is_busy(wifi_dev)) {
-            pm_device_busy_clear(wifi_dev);
-            LOG_INF("WiFi device busy cleared for S2RAM entry");
-        }
-    }
-
     LOG_INF("Power save %s, idle_timeout=%u ms", enable ? "enabled" : "disabled", timeout_ms);
 
     if (enable) {
+        g_wifi_ctx.ps_enabled = true;
         return QAT_Response_Str(QAT_RC_OK, "+PS: entry.");
     }
+    g_wifi_ctx.ps_enabled = false;
     return QAT_Response_Str(QAT_RC_OK, NULL);
 }
 
