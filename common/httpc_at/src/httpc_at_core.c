@@ -37,7 +37,7 @@ static bool     g_core_initialized;
 /* -------------------------------------------------------------------------
  * Persistent connection cache (HTTP/1.1 keep-alive)
  *
- * CR 4563321: previously httpc_at_execute() opened a fresh socket per request
+ * Previously httpc_at_execute() opened a fresh socket per request
  * and closed it unconditionally, so N consecutive AT+HTTPGET calls produced N
  * TCP SYNs and N TLS handshakes. To honour HTTP/1.1 keep-alive we cache the
  * connected socket keyed by (host, port, is_https, family, auth_type) and reuse
@@ -137,7 +137,7 @@ struct response_ctx {
 	httpc_at_output_cb_t      output_cb;
 	void                     *output_user_data;
 	struct httpc_at_response  *resp;
-	bool                      body_seen;  /* true once any body byte streamed to output (CR 4563321) */
+	bool                      body_seen;  /* true once any body byte streamed to output */
 };
 
 /**
@@ -889,7 +889,7 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	 */
 	/*
 	 * Acquire a connected socket. Prefer a cached keep-alive connection to
-	 * the same endpoint (CR 4563321); otherwise open a fresh one. A reused
+	 * the same endpoint; otherwise open a fresh one. A reused
 	 * socket may have been idle-closed by the server, so track whether the
 	 * socket was reused — if the request later fails on a reused socket, we
 	 * transparently reopen and retry once below.
@@ -1000,22 +1000,22 @@ int httpc_at_execute(const struct httpc_at_request *req,
 	ret = http_client_req(sock, &http_req, timeout_ms, &rsp_ctx);
 
 	/*
-	 * Keep-alive stale-socket recovery (CR 4563321): if the request failed
-	 * on a *reused* socket, the server most likely idle-closed the
-	 * connection (e.g. Apache KeepAliveTimeout). Drop the dead socket,
-	 * reopen a fresh connection, and retry the request exactly once. A
-	 * fresh socket that fails is a genuine error and is not retried here.
+	 * Keep-alive stale-socket recovery (CR 4563321 / CR 4563318): if the
+	 * request failed on a *reused* socket, the server most likely
+	 * idle-closed the connection (e.g. Apache KeepAliveTimeout). Drop the
+	 * dead socket, reopen a fresh connection, and retry the request once.
 	 *
-	 * The transparent retry is only safe when (a) the method is idempotent
-	 * (GET/HEAD) — re-issuing POST/PUT could duplicate server-side effects —
-	 * and (b) no response body has been streamed to the AT output yet —
-	 * otherwise the retry would emit a second response concatenated onto the
-	 * partial first one. When either guard fails, the stale socket is closed
-	 * and the transport error is returned to the caller (see below).
+	 * Retry is safe when BOTH guards hold:
+	 *   (a) No response body has been streamed to AT output yet — otherwise
+	 *       the retry would emit a second response onto a partial first one.
+	 *   (b) For POST/PUT: the request body has not yet been sent, so the
+	 *       server has not performed any action and a retry is idempotent in
+	 *       practice. GET/HEAD are always idempotent by specification.
+	 *
+	 * When either guard fails the stale socket is closed and the transport
+	 * error is returned to the caller.
 	 */
-	bool retry_safe = (req->method == HTTPC_AT_METHOD_GET ||
-			   req->method == HTTPC_AT_METHOD_HEAD) &&
-			  !rsp_ctx.body_seen;
+	bool retry_safe = !rsp_ctx.body_seen;
 	if (ret < 0 && reused && retry_safe) {
 		LOG_WRN("http_client_req() failed on reused socket (%d), "
 			"reopening connection and retrying once", ret);

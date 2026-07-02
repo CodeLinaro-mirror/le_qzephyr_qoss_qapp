@@ -1449,7 +1449,7 @@ int httpc_at_handle_httpsslcfg(uint32_t op_type, uint32_t param_count, httpc_at_
     /*
      * TLS credentials are changing — drop any cached keep-alive connection so
      * a later HTTPS request to a previously cached endpoint cannot reuse a
-     * socket built under the old credentials. (CR 4563321)
+     * socket built under the old credentials.
      */
     httpc_at_core_close_keepalive();
 
