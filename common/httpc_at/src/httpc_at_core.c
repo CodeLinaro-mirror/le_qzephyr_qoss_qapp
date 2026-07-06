@@ -898,8 +898,27 @@ int httpc_at_execute(const struct httpc_at_request *req,
 
 	sock = keepalive_take(host, port, is_https, connect_family, req->auth_type);
 	if (sock >= 0) {
-		reused = true;
-	} else {
+		/* Probe the cached socket before use: if the server has closed
+		 * the connection (EOF or RST) poll() returns POLLIN immediately
+		 * and a MSG_PEEK recv() returns 0 or an error.  Detect this now
+		 * so we open a fresh connection directly instead of sending a
+		 * request, failing, and doing a retry. */
+		struct zsock_pollfd pfd = { .fd = sock, .events = ZSOCK_POLLIN };
+		if (zsock_poll(&pfd, 1, 0) > 0 && (pfd.revents & ZSOCK_POLLIN)) {
+			char peek_buf;
+			int n = zsock_recv(sock, &peek_buf, 1,
+					   ZSOCK_MSG_PEEK | ZSOCK_MSG_DONTWAIT);
+			if (n <= 0) {
+				LOG_DBG("keep-alive: peer closed socket %d, "
+					"opening fresh connection", sock);
+				zsock_close(sock);
+				sock = -1;
+			}
+		}
+		reused = (sock >= 0);
+	}
+
+	if (sock < 0) {
 		sock = httpc_at_open_connection(is_https, connect_family,
 						req->auth_type, host, port);
 		if (sock < 0) {

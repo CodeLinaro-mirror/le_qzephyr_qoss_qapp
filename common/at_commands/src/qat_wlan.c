@@ -1232,7 +1232,7 @@ static cat_return_state cmd_wlan_ap_enable_set(const struct cat_command *cmd, co
     strlcpy(ht_config, token, sizeof(ht_config));
     
     /* Check if it's just "disable" command */
-    if (strcmp(ht_config, "disable") == 0 && !strchr((const char *)data, ',')) {
+    if (strncasecmp(ht_config, "disable") == 0 && !strchr((const char *)data, ',')) {
         /* Disable AP mode */
         ret = net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, g_wifi_ctx.iface, NULL, 0);
         if (ret) {
@@ -1334,7 +1334,7 @@ static cat_return_state cmd_wlan_ap_enable_set(const struct cat_command *cmd, co
     LOG_INF("AP mode enabled: ht=%s, channel=%d, ssid=%s, security=%d", ht_config, channel, ssid,
             security);
     snprintf(buffer, sizeof(buffer), "+CWSOFTAP:%s,channel=%d,ht20=%d,security=%d",
-             ssid, channel, (strcmp(ht_config, "ht20") == 0) ? 1 : 0, security);
+             ssid, channel, (strncasecmp(ht_config, "ht20") == 0) ? 1 : 0, security);
     return QAT_Response_Str(QAT_RC_OK, buffer);
 }
 
@@ -1481,15 +1481,15 @@ static cat_return_state cmd_wlan_phy_mode_set(const struct cat_command *cmd, con
     wmode[data_size] = '\0';
     
     /* Map string to PHY mode enum - correct enum values from wlan_base.h */
-    if (strcmp(wmode, "b") == 0) {
+    if (strncasecmp(wmode, "b") == 0) {
         params.phy_mode = 0;  /* QAPI_WLAN_11B_MODE_E = 0x0 */
-    } else if (strcmp(wmode, "g") == 0) {
+    } else if (strncasecmp(wmode, "g") == 0) {
         params.phy_mode = 1;  /* QAPI_WLAN_11G_MODE_E = 0x1 */
-    } else if (strcmp(wmode, "ng") == 0) {
+    } else if (strncasecmp(wmode, "ng") == 0) {
         params.phy_mode = 2;  /* QAPI_WLAN_11NG_HT20_MODE_E = 0x2 */
-    } else if (strcmp(wmode, "a") == 0) {
+    } else if (strncasecmp(wmode, "a") == 0) {
         params.phy_mode = 3;  /* QAPI_WLAN_11A_MODE_E = 0x3 */
-    } else if (strcmp(wmode, "abgn") == 0) {
+    } else if (strncasecmp(wmode, "abgn") == 0) {
         params.phy_mode = 5;  /* QAPI_WLAN_11ABGN_HT20_MODE_E = 0x5 */
     } else {
         return QAT_Response_Str(QAT_RC_ERROR, "+CWPHYMODE:Unknown wmode, only support b/g/ng/a/abgn");
@@ -2316,13 +2316,13 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
     memcpy(mode_str, data, data_size);
     mode_str[data_size] = '\0';
 
-    if (strcmp(mode_str, "station") == 0) {
+    if (strncasecmp(mode_str, "station") == 0) {
         iface = net_if_get_wifi_sta();
         dev_mode = DEV_MODE_STATION_E;
-    } else if (strcmp(mode_str, "ap") == 0 ) {
+    } else if (strncasecmp(mode_str, "ap") == 0) {
         iface = net_if_get_wifi_sap();
         dev_mode = DEV_MODE_AP_E;
-    } else if (strcmp(mode_str, "ap_sta") == 0) {
+    } else if (strncasecmp(mode_str, "ap_sta") == 0) {
         iface = net_if_get_wifi_sap();
         dev_mode = DEV_MODE_AP_STA_E;
     } else {
@@ -2338,7 +2338,18 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
      * Transition: station -> ap -> ap_sta
      * If the device is already in AP mode (e.g. AT+CWSOFTAP was called),
      * skip the pre-set to avoid -EINVAL from the firmware. */
-    if (strcmp(mode_str, "ap_sta") == 0 && g_wifi_ctx.op_mode != DEV_MODE_AP_E) {
+    /* Normalise mode_str to the canonical lowercase form expected by the
+     * driver layer (strcmp-based) regardless of what the user typed. */
+    const char *canonical_mode;
+    if (dev_mode == DEV_MODE_STATION_E) {
+        canonical_mode = "station";
+    } else if (dev_mode == DEV_MODE_AP_E) {
+        canonical_mode = "ap";
+    } else {
+        canonical_mode = "ap_sta";
+    }
+
+    if (strcmp(canonical_mode, "ap_sta") == 0 && g_wifi_ctx.op_mode != DEV_MODE_AP_E) {
         params.opmode = "ap";
         params.hidden_ssid = "0";
         ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface,
@@ -2349,7 +2360,7 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
         }
     }
 
-    params.opmode = mode_str;
+    params.opmode = canonical_mode;
     params.hidden_ssid = "0";
 
     ret = net_mgmt(NET_REQUEST_WIFI_QCOM_SET_OPERATION_MODE, iface,
@@ -2377,7 +2388,7 @@ static cat_return_state cmd_wlan_mode_set(const struct cat_command *cmd, const u
     }
 
     g_wifi_ctx.op_mode = dev_mode;
-    LOG_INF("Operating mode set to %s", mode_str);
+    LOG_INF("Operating mode set to %s", canonical_mode);
     return QAT_Response_Str(QAT_RC_OK, NULL);
 }
 
