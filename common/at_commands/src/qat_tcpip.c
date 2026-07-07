@@ -312,11 +312,13 @@ static bool cipv6prefix_is_valid_prefix(const char *str)
 /* CIPSEND state */
 static struct {
     int link_id;
+    connection_info_t *conns; /* selected table (client / server TCP / server UDP) */
     size_t max_len;
     size_t total_sent;
     bool exit_length_valid; /* false when len == 0 */
 } cipsend_state = {
     .link_id = INVALID_LINKID,
+    .conns = NULL,
     .max_len = 0,
     .total_sent = 0,
     .exit_length_valid = true,
@@ -1322,6 +1324,7 @@ static cat_return_state cmd_cipclose_set(const struct cat_command *cmd,
 static void cipsend_exit_online_mode(void)
 {
     cipsend_state.link_id = INVALID_LINKID;
+    cipsend_state.conns = NULL;
     cipsend_state.max_len = 0;
     cipsend_state.total_sent = 0;
     cipsend_state.exit_length_valid = true;
@@ -1350,7 +1353,7 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
 
-    if (g_client_conns[cipsend_state.link_id].state != CONN_STATE_CONNECTED) {
+    if (cipsend_state.conns[cipsend_state.link_id].state != CONN_STATE_CONNECTED) {
         k_mutex_unlock(&conn_mutex);
         snprintf(response, sizeof(response), "+IPS:SEND FAILED:%d\r\n", cipsend_state.link_id);
         QAT_Response_Str(QAT_RC_ERROR, response);
@@ -1358,7 +1361,7 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
         return -ENOTCONN;
     }
 
-    int sock_fd = g_client_conns[cipsend_state.link_id].sock_fd;
+    int sock_fd = cipsend_state.conns[cipsend_state.link_id].sock_fd;
     k_mutex_unlock(&conn_mutex);
 
     const uint8_t *payload = data;
@@ -1430,7 +1433,7 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
 
 static cat_return_state cmd_cipsend_exec(const struct cat_command *cmd)
 {
-    return QAT_Response_Str(QAT_RC_OK, "+CIPSEND=<link_id>,<length>\r\n");
+    return QAT_Response_Str(QAT_RC_OK, "+CIPSEND=<C|S>,<TCP|UDP>,<link_id>,<length>\r\n");
 }
 
 static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
@@ -1438,9 +1441,12 @@ static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
                                         const size_t data_size,
                                         const size_t args_num)
 {
+    char server_flag[2];
+    char proto[8];
     int link_id, len;
 
-    if (sscanf((char *)data, "%d,%d", &link_id, &len) != 2) {
+    if (sscanf((char *)data, "%1[CS],%7[^,],%d,%d",
+               server_flag, proto, &link_id, &len) != 4) {
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPSEND: Invalid parameters\r\n");
     }
 
@@ -1454,7 +1460,21 @@ static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
 
-    if (g_client_conns[link_id].state != CONN_STATE_CONNECTED) {
+    /* Resolve the connection by C/S flag + protocol, mirroring CIPSENDDATA.
+     * The three tables share the same link_id space (0..MAX_CONNECTIONS-1),
+     * so the C/S flag is required to disambiguate a client link from a
+     * server-accepted link with the same id. */
+    connection_info_t *conns;
+
+    if (server_flag[0] == 'C') {
+        conns = g_client_conns;
+    } else if (strcmp(proto, "TCP") == 0) {
+        conns = g_listen_clients;
+    } else {
+        conns = g_listen_udp_clients;
+    }
+
+    if (conns[link_id].state != CONN_STATE_CONNECTED) {
         k_mutex_unlock(&conn_mutex);
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPSEND: Link not active\r\n");
     }
@@ -1463,6 +1483,7 @@ static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
 
     /* Initialize state; len == 0 matches FreeRTOS unlimited send mode */
     cipsend_state.link_id = link_id;
+    cipsend_state.conns = conns;
     cipsend_state.max_len = len;
     cipsend_state.total_sent = 0;
     cipsend_state.exit_length_valid = (len != 0);
@@ -1482,7 +1503,7 @@ static cat_return_state cmd_cipsend_set(const struct cat_command *cmd,
  *-----------------------------------------------------------------------*/
 static cat_return_state cmd_cipsenddata_exec(const struct cat_command *cmd)
 {
-    return QAT_Response_Str(QAT_RC_OK, "+CIPSENDDATA=<link_id>,<length>,\"<data>\"\r\n");
+    return QAT_Response_Str(QAT_RC_OK, "+CIPSENDDATA=<C|S>,<TCP|UDP>,<link_id>,<length>,\"<data>\"\r\n");
 }
 
 static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
@@ -1490,10 +1511,13 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
                                             const size_t data_size,
                                             const size_t args_num)
 {
+    char server_flag[2];
+    char proto[8];
     int link_id, len;
     char response[128];
 
-    if (sscanf((char *)data, "%d,%d,\"%1399[^\"]\"", &link_id, &len, s_at_data_buf) != 3) {
+    if (sscanf((char *)data, "%1[CS],%7[^,],%d,%d,\"%1399[^\"]\"",
+               server_flag, proto, &link_id, &len, s_at_data_buf) != 5) {
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPSENDDATA: Invalid parameters\r\n");
     }
 
@@ -1503,12 +1527,26 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
 
-    if (g_client_conns[link_id].state != CONN_STATE_CONNECTED) {
+    /* Resolve the connection by C/S flag + protocol, mirroring CIPRECVDATA.
+     * The three tables share the same link_id space (0..MAX_CONNECTIONS-1),
+     * so the C/S flag is required to disambiguate a client link from a
+     * server-accepted link with the same id. */
+    connection_info_t *conn;
+
+    if (server_flag[0] == 'C') {
+        conn = &g_client_conns[link_id];
+    } else if (strcmp(proto, "TCP") == 0) {
+        conn = &g_listen_clients[link_id];
+    } else {
+        conn = &g_listen_udp_clients[link_id];
+    }
+
+    if (conn->state != CONN_STATE_CONNECTED) {
         k_mutex_unlock(&conn_mutex);
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPSENDDATA: Link not active\r\n");
     }
 
-    int sock_fd = g_client_conns[link_id].sock_fd;
+    int sock_fd = conn->sock_fd;
     k_mutex_unlock(&conn_mutex);
 
     int actual_len = strlen(s_at_data_buf);
