@@ -946,6 +946,7 @@ static cat_return_state cmd_cipstart_query(const struct cat_command *cmd, uint8_
 {
     char buffer[QAT_RESPONSE_BUF_SIZE];
     int offset = 0;
+    buffer[0] = '\0';
     *data_size = 0;
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
@@ -1548,6 +1549,7 @@ static cat_return_state cmd_ciprecvtype_query(const struct cat_command *cmd, uin
 {
     char buffer[QAT_RESPONSE_BUF_SIZE];
     int offset = 0;
+    buffer[0] = '\0';
     *data_size = 0;
 
     k_mutex_lock(&conn_mutex, K_FOREVER);
