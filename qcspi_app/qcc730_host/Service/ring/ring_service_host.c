@@ -755,6 +755,11 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, const struct ring_ad
     return 0;
 }
 
+#define INIT_QRING_RDSR_TIMEOUT  (-100)
+
+#define RDSR_POLL_MS   100
+#define RDSR_POLL_MAX  100   /* 100 × 100ms = 10s, covers external-flash boot (~6-7s) */
+
 int init_qring(void)
 {
     int ret = 0;
@@ -767,7 +772,7 @@ int init_qring(void)
         return -QC_OSAL_ENODEV;
     }
 
-    /* Initialize QCSPI adapter */
+    /* Initialize QCSPI adapter — SPI transport must be up before RDSR poll */
     ret = adapter->init();
     if (ret < 0) {
         QC_OSAL_LOG_ERR("QCSPI adapter initialization failed: %d", ret);
@@ -775,6 +780,27 @@ int init_qring(void)
     }
 
     QC_OSAL_LOG_INF("QCSPI adapter initialized successfully");
+
+    /* Poll RDSR until QCC730 SPI slave is ready (non-0xFF) or timeout.
+     * RDSR non-0xFF means SPI hardware is up; it does NOT mean ring SRAM
+     * is initialized yet — that is checked by ring_service_host_init().
+     * Returns INIT_QRING_RDSR_TIMEOUT (-100) on timeout so the caller can
+     * distinguish "hardware unresponsive" from "SRAM not ready". */
+    int rdsr_ok = 0;
+    for (int i = 0; i < RDSR_POLL_MAX; i++) {
+        uint32_t status = 0;
+        if (qcspi_RDSR(&status) == 0 && status != 0xffffffff) {
+            rdsr_ok = 1;
+            break;
+        }
+        qc_osal_msleep(RDSR_POLL_MS);
+    }
+
+    if (!rdsr_ok) {
+        QC_OSAL_LOG_ERR("RDSR timeout: QCC730 SPI not ready after %d ms",
+                        RDSR_POLL_MS * RDSR_POLL_MAX);
+        return INIT_QRING_RDSR_TIMEOUT;
+    }
 
     /* Initialize ring service */
     ret = ring_service_host_init(CONFIG_RING_CTRL_BLOCK_ADDR, adapter);

@@ -360,9 +360,31 @@ void atcmd_response_parser_IPDHEX(int argc, uint32_t **argv, char *orig_cmd)
     }
 }
 
+/* Task that runs qcc730_reset() asynchronously after AT+RST is received.
+ * qcc730_reset() blocks for several seconds (RDSR poll + ring init), so it
+ * must not run in the work_queue thread context that called this parser. */
+static void rst_recovery_task(void *arg)
+{
+    (void)arg;
+    /*printf("rst_recovery_task: starting ring re-establishment\r\n");*/
+    atcmd_ring_reset();
+    /*printf("rst_recovery_task: ring ready\r\n");*/
+    vTaskDelete(NULL);
+}
+
 void atcmd_response_parser_RST(int argc, uint32_t **argv, char *orig_cmd)
 {
+    HAL_NVIC_DisableIRQ(EXTI12_IRQn);
     qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+
+    /* Spawn a one-shot task to re-establish the ring immediately instead of
+     * waiting for the next AT command to trigger lazy reconnection. */
+    BaseType_t r = xTaskCreate(rst_recovery_task, "rst_recovery",
+                               1024, NULL, 5, NULL);
+    if (r != pdPASS) {
+        printf("atcmd_response_parser_RST: failed to create recovery task\r\n");
+        /* Fallback: lazy reconnect on next AT send */
+    }
 }
 
 void atcmd_response_parser_CIPDHCPV4C(int argc, uint32_t **argv, char *orig_cmd)
@@ -1582,8 +1604,11 @@ int qapi_atcmd_set_spi_state(int state)
         return -QC_OSAL_EINVAL;
     }
 
-    qcc730_atcmd->spi_state = state;
-    printf("SPI state changed to: %s\r\n", state == QCC730_SPI_READY ? "READY" : "NOT_READY");
+    if(qcc730_atcmd->spi_state != state)
+    {
+        qcc730_atcmd->spi_state = state;
+        printf("SPI state changed to: %s\r\n", state == QCC730_SPI_READY ? "READY" : "NOT_READY");
+    }
 
     return 0;
 }
