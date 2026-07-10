@@ -451,7 +451,7 @@ static int cmd_qcc_test(const struct shell *ctx, size_t argc, char **argv)
 #endif /* CONFIG_MBEDTLS_TEST */
 
 
-#if defined(MBEDTLS_SELF_TEST) && defined(MBEDTLS_ENTROPY_C)
+#if defined(MBEDTLS_SELF_TEST) && defined(MBEDTLS_ENTROPY_C) && defined(CONFIG_MBEDTLS_TEST)
 static int cmd_entropy_test(const struct shell *ctx, size_t argc, char **argv)
 {
     if (argc != 2) {
@@ -476,11 +476,10 @@ static int cmd_entropy_test(const struct shell *ctx, size_t argc, char **argv)
 {
     ARG_UNUSED(argc);
     ARG_UNUSED(argv);
-    shell_error(ctx, "entropy_test unavailable: need MBEDTLS_SELF_TEST and MBEDTLS_ENTROPY_C");
-    shell_print(ctx, "Enable MBEDTLS_SELF_TEST + MBEDTLS_ENTROPY_C (and SHA256/SHA512) to use this command.");
+    shell_error(ctx, "entropy_test unavailable: need CONFIG_MBEDTLS_TEST and MBEDTLS_ENTROPY_C");
     return -ENOTSUP;
 }
-#endif /* MBEDTLS_SELF_TEST && MBEDTLS_ENTROPY_C */
+#endif /* MBEDTLS_SELF_TEST && MBEDTLS_ENTROPY_C && CONFIG_MBEDTLS_TEST */
 
 
 #if defined(MBEDTLS_ENTROPY_HARDWARE_ALT)
