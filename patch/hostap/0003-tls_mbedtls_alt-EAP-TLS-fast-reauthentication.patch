@@ -3,6 +3,13 @@ From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
 Date: Fri, 12 Jun 2026 09:24:00 -0700
 Subject: [PATCH] tls_mbedtls_alt: EAP/TLS fast reauthentication (Stage 1)
 
+Also add wpa_drv_zep_eapol_suppress_start() to driver_zephyr.c/h:
+suppress DUT-initiated EAPOL-Start on PMKSA cache-hit by setting
+maxStart=0, so the EAPOL SM transitions CONNECTING→AUTHENTICATED
+without sending EAPOL-Start. The SM stays alive for AP-initiated
+EAP-Requests. Also sets WPA_COMPLETED + cancels auth timeout to
+prevent spurious "Connection request failed" shell output.
+
 Add TLS session-ID resumption so a same-boot reconnect performs an
 abbreviated TLS handshake (skipping the certificate exchange) for both
 EAP-TLS and PEAP. The EAP envelope and the firmware-owned 4-way handshake
@@ -32,9 +39,10 @@ cache { enable=yes; name; persist_dir } for the AP to echo the session_id.
  1 file changed, 61 insertions(+), 2 deletions(-)
 
 diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
+index 244c49a8f..73ff416ee 100644
 --- a/src/crypto/tls_mbedtls_alt.c
 +++ b/src/crypto/tls_mbedtls_alt.c
-@@ -172,6 +172,9 @@
+@@ -172,6 +172,9 @@ struct tls_global
      unsigned int crl_reload_interval;
      uint32_t refcnt;
      struct tls_config init_conf;
@@ -44,7 +52,7 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
  };
  
  static struct tls_global tls_ctx_global;
-@@ -376,6 +379,9 @@
+@@ -376,6 +379,9 @@ __attribute_cold__ void *tls_init(const struct tls_config *conf)
      if (++tls_ctx_global.refcnt > 1)
          return &tls_ctx_global;
  
@@ -54,7 +62,7 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
  #if !defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG)
      tls_ctx_global.ctr_drbg = crypto_mbedtls_ctr_drbg();
  #endif
-@@ -410,6 +416,7 @@
+@@ -410,6 +416,7 @@ __attribute_cold__ void tls_deinit(void *tls_ctx)
      char *openssl_ciphers; /*(allocated in tls_init())*/
      *(const char **)&openssl_ciphers = tls_ctx_global.init_conf.openssl_ciphers;
      os_free(openssl_ciphers);
@@ -62,19 +70,18 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
  #ifdef MBEDTLS_SSL_SESSION_TICKETS
      mbedtls_ssl_ticket_free(&tls_ctx_global.ticket_ctx);
  #endif
-@@ -559,9 +566,18 @@
+@@ -559,9 +566,18 @@ int tls_connection_shutdown(void *tls_ctx, struct tls_connection *conn)
  #endif
          tls_connection_deinit_expkey(conn);
  
 -    /* RFE: prepare for session resumption? (see doc in crypto/tls.h) */
--
--    return mbedtls_ssl_session_reset(&conn->ssl);
 +    /* Fast reauth (Route A+): re-offer session from global cache so the
 +     * next client_hello carries the prior session_id even after conn recreation. */
 +    int _reset = mbedtls_ssl_session_reset(&conn->ssl);
 +    if (_reset != 0)
 +        return _reset;
-+
+ 
+-    return mbedtls_ssl_session_reset(&conn->ssl);
 +    if (tls_ctx_global.has_saved) {
 +        int _ss = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
 +        wpa_printf(MSG_DEBUG, "MTLS: fast-reauth set_session (reauth) ret=%d", _ss);
@@ -84,7 +91,7 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
  }
  
  static int tls_wpabuf_resize_put_data(struct wpabuf **buf, const unsigned char *data, size_t dlen)
-@@ -643,6 +659,15 @@
+@@ -643,6 +659,15 @@ static int tls_mbedtls_ssl_setup(struct tls_connection *conn)
      if (conn->verify_peer)
          mbedtls_ssl_set_verify(&conn->ssl, tls_mbedtls_verify_cb, conn);
  
@@ -100,7 +107,7 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
      return 0;
  }
  
-@@ -2175,6 +2200,40 @@
+@@ -2175,6 +2200,40 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
      {
          case 0:
              conn->established = 1;
@@ -141,3 +148,74 @@ diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
              if (conn->push_buf == NULL)
                  /* Need to return something to get final TLS ACK. */
                  conn->push_buf = wpabuf_alloc(0);
+diff --git a/src/drivers/driver_zephyr.c b/src/drivers/driver_zephyr.c
+index 7a252fefd..8cd4bd388 100644
+--- a/src/drivers/driver_zephyr.c
++++ b/src/drivers/driver_zephyr.c
+@@ -2848,3 +2848,43 @@ const struct wpa_driver_ops wpa_driver_zep_ops = {
+ 	.cancel_remain_on_channel = wpa_drv_zep_cancel_remain_on_channel,
+ 	.send_action_cancel_wait = wpa_drv_zep_send_action_cancel_wait,
+ };
++
++#ifdef CONFIG_WIFI_QCOM_ENTERPRISE
++#include "wpa_supplicant_i.h"
++#include "eapol_supp/eapol_supp_sm.h"
++
++void wpa_drv_zep_eapol_suppress_start(struct zep_drv_if_ctx *if_ctx)
++{
++	struct wpa_supplicant *wpa_s = if_ctx->supp_if_ctx;
++
++	if (!wpa_s || !wpa_s->eapol)
++		return;
++
++	/*
++	 * On PMKSA cache-hit, prevent the host EAPOL SM from sending a
++	 * self-initiated EAPOL-Start while keeping it alive for AP-initiated
++	 * EAP exchanges (periodic PMK refresh, hostapd reauth).
++	 *
++	 * 1. maxStart=0: SUPP_PAE_CONNECTING's startWhen expires → startCount(0)
++	 *    >= maxStart(0) → SM transitions to AUTHENTICATED without sending
++	 *    any EAPOL-Start frame.  portEnabled is left true → no DISCONNECTED
++	 *    → no deauth callback → connection stays up.
++	 *    AP-initiated EAP-Request still works: eapolEap=true (AP EAP-Request)
++	 *    → SM: AUTHENTICATED → RESTART → AUTHENTICATING → normal EAP exchange.
++	 *
++	 * 2. portValid=true: required to stay in AUTHENTICATED state.
++	 *    (In the normal full-EAP path portValid is set by set_supp_port,
++	 *    which is a no-op stub in our fullmac glue — set it here instead.)
++	 *
++	 * 3. cancel_auth_timeout + set_state(WPA_COMPLETED): prevents the
++	 *    10s auth timeout from firing and calling wpa_supplicant_deauthenticate(),
++	 *    which would trigger supplicant_send_wifi_mgmt_disc_event() with
++	 *    wpa_state < WPA_COMPLETED → WIFI_STATUS_CONN_FAIL → shell prints
++	 *    "Connection request failed" even though the link is up.
++	 */
++	eapol_sm_configure(wpa_s->eapol, -1, -1, -1, 0);
++	eapol_sm_notify_portValid(wpa_s->eapol, true);
++	wpa_supplicant_cancel_auth_timeout(wpa_s);
++	wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
++}
++#endif /* CONFIG_WIFI_QCOM_ENTERPRISE */
+diff --git a/src/drivers/driver_zephyr.h b/src/drivers/driver_zephyr.h
+index d27a872af..2a1af9cc0 100644
+--- a/src/drivers/driver_zephyr.h
++++ b/src/drivers/driver_zephyr.h
+@@ -360,4 +360,18 @@ void wpa_drv_zep_event_proc_assoc_resp(struct zep_drv_if_ctx *if_ctx,
+ 				       union wpa_event_data *event,
+ 				       unsigned int status);
+ 
++/*
++ * Suppress self-initiated EAPOL-Start on PMKSA cache-hit.
++ *
++ * Sets maxStart=0 so the SUPP_PAE SM transitions CONNECTING→AUTHENTICATED
++ * without sending any EAPOL-Start frames.  The SM stays alive and responds
++ * normally to AP-initiated EAP-Requests (periodic PMK refresh, reauth).
++ *
++ * Called by the QCC730 enterprise glue after a PMKSA cache-hit 4WHS completes
++ * (set_key(KEY_FLAG_PMK) was never called, so no EAP exchange occurred).
++ * Without this, the SM would send EAPOL-Start ~2s later, triggering a
++ * fast-reauth that produces a new PMK conflicting with the firmware's cached PMK.
++ */
++void wpa_drv_zep_eapol_suppress_start(struct zep_drv_if_ctx *if_ctx);
++
+ #endif /* DRIVER_ZEPHYR_H */
