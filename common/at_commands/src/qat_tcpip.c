@@ -3837,6 +3837,15 @@ static void sntpc_work_handler(struct k_work *work)
         return;
     }
 
+    /* sntp_simple() -> net_addr_str_find_port() treats a bare IPv6 literal's
+     * last ':' group as a port and truncates the address. Wrap IPv6 literals
+     * in [] so it is parsed as an address with the default port (123). */
+    char server_buf[SNTPC_SERVER_LEN + 2];
+    if (server[0] != '[' && strchr(server, ':') != NULL) {
+        snprintf(server_buf, sizeof(server_buf), "[%s]", server);
+        server = server_buf;
+    }
+
     struct sntp_time ts;
     int ret = sntp_simple(server, SNTPC_RECV_TIMEOUT_MS, &ts);
 
