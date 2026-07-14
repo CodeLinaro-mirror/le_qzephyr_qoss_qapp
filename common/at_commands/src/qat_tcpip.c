@@ -3514,9 +3514,11 @@ static cat_return_state cmd_cipudpserver_set(const struct cat_command *cmd,
 /* user_data passed to dns_resolve_name(); heap-allocated per query */
 struct dnsc_query_ctx {
     char hostname[DNSC_SERVER_LEN];
-    int  prefer;          /* 0=any, 4=prefer-v4, 6=prefer-v6 */
-    atomic_t responded;   /* set to 1 once EVT has been sent   */
-    atomic_t refcount;    /* number of in-flight queries; free when reaches 0 */
+    int  prefer;              /* 0=any, 4=prefer-v4, 6=prefer-v6 */
+    atomic_t responded;       /* set to 1 once an EVT has been sent   */
+    atomic_t refcount;        /* number of in-flight queries; free when reaches 0 */
+    atomic_t have_fallback;   /* 1 once a non-preferred addr is cached */
+    char fallback_ip[INET6_ADDRSTRLEN]; /* non-preferred addr, used if preferred fails */
 };
 
 static void dnsc_found_cb(enum dns_resolve_status status,
@@ -3525,22 +3527,10 @@ static void dnsc_found_cb(enum dns_resolve_status status,
     struct dnsc_query_ctx *qctx = (struct dnsc_query_ctx *)user_data;
 
     if (status == DNS_EAI_INPROGRESS && info) {
-        /* For v4v6/v6v4: skip if the address family doesn't match preference,
-         * unless no preferred address has arrived yet (we'll accept any). */
         bool want_v4 = (qctx->prefer == 4);
         bool want_v6 = (qctx->prefer == 6);
         bool is_v4   = (info->ai_family == AF_INET);
         bool is_v6   = (info->ai_family == AF_INET6);
-
-        if ((want_v4 && !is_v4) || (want_v6 && !is_v6)) {
-            /* wrong family for this preference — wait for the other query */
-            return;
-        }
-
-        /* Claim the response slot; bail if another query already responded */
-        if (atomic_cas(&qctx->responded, 0, 1) == false) {
-            return;
-        }
 
         char ip_str[INET6_ADDRSTRLEN];
         if (is_v4) {
@@ -3551,6 +3541,21 @@ static void dnsc_found_cb(enum dns_resolve_status status,
             zsock_inet_ntop(AF_INET6, &a6->sin6_addr, ip_str, sizeof(ip_str));
         }
 
+        if ((want_v4 && !is_v4) || (want_v6 && !is_v6)) {
+            /* Non-preferred family: cache it as a fallback rather than emit.
+             * The preferred query may still succeed; only if it fails (or has
+             * already finished without a result) do we use this address. */
+            if (atomic_cas(&qctx->have_fallback, 0, 1)) {
+                strlcpy(qctx->fallback_ip, ip_str, sizeof(qctx->fallback_ip));
+            }
+            return;
+        }
+
+        /* Preferred family (or no preference): claim the response slot. */
+        if (atomic_cas(&qctx->responded, 0, 1) == false) {
+            return;
+        }
+
         char response[256];
         snprintf(response, sizeof(response), "+EVT:dns_get:%s,%s\r\n",
                  qctx->hostname, ip_str);
@@ -3559,15 +3564,19 @@ static void dnsc_found_cb(enum dns_resolve_status status,
     }
 
     /* Terminal status: ALLDONE, CANCELED, FAIL, NODATA, or other error.
-     * Decrement refcount; the last query to finish frees qctx. */
-    bool first_to_finish = atomic_cas(&qctx->responded, 0, 1);
-
+     * Decrement refcount; the last query to finish decides the outcome. */
     if (atomic_dec(&qctx->refcount) == 1) {
-        /* We are the last in-flight query */
-        if (first_to_finish) {
-            /* No other query sent an EVT yet — send dns_fail */
+        /* We are the last in-flight query. If no preferred result was emitted,
+         * fall back to a cached non-preferred address, else report failure. */
+        if (atomic_cas(&qctx->responded, 0, 1)) {
             char response[256];
-            snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", qctx->hostname);
+            if (atomic_get(&qctx->have_fallback)) {
+                snprintf(response, sizeof(response), "+EVT:dns_get:%s,%s\r\n",
+                         qctx->hostname, qctx->fallback_ip);
+            } else {
+                snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n",
+                         qctx->hostname);
+            }
             QAT_Response_Str(QAT_RC_QUIET, response);
         }
         k_free(qctx);
@@ -3674,6 +3683,7 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
         qctx->prefer = 0;
         atomic_set(&qctx->responded, 0);
         atomic_set(&qctx->refcount, 1);
+        atomic_set(&qctx->have_fallback, 0);
         int ret = dnsc_resolve_submit(param, DNS_QUERY_TYPE_A, qctx);
         if (ret < 0) {
             LOG_WRN("DNSC: gethostbyname submit failed: %d", ret);
@@ -3711,6 +3721,7 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
             qctx->prefer = 0;
             atomic_set(&qctx->responded, 0);
             atomic_set(&qctx->refcount, 1);
+            atomic_set(&qctx->have_fallback, 0);
             int ret = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_A, qctx);
             if (ret < 0) {
                 k_free(qctx);
@@ -3726,6 +3737,7 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
             qctx->prefer = 0;
             atomic_set(&qctx->responded, 0);
             atomic_set(&qctx->refcount, 1);
+            atomic_set(&qctx->have_fallback, 0);
             int ret = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_AAAA, qctx);
             if (ret < 0) {
                 k_free(qctx);
@@ -3743,18 +3755,25 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
             qctx->prefer = prefer;
             atomic_set(&qctx->responded, 0);
             atomic_set(&qctx->refcount, 2);
+            atomic_set(&qctx->have_fallback, 0);
             int r4 = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_A,    qctx);
             int r6 = dnsc_resolve_submit(hostname, DNS_QUERY_TYPE_AAAA, qctx);
-            if (r4 < 0) {
-                atomic_dec(&qctx->refcount);
-            }
-            if (r6 < 0) {
-                atomic_dec(&qctx->refcount);
-            }
-            if (r4 < 0 && r6 < 0) {
-                k_free(qctx);
-                snprintf(response, sizeof(response), "+EVT:dns_fail:%s\r\n", hostname);
-                QAT_Response_Str(QAT_RC_QUIET, response);
+
+            /* Reclaim the reference for each submission that failed (its
+             * callback will never run). Follow the same "whoever drops
+             * refcount to 0 frees and reports" rule as dnsc_found_cb() so
+             * ownership stays consistent even if the other query's callback
+             * races with us here. */
+            int fails = (r4 < 0 ? 1 : 0) + (r6 < 0 ? 1 : 0);
+            for (int f = 0; f < fails; f++) {
+                if (atomic_dec(&qctx->refcount) == 1) {
+                    if (atomic_cas(&qctx->responded, 0, 1)) {
+                        snprintf(response, sizeof(response),
+                                 "+EVT:dns_fail:%s\r\n", hostname);
+                        QAT_Response_Str(QAT_RC_QUIET, response);
+                    }
+                    k_free(qctx);
+                }
             }
         }
         return QAT_Response_Str(QAT_RC_OK, NULL);
