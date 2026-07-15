@@ -2042,12 +2042,21 @@ static cat_return_state cmd_cipping_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: Failed to initialize ICMP\r\n");
     }
 
-    /* Get network interface */
-    ping_ctx.iface = get_default_iface();
+    /* Select interface: prefer SAP, fall back to STA (matches FreeRTOS ref) */
+    ping_ctx.iface = get_ap_iface();
+    if (!ping_ctx.iface) {
+        ping_ctx.iface = get_sta_iface();
+    }
     if (!ping_ctx.iface) {
         net_icmp_cleanup_ctx(&ping_ctx.icmp);
         ping_ctx.active = false;
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: No network interface\r\n");
+    }
+
+    /* For IPv6, bind the destination to the chosen interface via scope_id
+     * so link-local / multi-interface routing picks the right netif. */
+    if (ping_ctx.addr.sa_family == AF_INET6) {
+        ping_ctx.addr6.sin6_scope_id = net_if_get_by_iface(ping_ctx.iface);
     }
 
     /* Start ping work */
