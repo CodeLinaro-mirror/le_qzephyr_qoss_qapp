@@ -90,7 +90,7 @@ def _mark_patches_applied(marker_file, patch_files):
 
 
 def _validate_applied_patches(marker_file, patches_dir):
-    """Verify recorded patches match on-disk checksums and no new patches exist.
+    """Verify that every recorded patch still matches its on-disk checksum.
 
     Returns (is_valid: bool, invalid_list: list[str]).
     """
@@ -99,23 +99,16 @@ def _validate_applied_patches(marker_file, patches_dir):
         return True, []
 
     invalid = []
-    applied_names = set()
     for entry in applied:
         if ':' not in entry or entry.startswith('#'):
             continue
         name, expected = entry.split(':', 1)
-        applied_names.add(name)
         patch_file = patches_dir / name
         if not patch_file.exists():
             invalid.append(f"{name} (file missing)")
             continue
         if _get_patch_checksum(patch_file) != expected:
             invalid.append(f"{name} (checksum mismatch)")
-
-    # Detect new patches on disk that were not part of the recorded apply run.
-    for pf in sorted(patches_dir.glob('*.patch')):
-        if pf.name not in applied_names:
-            invalid.append(f"{pf.name} (new patch not yet applied)")
 
     return len(invalid) == 0, invalid
 
@@ -159,64 +152,25 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
                 print(f"Applied: {len([p for p in applied if not p.startswith('#')])}")
                 return True
             else:
-                # Separate "new patch" issues from "corrupted/modified" issues.
-                new_patches = [i for i in invalid if i.endswith("(new patch not yet applied)")]
-                broken = [i for i in invalid if not i.endswith("(new patch not yet applied)")]
-
-                if broken:
-                    print(f"\u26a0\ufe0f  Applied patches have integrity issues:")
-                    for item in broken:
-                        print(f"  - {item}")
-                    print("Use 'force' to reapply or 'revert' to clean up.")
-                    return False
-
-                # Only new patches to apply \u2014 apply them incrementally.
-                print(f"\u26a0\ufe0f  New patches detected (incremental apply):")
-                for item in new_patches:
+                print(f"\u26a0\ufe0f  Applied patches have integrity issues:")
+                for item in invalid:
                     print(f"  - {item}")
-                already_applied = set()
-                for entry in applied:
-                    if ':' in entry and not entry.startswith('#'):
-                        already_applied.add(entry.split(':')[0])
-                missing = [pf for pf in patch_files if pf.name not in already_applied]
-                applied_ok = []
-                for pf in missing:
-                    print(f"\n  Applying: {pf.name}")
-                    result = run(
-                        ['git', 'apply', '--ignore-whitespace', '--recount', str(pf)],
-                        cwd=repo_path, check=False, capture_output=True, text=True,
-                    )
-                    if result.returncode == 0:
-                        print(f"  \u2705 Applied: {pf.name}")
-                        applied_ok.append(pf)
-                    else:
-                        print(f"  \u274c Failed: {pf.name}")
-                        print(f"     {result.stderr.strip()}")
-                        return False
-                # Update marker to include newly applied patches.
-                all_applied = [pf for pf in patch_files
-                               if pf.name in already_applied or pf in applied_ok]
-                _mark_patches_applied(marker_file, all_applied)
-                print(f"\n\ud83c\udf89 Incremental apply complete ({len(applied_ok)} new patch(es)).")
-                return True
+                print("Use 'force' to reapply or 'revert' to clean up.")
+                return False
 
     if force:
-        _revert_repo(label, repo_path, marker_file)
+        revert_patches()
 
     print(f"Found {len(patch_files)} patch file(s) to apply:")
     for i, pf in enumerate(patch_files, 1):
         print(f"  {i:02d}. {pf.name}")
 
-    # Pre-validate all patches sequentially.
-    # Each patch is applied (not just --check) so that later patches whose context
-    # lines depend on earlier patches see the correct file state.  The repo is
-    # reset to HEAD after validation regardless of outcome.
+    # Pre-validate all patches before touching the repo
     print(f"\n\U0001f50d Pre-validating all patches...")
     validation_failed = False
-    applied_in_validation = []
     for pf in patch_files:
         result = run(
-            ['git', 'apply', '--ignore-whitespace', '--recount', str(pf)],
+            ['git', 'apply', '--check', '--ignore-whitespace', '--recount', str(pf)],
             cwd=repo_path,
             check=False,
             capture_output=True,
@@ -226,19 +180,8 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
             print(f"  \u274c {pf.name}: Cannot be applied")
             print(f"     {result.stderr.strip()}")
             validation_failed = True
-            break
         else:
             print(f"  \u2705 {pf.name}: Ready to apply")
-            applied_in_validation.append(pf)
-
-    # Always revert the validation trial run before proceeding.
-    # reset --hard restores modified tracked files; clean -fd removes any new
-    # untracked files (e.g. bss_fullmac_stub.c) created by "new file" hunks.
-    if applied_in_validation:
-        run(['git', 'reset', '--hard', 'HEAD'], cwd=repo_path,
-            check=False, capture_output=True, text=True)
-        run(['git', 'clean', '-fd'], cwd=repo_path,
-            check=False, capture_output=True, text=True)
 
     if validation_failed and not force:
         print(f"\n\u274c Pre-validation failed. Use 'force' to attempt applying anyway.")
