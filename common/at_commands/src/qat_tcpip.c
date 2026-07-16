@@ -437,21 +437,21 @@ static void cleanup_client_conn(int link_id)
 #define NT_DEV_STA_ID 1
 #endif
 
-/* Get the Station interface (STA) */
+/* Get the Station interface (STA).
+ * Use the dedicated STA filter (net_if_get_wifi_sta) rather than
+ * net_if_get_first_wifi(): the latter returns the first WiFi iface by
+ * registration order, which is the SoftAP iface on boards that register AP
+ * before STA. In STA+AP concurrent mode that would resolve STA-scoped commands
+ * (CIPSTA / CIPDHCPV4C) to the wrong interface. */
 static struct net_if *get_sta_iface(void)
 {
-    return net_if_get_first_wifi();
+    return net_if_get_wifi_sta();
 }
 
 /* Get the SoftAP interface (SAP) */
 static struct net_if *get_ap_iface(void)
 {
     return net_if_get_wifi_sap();
-}
-
-static struct net_if *get_default_iface(void)
-{
-    return get_sta_iface();
 }
 
 static struct net_if *get_iface_by_qat_id(int id)
@@ -1928,8 +1928,17 @@ static void ping_work_handler(struct k_work *work)
     bool is_ipv6 = (ping_ctx.addr.sa_family == AF_INET6);
     ping_prepare_echo(&params, is_ipv6);
 
-    /* Send ping */
+    /* Update state before sending. Pinging a local interface address takes the
+     * loopback path, where net_icmp_send_echo_request() invokes the reply
+     * callback synchronously before it returns: the callback increments
+     * received, clears waiting_reply and may give done_sem, waking the blocked
+     * command thread. If sent/waiting_reply were updated after send() returns,
+     * that thread could preempt and read stale counters (e.g. summary "3,4")
+     * or the next iteration would report a spurious "Request timed out!".
+     * Roll back on send failure. */
     ping_ctx.sent_time = k_uptime_get_32();
+    ping_ctx.waiting_reply = true;
+    ping_ctx.sent++;
     ret = net_icmp_send_echo_request(&ping_ctx.icmp,
                                     ping_ctx.iface,
                                     &ping_ctx.addr,
@@ -1937,15 +1946,14 @@ static void ping_work_handler(struct k_work *work)
                                     &ping_ctx);
 
     if (ret < 0) {
+        ping_ctx.waiting_reply = false;
+        ping_ctx.sent--;
         snprintf(response, sizeof(response), "+CIPPING:ping send %.100s - error\r\n",
                 ping_ctx.host);
         QAT_Response_Str(QAT_RC_QUIET, response);
         k_sem_give(&ping_ctx.done_sem);
         return;
     }
-
-    ping_ctx.sent++;
-    ping_ctx.waiting_reply = true;
 
     /* Schedule reply timeout; last ping uses same timeout as others */
     if (ping_ctx.sequence < ping_ctx.count) {
@@ -2044,22 +2052,13 @@ static cat_return_state cmd_cipping_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: Failed to initialize ICMP\r\n");
     }
 
-    /* Select interface: prefer SAP, fall back to STA (matches FreeRTOS ref) */
-    ping_ctx.iface = get_ap_iface();
-    if (!ping_ctx.iface) {
-        ping_ctx.iface = get_sta_iface();
-    }
-    if (!ping_ctx.iface) {
-        net_icmp_cleanup_ctx(&ping_ctx.icmp);
-        ping_ctx.active = false;
-        return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: No network interface\r\n");
-    }
-
-    /* For IPv6, bind the destination to the chosen interface via scope_id
-     * so link-local / multi-interface routing picks the right netif. */
-    if (ping_ctx.addr.sa_family == AF_INET6) {
-        ping_ctx.addr6.sin6_scope_id = net_if_get_by_iface(ping_ctx.iface);
-    }
+    /* Leave iface NULL: net_icmp_send_echo_request() then selects the egress
+     * interface from the destination address (net_if_ipv4/ipv6_select_src_iface),
+     * matching Zephyr's native `net ping`. Forcing a fixed iface here would
+     * bypass routing and break STA+AP concurrent mode (e.g. pinging an STA-side
+     * target while the forced iface is SoftAP). For IPv6 the scope_id is left 0
+     * so the kernel resolves the netif from the destination as well. */
+    ping_ctx.iface = NULL;
 
     /* Start ping work */
     k_work_init_delayable(&ping_ctx.work, ping_work_handler);
@@ -2887,11 +2886,11 @@ static cat_return_state cmd_cipv6_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPV6:enable parameter can only be 0 or 1!\r\n");
     }
 
-    /* CIPV6 is a global IPv6 switch for AT usage. Apply to both default iface and SoftAP iface (if exists)
+    /* CIPV6 is a global IPv6 switch for AT usage. Apply to both STA iface and SoftAP iface (if exists)
      * to avoid STA/AP role switch issues.
      */
     struct net_if *ifaces[2] = {0};
-    ifaces[0] = get_default_iface();
+    ifaces[0] = get_sta_iface();
     ifaces[1] = get_ap_iface();
     if (ifaces[0] == ifaces[1]) {
         ifaces[1] = NULL;
@@ -4148,7 +4147,7 @@ static cat_return_state cmd_qlogctl_set(const struct cat_command *cmd,
 
 /*-------------------------------------------------------------------------
  * Command List
- *-----------------------------------------------------------------------*/
+ *-------------------------------------------------------------------------*/
 static struct cat_command qat_tcpip_cmds[] = {
     /* Network Configuration */
     {
