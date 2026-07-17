@@ -24,6 +24,9 @@
 #ifdef CONFIG_QAT_WIFI_CRED
 #include <zephyr/fs/fs.h>
 #endif
+#ifdef CONFIG_WIFI_QCOM_WPS
+#include <zephyr/net/wifi_utils.h>
+#endif
 
 LOG_MODULE_REGISTER(qat_wlan, LOG_LEVEL_DBG);
 
@@ -117,6 +120,12 @@ static cat_return_state cmd_wlan_phy_mode_exec(const struct cat_command *cmd);
 static cat_return_state cmd_wlan_antiinf_exec(const struct cat_command *cmd);
 static cat_return_state cmd_wlan_edca_exec(const struct cat_command *cmd);
 static cat_return_state cmd_wlan_edcca_exec(const struct cat_command *cmd);
+
+#ifdef CONFIG_WIFI_QCOM_WPS
+static cat_return_state cmd_wlan_wps_exec(const struct cat_command *cmd);
+static cat_return_state cmd_wlan_wps_set(const struct cat_command *cmd, const uint8_t *data,
+                                          const size_t data_size, const size_t args_num);
+#endif
 static cat_return_state cmd_wlan_bmiss_exec(const struct cat_command *cmd);
 static cat_return_state cmd_ps_set(const struct cat_command *cmd, const uint8_t *data,
                                           const size_t data_size, const size_t args_num);
@@ -2916,6 +2925,126 @@ static cat_return_state cmd_wlan_cwload_exec(const struct cat_command *cmd)
 
 #endif /* CONFIG_QAT_WIFI_CRED */
 
+#ifdef CONFIG_WIFI_QCOM_WPS
+/*-------------------------------------------------------------------------
+ * AT+CWWPS — WPS PBC Enrollee
+ *
+ * AT+CWWPS=1                          start PBC (full-channel scan)
+ * AT+CWWPS=1,"AA:BB:CC:DD:EE:FF"     start PBC targeting a BSSID
+ * AT+CWWPS=1,"AA:BB:CC:DD:EE:FF",6,11  start PBC with BSSID + channels
+ * AT+CWWPS=0                          cancel WPS
+ * AT+CWWPS                            start PBC (same as AT+CWWPS=1)
+ *-----------------------------------------------------------------------*/
+static cat_return_state cmd_wlan_wps_exec(const struct cat_command *cmd)
+{
+    (void)cmd;
+
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    bool enabled = g_wifi_ctx.wlan_enabled;
+    struct net_if *iface = g_wifi_ctx.iface;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+
+    if (!enabled || !iface) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:WiFi not enabled");
+    }
+
+    struct wifi_wps_config_params params = {0};
+    params.oper = WIFI_WPS_PBC;
+
+    int ret = net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface,
+                       &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Failed to start WPS");
+    }
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+
+static cat_return_state cmd_wlan_wps_set(const struct cat_command *cmd,
+                                          const uint8_t *data,
+                                          const size_t data_size,
+                                          const size_t args_num)
+{
+    (void)cmd;
+    (void)args_num;
+
+    k_mutex_lock(&g_wifi_ctx.mutex, K_FOREVER);
+    bool enabled = g_wifi_ctx.wlan_enabled;
+    struct net_if *iface = g_wifi_ctx.iface;
+    k_mutex_unlock(&g_wifi_ctx.mutex);
+
+    if (!enabled || !iface) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:WiFi not enabled");
+    }
+
+    if (data_size == 0) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Missing parameter");
+    }
+
+    /* First token: enable (1) or disable (0) */
+    char buf[64];
+    size_t copy_len = (data_size < sizeof(buf) - 1) ? data_size : sizeof(buf) - 1;
+    memcpy(buf, data, copy_len);
+    buf[copy_len] = '\0';
+
+    char *p = buf;
+    char *tok = strsep(&p, ",");
+    int enable = atoi(tok);
+
+    if (enable != 0 && enable != 1) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:enable must be 0 or 1");
+    }
+
+    if (enable == 0) {
+        struct wifi_wps_config_params params = {0};
+        params.oper = WIFI_WPS_CANCEL;
+        int ret = net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface,
+                           &params, sizeof(params));
+        if (ret) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Cancel failed");
+        }
+        return QAT_Response_Str(QAT_RC_OK, NULL);
+    }
+
+    /* enable == 1: parse optional BSSID and channel list */
+    struct wifi_wps_config_params params = {0};
+    params.oper = WIFI_WPS_PBC;
+
+    /* Optional BSSID: second token */
+    tok = strsep(&p, ",");
+    if (tok && *tok != '\0') {
+        uint8_t *b = params.bssid;
+        if (sscanf(tok, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx",
+                   &b[0], &b[1], &b[2], &b[3], &b[4], &b[5]) != 6) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Invalid BSSID");
+        }
+    }
+
+    /* Optional channel list: remaining tokens */
+    while ((tok = strsep(&p, ",")) != NULL && *tok != '\0') {
+        char *endp;
+        long ch = strtol(tok, &endp, 10);
+        if (*endp != '\0') {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Invalid channel");
+        }
+        if (!wifi_utils_validate_chan_2g((uint16_t)ch) &&
+            !wifi_utils_validate_chan_5g((uint16_t)ch)) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Invalid channel");
+        }
+        if (params.channel_count >= WIFI_WPS_MAX_CHANNELS) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Too many channels");
+        }
+        params.channels[params.channel_count++] = (uint16_t)ch;
+    }
+
+    int ret = net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface,
+                       &params, sizeof(params));
+    if (ret) {
+        return QAT_Response_Str(QAT_RC_ERROR, "+CWWPS:Failed to start WPS");
+    }
+    return QAT_Response_Str(QAT_RC_OK, NULL);
+}
+#endif /* CONFIG_WIFI_QCOM_WPS */
+
 /*-------------------------------------------------------------------------
  * Command List
  *-----------------------------------------------------------------------*/
@@ -3075,6 +3204,14 @@ static struct cat_command qat_wlan_cmds[] = {
         .name = "+CWLOAD",
         .description = "Load WiFi credentials from /lfs/wifi.conf into context",
         .run = cmd_wlan_cwload_exec,
+    },
+#endif
+#ifdef CONFIG_WIFI_QCOM_WPS
+    {
+        .name = "+CWWPS",
+        .description = "WPS PBC: AT+CWWPS=1[,bssid[,ch...]] start, AT+CWWPS=0 cancel",
+        .run   = cmd_wlan_wps_exec,
+        .write = cmd_wlan_wps_set,
     },
 #endif
 };
