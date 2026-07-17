@@ -3809,7 +3809,7 @@ dnsc_reconfigure: {
 /*-------------------------------------------------------------------------
  * AT+SNTPC - SNTP Client
  *-----------------------------------------------------------------------*/
-#define SNTPC_MAX_SERVERS           2
+#define SNTPC_MAX_SERVERS           1
 #define SNTPC_SERVER_LEN            64
 #define SNTPC_RECV_TIMEOUT_MS       15000
 #define SNTPC_UPDATE_DELAY_MS       3600000
@@ -3935,7 +3935,7 @@ static cat_return_state cmd_sntpc_exec(const struct cat_command *cmd)
         "AT+SNTPC?: show status of SNTP\n\r"
         "AT+SNTPC=[start|stop]\n\r"
         "AT+SNTPC=setOpMode,<0(unicast)|1(broadcast)>\n\r"
-        "AT+SNTPC=setServer,<IP addr|name>,[id]\n\r");
+        "AT+SNTPC=setServer,<IP addr|name>\n\r");
 }
 
 static cat_return_state cmd_sntpc_query(const struct cat_command *cmd,
@@ -4041,7 +4041,7 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
-    /* AT+SNTPC=setServer,<IP addr|name>,[id] */
+    /* AT+SNTPC=setServer,<IP addr|name> */
     if (strncasecmp(subcmd, "setServer", 9) == 0) {
         char addr[SNTPC_SERVER_LEN];
         int id = 0;
@@ -4049,7 +4049,7 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
 
         if (parsed < 1) {
             return QAT_Response_Str(QAT_RC_ERROR,
-                "+SNTPC:AT+SNTPC=setServer,<IP addr|name>,[id]\r\n");
+                "+SNTPC:AT+SNTPC=setServer,<IP addr|name>\r\n");
         }
 
         if (strlen(addr) > 64) {
