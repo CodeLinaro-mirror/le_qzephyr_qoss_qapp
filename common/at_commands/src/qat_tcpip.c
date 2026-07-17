@@ -1362,7 +1362,34 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
         return -ENOTCONN;
     }
 
-    int sock_fd = cipsend_state.conns[cipsend_state.link_id].sock_fd;
+    connection_info_t *send_conn = &cipsend_state.conns[cipsend_state.link_id];
+    int sock_fd = send_conn->sock_fd;
+
+    /* A UDP server's socket is only bound to the local port and is never
+     * connected to a peer, so send() has no destination.  Rebuild the peer
+     * address learned on receive and use sendto() for these connections. */
+    bool udp_server_send = send_conn->is_server &&
+                           (send_conn->type == PROTOCOL_UDP || send_conn->type == PROTOCOL_UDPv6);
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+
+    if (udp_server_send) {
+        memset(&dest_addr, 0, sizeof(dest_addr));
+        if (send_conn->type == PROTOCOL_UDPv6) {
+            struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)&dest_addr;
+            d6->sin6_family = AF_INET6;
+            d6->sin6_port = htons(send_conn->remote_port);
+            zsock_inet_pton(AF_INET6, send_conn->remote_ip, &d6->sin6_addr);
+            dest_len = sizeof(struct sockaddr_in6);
+        } else {
+            struct sockaddr_in *d4 = (struct sockaddr_in *)&dest_addr;
+            d4->sin_family = AF_INET;
+            d4->sin_port = htons(send_conn->remote_port);
+            zsock_inet_pton(AF_INET, send_conn->remote_ip, &d4->sin_addr);
+            dest_len = sizeof(struct sockaddr_in);
+        }
+    }
+
     k_mutex_unlock(&conn_mutex);
 
     const uint8_t *payload = data;
@@ -1405,7 +1432,13 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
     /* Send all data, handling partial sends */
     size_t total = 0;
     while (total < send_len) {
-        ssize_t sent = zsock_send(sock_fd, payload + total, send_len - total, 0);
+        ssize_t sent;
+        if (udp_server_send) {
+            sent = zsock_sendto(sock_fd, payload + total, send_len - total, 0,
+                                (struct sockaddr *)&dest_addr, dest_len);
+        } else {
+            sent = zsock_send(sock_fd, payload + total, send_len - total, 0);
+        }
         if (sent < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 k_msleep(10);
@@ -1548,6 +1581,32 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
     }
 
     int sock_fd = conn->sock_fd;
+
+    /* A UDP server's socket is only bound to the local port and is never
+     * connected to a peer, so send() has no destination.  Rebuild the peer
+     * address learned on receive and use sendto() for these connections. */
+    bool udp_server_send = conn->is_server &&
+                           (conn->type == PROTOCOL_UDP || conn->type == PROTOCOL_UDPv6);
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+
+    if (udp_server_send) {
+        memset(&dest_addr, 0, sizeof(dest_addr));
+        if (conn->type == PROTOCOL_UDPv6) {
+            struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)&dest_addr;
+            d6->sin6_family = AF_INET6;
+            d6->sin6_port = htons(conn->remote_port);
+            zsock_inet_pton(AF_INET6, conn->remote_ip, &d6->sin6_addr);
+            dest_len = sizeof(struct sockaddr_in6);
+        } else {
+            struct sockaddr_in *d4 = (struct sockaddr_in *)&dest_addr;
+            d4->sin_family = AF_INET;
+            d4->sin_port = htons(conn->remote_port);
+            zsock_inet_pton(AF_INET, conn->remote_ip, &d4->sin_addr);
+            dest_len = sizeof(struct sockaddr_in);
+        }
+    }
+
     k_mutex_unlock(&conn_mutex);
 
     int actual_len = strlen(s_at_data_buf);
@@ -1567,7 +1626,13 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
     }
 
     while (total_sent < to_send) {
-        ssize_t sent = zsock_send(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0);
+        ssize_t sent;
+        if (udp_server_send) {
+            sent = zsock_sendto(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0,
+                                (struct sockaddr *)&dest_addr, dest_len);
+        } else {
+            sent = zsock_send(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0);
+        }
         if (sent < 0) {
             snprintf(response, sizeof(response), "+IPS:SEND FAILED:%d", link_id);
             return QAT_Response_Str(QAT_RC_ERROR, response);
