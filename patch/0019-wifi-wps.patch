@@ -1,0 +1,277 @@
+diff --git a/include/zephyr/net/wifi_mgmt.h b/include/zephyr/net/wifi_mgmt.h
+index d5ca46d8b97..be15ccdbd6a 100644
+--- a/include/zephyr/net/wifi_mgmt.h
++++ b/include/zephyr/net/wifi_mgmt.h
+@@ -1377,14 +1377,25 @@ enum wifi_wps_op {
+ 	WIFI_WPS_PIN_GET = 1,
+ 	/** Set WPS pin number */
+ 	WIFI_WPS_PIN_SET = 2,
++	/** Cancel ongoing WPS operation */
++	WIFI_WPS_CANCEL = 3,
+ };
+ 
++/** Maximum number of channels that can be specified for a WPS scan. */
++#define WIFI_WPS_MAX_CHANNELS 3
++
+ /** Wi-Fi wps setup */
+ struct wifi_wps_config_params {
+ 	/** wps operation */
+ 	enum wifi_wps_op oper;
+ 	/** pin value*/
+ 	char pin[WIFI_WPS_PIN_MAX_LEN + 1];
++	/** Target BSSID for PBC; all-zero means no filter. */
++	uint8_t bssid[WIFI_MAC_ADDR_LEN];
++	/** Channel list for PBC scan (802.11 channel numbers); channel_count=0 means full scan. */
++	uint16_t channels[WIFI_WPS_MAX_CHANNELS];
++	/** Number of valid entries in channels[]. */
++	uint8_t channel_count;
+ };
+ 
+ /** Wi-Fi AP status
+diff --git a/subsys/net/l2/wifi/wifi_shell.c b/subsys/net/l2/wifi/wifi_shell.c
+index 46f64dcb4f0..3aac9493741 100644
+--- a/subsys/net/l2/wifi/wifi_shell.c
++++ b/subsys/net/l2/wifi/wifi_shell.c
+@@ -2408,14 +2506,80 @@ static int cmd_wifi_wps_pbc(const struct shell *sh, size_t argc, char *argv[])
+ {
+ 	struct net_if *iface = get_iface(IFACE_TYPE_STA, argc, argv);
+ 	struct wifi_wps_config_params params = {0};
++	struct getopt_state *state;
++	int opt;
++	int opt_index = 0;
++	static const struct option long_options[] = {
++		{"bssid", required_argument, 0, 'm'},
++		{"chans", required_argument, 0, 'c'},
++		{"iface", required_argument, 0, 'i'},
++		{"help",  no_argument,       0, 'h'},
++		{0, 0, 0, 0}
++	};
+ 
+ 	context.sh = sh;
++	params.oper = WIFI_WPS_PBC;
+ 
+-	if (argc == 1) {
+-		params.oper = WIFI_WPS_PBC;
+-	} else {
+-		shell_help(sh);
+-		return -ENOEXEC;
++	while ((opt = getopt_long(argc, argv, "m:c:i:h",
++				  long_options, &opt_index)) != -1) {
++		state = getopt_state_get();
++		switch (opt) {
++		case 'm':
++			if (net_bytes_from_str(params.bssid,
++					       sizeof(params.bssid),
++					       state->optarg) < 0) {
++				PR_WARNING("Invalid BSSID: %s\n", state->optarg);
++				return -EINVAL;
++			}
++			break;
++		case 'c': {
++			/* Comma-separated channel list, e.g. "6,11,36" */
++			char buf[64];
++			char *tok;
++			char *saveptr;
++
++			strlcpy(buf, state->optarg, sizeof(buf));
++
++			tok = strtok_r(buf, ",", &saveptr);
++			while (tok) {
++				char *endp;
++				long ch = strtol(tok, &endp, 10);
++
++				if (*endp != '\0' ||
++				    (!wifi_utils_validate_chan_2g((uint16_t)ch) &&
++				     !wifi_utils_validate_chan_5g((uint16_t)ch))) {
++					PR_WARNING("Invalid channel: %s"
++						   " (valid: 1-14, 36-173)\n",
++						   tok);
++					return -EINVAL;
++				}
++				if (params.channel_count >= WIFI_WPS_MAX_CHANNELS) {
++					PR_WARNING("Too many channels (max %d)\n",
++						   WIFI_WPS_MAX_CHANNELS);
++					return -EINVAL;
++				}
++				params.channels[params.channel_count++] =
++					(uint16_t)ch;
++				tok = strtok_r(NULL, ",", &saveptr);
++			}
++			if (params.channel_count == 0) {
++				PR_WARNING("--chans requires at least one"
++					   " channel number\n");
++				return -EINVAL;
++			}
++			break;
++		}
++		case 'i':
++			/* Consumed by get_iface(), ignore here */
++			break;
++		case 'h':
++			shell_help(sh);
++			return 0;
++		default:
++			PR_WARNING("Invalid option: %c\n", opt);
++			shell_help(sh);
++			return -EINVAL;
++		}
+ 	}
+ 
+ 	if (net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface, &params, sizeof(params))) {
+@@ -2455,6 +2619,23 @@ static int cmd_wifi_wps_pin(const struct shell *sh, size_t argc, char *argv[])
+ 	return 0;
+ }
+ 
++static int cmd_wifi_wps_cancel(const struct shell *sh, size_t argc, char *argv[])
++{
++	struct net_if *iface = get_iface(IFACE_TYPE_STA, argc, argv);
++	struct wifi_wps_config_params params = {0};
++
++	context.sh = sh;
++
++	params.oper = WIFI_WPS_CANCEL;
++
++	if (net_mgmt(NET_REQUEST_WIFI_WPS_CONFIG, iface, &params, sizeof(params))) {
++		PR_WARNING("Cancel WPS operation failed\n");
++		return -ENOEXEC;
++	}
++
++	return 0;
++}
++
+ static int cmd_wifi_ap_wps_pbc(const struct shell *sh, size_t argc, char *argv[])
+ {
+ 	struct net_if *iface = get_iface(IFACE_TYPE_SAP, argc, argv);
+@@ -4181,9 +4382,16 @@ SHELL_SUBCMD_ADD((wifi), version, NULL,
+ 
+ SHELL_SUBCMD_ADD((wifi), wps_pbc, NULL,
+ 		 "Start a WPS PBC connection.\n"
+-		 "[-i, --iface=<interface index>] : Interface index.\n",
++		 "[-m, --bssid <AA:BB:CC:DD:EE:FF>] : Target AP BSSID (optional).\n"
++		 "[-c, --chans <ch1,ch2,...>]        : Comma-separated channel list (optional).\n"
++		 "[-i, --iface=<index>]              : Interface index.\n"
++		 "Examples:\n"
++		 "  wifi wps_pbc\n"
++		 "  wifi wps_pbc --bssid AA:BB:CC:DD:EE:FF\n"
++		 "  wifi wps_pbc --chans 6,11\n"
++		 "  wifi wps_pbc --bssid AA:BB:CC:DD:EE:FF --chans 6\n",
+ 		 cmd_wifi_wps_pbc,
+-		 1, 2);
++		 1, 7);
+ 
+ SHELL_SUBCMD_ADD((wifi), wps_pin, NULL,
+ 		 "Set and get WPS pin.\n"
+@@ -4192,6 +4400,12 @@ SHELL_SUBCMD_ADD((wifi), wps_pin, NULL,
+ 		 cmd_wifi_wps_pin,
+ 		 1, 3);
+ 
++SHELL_SUBCMD_ADD((wifi), wps_cancel, NULL,
++		 "Cancel ongoing WPS operation.\n"
++		 "[-i, --iface=<interface index>] : Interface index.\n",
++		 cmd_wifi_wps_cancel,
++		 1, 2);
++
+ SHELL_SUBCMD_ADD((wifi), ps_exit_strategy, NULL,
+ 		 "<tim> : Set PS exit strategy to Every TIM\n"
+ 		 "<custom> : Set PS exit strategy to Custom\n"
+diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
+--- a/modules/hostap/CMakeLists.txt
++++ b/modules/hostap/CMakeLists.txt
+@@ -901,2 +901,22 @@ endif() # !CONFIG_WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 
+ endif()
++# QCC730 host-driven WPS enrollee (mutually exclusive with WIFI_NM_WPA_SUPPLICANT_WPS)
++if(CONFIG_WIFI_QCOM_WPS)
++  zephyr_library_sources(
++    ${HOSTAP_SRC_BASE}/wps/wps.c
++    ${HOSTAP_SRC_BASE}/wps/wps_common.c
++    ${HOSTAP_SRC_BASE}/wps/wps_attr_build.c
++    ${HOSTAP_SRC_BASE}/wps/wps_attr_parse.c
++    ${HOSTAP_SRC_BASE}/wps/wps_attr_process.c
++    ${HOSTAP_SRC_BASE}/wps/wps_dev_attr.c
++    ${HOSTAP_SRC_BASE}/wps/wps_enrollee.c
++    ${CMAKE_CURRENT_SOURCE_DIR}/src/wps_registrar_stub.c
++    ${HOSTAP_SRC_BASE}/l2_packet/l2_packet_zephyr.c
++  )
++  zephyr_library_include_directories(${HOSTAP_SRC_BASE}/wps)
++  if(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ALT)
++    zephyr_library_sources(${HOSTAP_SRC_BASE}/crypto/crypto_mbedtls_alt.c)
++  endif()
++  zephyr_library_compile_definitions(CONFIG_WPS)
++endif()
++
+diff --git a/modules/hostap/src/wps_registrar_stub.c b/modules/hostap/src/wps_registrar_stub.c
+new file mode 100644
+index 00000000000..696d8537b82
+--- /dev/null
++++ b/modules/hostap/src/wps_registrar_stub.c
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ *
++ * wps_registrar_stub.c — Enrollee-only stub for wps_registrar symbols.
++ *
++ * QCC730 acts as WPS Enrollee only.  The registrar code (wps_registrar.c,
++ * ~60 KB) is not compiled in.  wps.c references a small number of registrar
++ * symbols inside "if (data->registrar)" guards that are never reached in
++ * enrollee mode (data->registrar is always NULL).  These stubs satisfy the
++ * linker without pulling in the full registrar implementation.
++ *
++ * If any stub is unexpectedly called at runtime, it logs an error and
++ * returns a safe failure value — this makes silent mis-use visible.
++ */
++
++#include "includes.h"
++#include "common.h"
++#include "wps_i.h"
++#include "utils/wpabuf.h"
++
++struct wpabuf * wps_registrar_get_msg(struct wps_data *wps,
++                                      enum wsc_op_code *op_code)
++{
++    wpa_printf(MSG_ERROR, "WPS: wps_registrar_get_msg called in enrollee-only build");
++    return NULL;
++}
++
++enum wps_process_res wps_registrar_process_msg(struct wps_data *wps,
++                                                enum wsc_op_code op_code,
++                                                const struct wpabuf *msg)
++{
++    wpa_printf(MSG_ERROR, "WPS: wps_registrar_process_msg called in enrollee-only build");
++    return WPS_FAILURE;
++}
++
++int wps_build_cred(struct wps_data *wps, struct wpabuf *msg)
++{
++    wpa_printf(MSG_ERROR, "WPS: wps_build_cred called in enrollee-only build");
++    return -1;
++}
++
++int wps_registrar_invalidate_pin(struct wps_registrar *reg, const u8 *uuid)
++{
++    return 0;
++}
++
++int wps_registrar_unlock_pin(struct wps_registrar *reg, const u8 *uuid)
++{
++    return 0;
++}
++
++void wps_registrar_remove_nfc_pw_token(struct wps_registrar *reg,
++                                        struct wps_nfc_pw_token *token)
++{
++}
++
++int wps_device_store(struct wps_registrar *reg,
++                     struct wps_device_data *dev, const u8 *uuid)
++{
++    return 0;
++}
++
++int wps_cb_new_psk(struct wps_registrar *reg, const u8 *mac_addr,
++                   const u8 *p2p_dev_addr, const u8 *psk, size_t psk_len)
++{
++    return 0;
++}
