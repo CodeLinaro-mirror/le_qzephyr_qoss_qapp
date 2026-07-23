@@ -19,7 +19,7 @@
 #include "fw_upgrade.h"
 #include "fw_upgrade_mem.h"
 
-LOG_MODULE_DECLARE(qcom_img_mgmt, CONFIG_QCOM_IMG_MGMT_LOG_LEVEL);
+LOG_MODULE_REGISTER(fw_upgrade_mem, CONFIG_LOG_DEFAULT_LEVEL);
 
 /**********************************************************************************************************/
 /* Preprocessor Definitions and Constants                                                                 */

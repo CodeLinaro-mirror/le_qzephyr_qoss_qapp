@@ -27,6 +27,8 @@ LOG_MODULE_REGISTER(qat_common, LOG_LEVEL_INF);
 #ifdef CONFIG_PM_DEVICE
 extern bool spi_is_ext_wakeup(void);
 extern void spi_clear_ext_wakeup_flag(void);
+/* Declared in qat_wlan.c — executes AT+PS=0 steps */
+extern void qat_ps_exit(void);
 #endif
 
 /* Test memory variable */
@@ -603,21 +605,22 @@ static void qat_notify_pm_state_exit(enum pm_state state)
     switch (state) {
     case PM_STATE_SUSPEND_TO_RAM:
     case PM_STATE_SOFT_OFF:
-        
         /* Check if wakeup was triggered by external wake up pin */
         if (spi_is_ext_wakeup()) {
             /* Set SPI busy to give Host time to send control commands */
             if (device_is_ready(spi_dev)) {
+                #ifdef CONFIG_QAT_WLAN
+                qat_ps_exit();
+                #else
                 pm_device_busy_set(spi_dev);
+                /* Notify Host that device has woken up */
+                QAT_Response_Str(QAT_RC_QUIET, "+EVT:wakeup\r\n");
+                #endif
                 LOG_DBG("QAT: SPI busy set after external pin wakeup");
             }
-            
-            /* Notify Host that device has woken up */
-            QAT_Response_Str(QAT_RC_QUIET, "+EVT:wakeup\r\n");
-
-        } else {
+            spi_clear_ext_wakeup_flag();
+        }else {
             LOG_DBG("QAT: Wakeup not from external pin, skip notification");
-            //QAT_Response_Str(QAT_RC_QUIET, "Wakeup not from external\r\n");
         }
         break;
     default:

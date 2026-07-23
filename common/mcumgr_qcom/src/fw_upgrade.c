@@ -22,7 +22,7 @@
 /* Forward declaration for missing function */
 extern void nt_system_sw_reset(void);
 
-LOG_MODULE_DECLARE(qcom_img_mgmt, CONFIG_QCOM_IMG_MGMT_LOG_LEVEL);
+LOG_MODULE_REGISTER(fw_upgrade, CONFIG_LOG_DEFAULT_LEVEL);
 /**********************************************************************************************************/
 /* Preprocessor Definitions and Constants																  */
 /**********************************************************************************************************/
@@ -42,10 +42,6 @@ LOG_MODULE_DECLARE(qcom_img_mgmt, CONFIG_QCOM_IMG_MGMT_LOG_LEVEL);
 #ifndef MIN
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #endif
-
-#define FW_UPGRADE_FLAG_AUTO_REBOOT             (1 << 0)
-#define FW_UPGRADE_FLAG_DUPLICATE_ACTIVE_FS     (1 << 1)
-#define FW_UPGRADE_FLAG_DUPLICATE_KEEP_TRIAL_FS (1 << 2)
 
 #define UNUSED(x) (void)(x)
 

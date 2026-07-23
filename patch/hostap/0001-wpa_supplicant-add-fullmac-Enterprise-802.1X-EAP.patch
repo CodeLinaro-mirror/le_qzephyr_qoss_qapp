@@ -1,0 +1,465 @@
+From 4260ff5ae5c0319856f42eca0885d47419ae3cd1 Mon Sep 17 00:00:00 2001
+From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
+Date: Thu, 16 Jul 2026 03:27:24 -0700
+Subject: [PATCH] hostap: Add WPA2/WPA3 Enterprise (802.1X/EAP) support with
+ EAP-TLS fast reauth
+
+Enable full WPA2/WPA3 Enterprise (802.1X/EAP) support on QCC730 with EAP-TLS
+fast reauthentication via TLS session resumption (abbreviated handshake).
+
+This implementation targets fullmac drivers where the firmware handles 802.11
+authentication, association, and the 4-way handshake, while the host runs only
+the EAP state machine.
+
+Key Features:
+- Full EAP state machine integration (PEAP, TTLS, EAP-TLS)
+- TLS session-ID resumption for fast reauth (abbreviated handshake)
+- EAPOL-Start suppression on PMKSA cache-hit
+- DH parameter setup guard for mbedtls (client-only)
+- Deep-copy EAPOL_RX events to prevent stack overflow in data path
+---
+ src/crypto/tls_mbedtls_alt.c     | 105 ++++++++++++++++++++++++++++---
+ src/drivers/driver_zephyr.c      |  85 ++++++++++++++++++++++++-
+ src/drivers/driver_zephyr.h      |  20 ++++++
+ src/l2_packet/l2_packet_zephyr.c |   4 +-
+ wpa_supplicant/wpa_supplicant.c  |  16 ++++-
+ wpa_supplicant/wpas_glue.c       |   7 +--
+ 6 files changed, 217 insertions(+), 20 deletions(-)
+
+diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
+index 0e7124c8f..73ff416ee 100644
+--- a/src/crypto/tls_mbedtls_alt.c
++++ b/src/crypto/tls_mbedtls_alt.c
+@@ -172,6 +172,9 @@ struct tls_global
+     unsigned int crl_reload_interval;
+     uint32_t refcnt;
+     struct tls_config init_conf;
++
++    unsigned int has_saved : 1; /* saved_session holds a valid session for fast reauth */
++    mbedtls_ssl_session saved_session; /* global TLS session cache; persists across conn deinit */
+ };
+ 
+ static struct tls_global tls_ctx_global;
+@@ -376,6 +379,9 @@ __attribute_cold__ void *tls_init(const struct tls_config *conf)
+     if (++tls_ctx_global.refcnt > 1)
+         return &tls_ctx_global;
+ 
++    mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
++    tls_ctx_global.has_saved = 0;
++
+ #if !defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG)
+     tls_ctx_global.ctr_drbg = crypto_mbedtls_ctr_drbg();
+ #endif
+@@ -410,6 +416,7 @@ __attribute_cold__ void tls_deinit(void *tls_ctx)
+     char *openssl_ciphers; /*(allocated in tls_init())*/
+     *(const char **)&openssl_ciphers = tls_ctx_global.init_conf.openssl_ciphers;
+     os_free(openssl_ciphers);
++    mbedtls_ssl_session_free(&tls_ctx_global.saved_session);
+ #ifdef MBEDTLS_SSL_SESSION_TICKETS
+     mbedtls_ssl_ticket_free(&tls_ctx_global.ticket_ctx);
+ #endif
+@@ -559,9 +566,18 @@ int tls_connection_shutdown(void *tls_ctx, struct tls_connection *conn)
+ #endif
+         tls_connection_deinit_expkey(conn);
+ 
+-    /* RFE: prepare for session resumption? (see doc in crypto/tls.h) */
++    /* Fast reauth (Route A+): re-offer session from global cache so the
++     * next client_hello carries the prior session_id even after conn recreation. */
++    int _reset = mbedtls_ssl_session_reset(&conn->ssl);
++    if (_reset != 0)
++        return _reset;
+ 
+-    return mbedtls_ssl_session_reset(&conn->ssl);
++    if (tls_ctx_global.has_saved) {
++        int _ss = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
++        wpa_printf(MSG_DEBUG, "MTLS: fast-reauth set_session (reauth) ret=%d", _ss);
++        /* Non-fatal on failure: handshake proceeds as full. */
++    }
++    return 0;
+ }
+ 
+ static int tls_wpabuf_resize_put_data(struct wpabuf **buf, const unsigned char *data, size_t dlen)
+@@ -643,6 +659,15 @@ static int tls_mbedtls_ssl_setup(struct tls_connection *conn)
+     if (conn->verify_peer)
+         mbedtls_ssl_set_verify(&conn->ssl, tls_mbedtls_verify_cb, conn);
+ 
++    /* Fast reauth (Route A+): offer the saved session from the global cache so
++     * the first client_hello from this new conn carries the prior session_id. */
++    if (tls_ctx_global.has_saved) {
++        ret = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
++        wpa_printf(MSG_DEBUG, "MTLS: fast-reauth set_session (init) ret=%d", ret);
++        /* Non-fatal: handshake proceeds as full on failure. */
++        ret = 0;
++    }
++
+     return 0;
+ }
+ 
+@@ -711,7 +736,7 @@ static void tls_mbedtls_set_allowed_tls_vers(struct tls_conf *tls_conf, mbedtls_
+ 
+ __attribute_noinline__ static int tls_mbedtls_readfile(const char *path, u8 **buf, size_t *n);
+ 
+-#ifdef MBEDTLS_DHM_C
++#if defined(MBEDTLS_DHM_C) && defined(MBEDTLS_SSL_SRV_C)
+ static int tls_mbedtls_set_dhparams(struct tls_conf *tls_conf, const struct tls_connection_params *params)
+ {
+     size_t len;
+@@ -1638,7 +1663,7 @@ static int tls_mbedtls_set_params(struct tls_conf *tls_conf, const struct tls_co
+     if (ret != 0)
+         return -1;
+ 
+-#ifdef MBEDTLS_DHM_C
++#if defined(MBEDTLS_DHM_C) && defined(MBEDTLS_SSL_SRV_C)
+     if (params->dh_blob && !tls_mbedtls_set_dhparams(tls_conf, params))
+     {
+         return -1;
+@@ -1695,7 +1720,6 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn, const
+     if (tls_mbedtls_set_params(tls_conf, params) != 0)
+         return -1;
+     conn->verify_peer = tls_conf->verify_peer;
+-
+     return tls_mbedtls_ssl_setup(conn);
+ }
+ 
+@@ -2145,7 +2169,18 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+             wpabuf_put(*appl_data, res);
+     }
+     else
+-        ret = mbedtls_ssl_handshake(&conn->ssl);
++    {
++        int _s0, _s1;
++        do {
++            _s0 = (int)conn->ssl.MBEDTLS_PRIVATE(state);
++            printk("MTLS: step_enter state=%d\n", _s0);
++            ret = mbedtls_ssl_handshake_step(&conn->ssl);
++            _s1 = (int)conn->ssl.MBEDTLS_PRIVATE(state);
++            printk("MTLS: step_done state=%d->%d ret=%d\n", _s0, _s1, ret);
++            if (ret != 0)
++                break;
++        } while (_s1 != MBEDTLS_SSL_HANDSHAKE_OVER);
++    }
+ #else
+     int ret = 0;
+     while (conn->ssl.MBEDTLS_PRIVATE(state) != MBEDTLS_SSL_HANDSHAKE_OVER)
+@@ -2165,6 +2200,40 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+     {
+         case 0:
+             conn->established = 1;
++
++            /* Fast reauth (Route A+): cache session in global so it persists
++             * across conn deinit/init cycles (conn is recreated on reconnect). */
++            {
++                mbedtls_ssl_session cur_session;
++                mbedtls_ssl_session_init(&cur_session);
++                if (mbedtls_ssl_get_session(&conn->ssl, &cur_session) == 0) {
++                    /* Spec §3a: detect resumption via session-ID match. */
++                    if (tls_ctx_global.has_saved &&
++                        cur_session.MBEDTLS_PRIVATE(id_len) > 0 &&
++                        cur_session.MBEDTLS_PRIVATE(id_len) ==
++                            tls_ctx_global.saved_session.MBEDTLS_PRIVATE(id_len) &&
++                        os_memcmp(cur_session.MBEDTLS_PRIVATE(id),
++                                  tls_ctx_global.saved_session.MBEDTLS_PRIVATE(id),
++                                  cur_session.MBEDTLS_PRIVATE(id_len)) == 0) {
++                        conn->resumed = 1;
++                    }
++                    /* Refresh: free prior session to avoid peer-cert leak. */
++                    if (tls_ctx_global.has_saved) {
++                        mbedtls_ssl_session_free(&tls_ctx_global.saved_session);
++                        mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
++                        tls_ctx_global.has_saved = 0;
++                    }
++                    /* Transfer ownership into the global cache. */
++                    os_memcpy(&tls_ctx_global.saved_session, &cur_session, sizeof(cur_session));
++                    tls_ctx_global.has_saved = 1;
++                    /* Do NOT free cur_session — ownership transferred. */
++                } else {
++                    mbedtls_ssl_session_free(&cur_session);
++                }
++            }
++            wpa_printf(MSG_DEBUG, "MTLS: fast-reauth resumed=%d has_saved=%d",
++                       conn->resumed, tls_ctx_global.has_saved);
++
+             if (conn->push_buf == NULL)
+                 /* Need to return something to get final TLS ACK. */
+                 conn->push_buf = wpabuf_alloc(0);
+@@ -2173,9 +2242,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+         case MBEDTLS_ERR_SSL_WANT_READ:
+         case MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS:
+         case MBEDTLS_ERR_SSL_ASYNC_IN_PROGRESS:
+-            if (tls_ctx_global.tls_conf /*(is server)*/
+-                && conn->established && conn->push_buf == NULL)
+-                /* Need to return something to trigger completion of EAP-TLS. */
++            /*wpa_printf(MSG_ERROR, "MTLS: mbedtls_ssl_handshake WANT_READ/WRITE push_buf=%s",
++                       conn->push_buf ? "non-null" : "null");
++                       */
++            if (conn->push_buf == NULL)
++                /* Need to return ACK (empty buf) so EAP-TLS requests
++                 * the next server fragment or triggers completion.
++                 * Original condition was server-only (tls_ctx_global.tls_conf
++                 * && conn->established) but client also needs ACK during
++                 * multi-exchange server hello flight (WANT_READ after
++                 * ServerHello+Cert, waiting for ServerKeyExchange etc.). */
+                 conn->push_buf = wpabuf_alloc(0);
+             break;
+         default:
+@@ -2200,12 +2276,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+                     break;
+             }
+ 
+-            ilog(ret, "mbedtls_ssl_handshake");
++            //elog(ret, "mbedtls_ssl_handshake");
+             break;
+     }
+ 
+     struct wpabuf *out_data = conn->push_buf;
+     conn->push_buf          = NULL;
++    /*
++    wpa_printf(MSG_ERROR, "MTLS: handshake_exit ret=%d out_data=%s established=%d",
++               ret, out_data ? "non-null" : "NULL", conn->established);
++               */
+     return out_data;
+ }
+ 
+@@ -2977,6 +3057,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+     struct tls_conf *tls_conf   = conn->tls_conf;
+     uint32_t flags_in           = *flags;
+ 
++    //wpa_printf(MSG_ERROR, "MTLS: verify_cb depth=%d flags_in=0x%08X", depth, flags_in);
++
+ #if defined(TLS_MBEDTLS_CERT_DISABLE_KEY_USAGE_CHECK)
+     crt->MBEDTLS_PRIVATE(ext_types) &= ~MBEDTLS_X509_EXT_KEY_USAGE;
+     crt->MBEDTLS_PRIVATE(ext_types) &= ~MBEDTLS_X509_EXT_EXTENDED_KEY_USAGE;
+@@ -3012,6 +3094,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+     {
+         if (!conn->peer_subject)
+             tls_mbedtls_set_peer_subject(conn, crt);
++        //wpa_printf(MSG_ERROR, "MTLS: verify_cb depth=0 peer_subject=%s",
++        //           conn->peer_subject ? conn->peer_subject : "NULL(malloc_fail)");
+         /*(use same labels to tls_mbedtls_verify_fail_event() as used in
+          * other TLS modules so that hwsim tests find exact string match)*/
+         if (!conn->peer_subject)
+@@ -3172,6 +3256,7 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+         }
+     }
+ 
++    //wpa_printf(MSG_ERROR, "MTLS: verify_cb depth=%d flags_out=0x%08X", depth, *flags);
+     return 0;
+ }
+ #endif
+diff --git a/src/drivers/driver_zephyr.c b/src/drivers/driver_zephyr.c
+index 1094d562d..8cd4bd388 100644
+--- a/src/drivers/driver_zephyr.c
++++ b/src/drivers/driver_zephyr.c
+@@ -376,10 +376,41 @@ void wpa_supplicant_event_wrapper(void *ctx,
+ 			data_tmp->unprot_disassoc.sa = sa;
+ 			os_memcpy(da, data->unprot_disassoc.da, ETH_ALEN);
+ 			data_tmp->unprot_disassoc.da = da;
++		} else if (event == EVENT_EAPOL_RX) {
++			/*
++			 * Deep-copy EAPOL_RX so EAP processing runs in the
++			 * wpa_supplicant thread (large stack) rather than the
++			 * caller's context (data_path_task, 2 KB stack).
++			 */
++			union wpa_event_data *data_tmp = msg.data;
++			u8 *src_copy = os_zalloc(ETH_ALEN);
++			u8 *frame_copy = os_zalloc(data->eapol_rx.data_len);
++
++			if (!src_copy || !frame_copy) {
++				wpa_printf(MSG_ERROR,
++				  "%s:%d EVENT_EAPOL_RX alloc failed (src=%p frame=%p)\n",
++				  __func__, __LINE__, src_copy, frame_copy);
++				os_free(src_copy);
++				os_free(frame_copy);
++				os_free(msg.data);
++				return;
++			}
++			os_memcpy(src_copy, data->eapol_rx.src, ETH_ALEN);
++			os_memcpy(frame_copy, data->eapol_rx.data, data->eapol_rx.data_len);
++			data_tmp->eapol_rx.src = src_copy;
++			data_tmp->eapol_rx.data = frame_copy;
+ 		}
+ 	}
+ 
+-	zephyr_wifi_send_event(&msg);
++	if (zephyr_wifi_send_event(&msg) != 0) {
++		if (event == EVENT_EAPOL_RX && msg.data) {
++			union wpa_event_data *d = msg.data;
++
++			os_free((void *)d->eapol_rx.src);
++			os_free((void *)d->eapol_rx.data);
++		}
++		os_free(msg.data);
++	}
+ }
+ 
+ void wpa_drv_zep_event_chan_list_changed(struct zep_drv_if_ctx *if_ctx, union wpa_event_data *event)
+@@ -549,6 +580,13 @@ void wpa_drv_zep_event_proc_assoc_resp(struct zep_drv_if_ctx *if_ctx,
+ 			  event->assoc_info.addr,
+ 			  ETH_ALEN);
+ 
++		wpa_printf(MSG_DEBUG,
++			   "%s: posting EVENT_ASSOC bssid=%02x:%02x:%02x:%02x:%02x:%02x ssid_len=%d",
++			   __func__,
++			   if_ctx->bssid[0], if_ctx->bssid[1], if_ctx->bssid[2],
++			   if_ctx->bssid[3], if_ctx->bssid[4], if_ctx->bssid[5],
++			   if_ctx->ssid_len);
++
+ 		wpa_supplicant_event_wrapper(if_ctx->supp_if_ctx,
+ 				EVENT_ASSOC,
+ 				event);
+@@ -1841,9 +1879,10 @@ static int wpa_drv_zep_get_ssid(void *priv,
+ 	if_ctx = priv;
+ 
+ 	wpa_printf(MSG_DEBUG,
+-		   "%s: SSID size: %d",
++		   "%s: ssid_len=%d ssid=\"%.*s\"",
+ 		   __func__,
+-		   if_ctx->ssid_len);
++		   if_ctx->ssid_len,
++		   if_ctx->ssid_len, (const char *)if_ctx->ssid);
+ 
+ 	os_memcpy(ssid, if_ctx->ssid, if_ctx->ssid_len);
+ 
+@@ -2809,3 +2848,43 @@ const struct wpa_driver_ops wpa_driver_zep_ops = {
+ 	.cancel_remain_on_channel = wpa_drv_zep_cancel_remain_on_channel,
+ 	.send_action_cancel_wait = wpa_drv_zep_send_action_cancel_wait,
+ };
++
++#ifdef CONFIG_WIFI_QCOM_ENTERPRISE
++#include "wpa_supplicant_i.h"
++#include "eapol_supp/eapol_supp_sm.h"
++
++void wpa_drv_zep_eapol_suppress_start(struct zep_drv_if_ctx *if_ctx)
++{
++	struct wpa_supplicant *wpa_s = if_ctx->supp_if_ctx;
++
++	if (!wpa_s || !wpa_s->eapol)
++		return;
++
++	/*
++	 * On PMKSA cache-hit, prevent the host EAPOL SM from sending a
++	 * self-initiated EAPOL-Start while keeping it alive for AP-initiated
++	 * EAP exchanges (periodic PMK refresh, hostapd reauth).
++	 *
++	 * 1. maxStart=0: SUPP_PAE_CONNECTING's startWhen expires → startCount(0)
++	 *    >= maxStart(0) → SM transitions to AUTHENTICATED without sending
++	 *    any EAPOL-Start frame.  portEnabled is left true → no DISCONNECTED
++	 *    → no deauth callback → connection stays up.
++	 *    AP-initiated EAP-Request still works: eapolEap=true (AP EAP-Request)
++	 *    → SM: AUTHENTICATED → RESTART → AUTHENTICATING → normal EAP exchange.
++	 *
++	 * 2. portValid=true: required to stay in AUTHENTICATED state.
++	 *    (In the normal full-EAP path portValid is set by set_supp_port,
++	 *    which is a no-op stub in our fullmac glue — set it here instead.)
++	 *
++	 * 3. cancel_auth_timeout + set_state(WPA_COMPLETED): prevents the
++	 *    10s auth timeout from firing and calling wpa_supplicant_deauthenticate(),
++	 *    which would trigger supplicant_send_wifi_mgmt_disc_event() with
++	 *    wpa_state < WPA_COMPLETED → WIFI_STATUS_CONN_FAIL → shell prints
++	 *    "Connection request failed" even though the link is up.
++	 */
++	eapol_sm_configure(wpa_s->eapol, -1, -1, -1, 0);
++	eapol_sm_notify_portValid(wpa_s->eapol, true);
++	wpa_supplicant_cancel_auth_timeout(wpa_s);
++	wpa_supplicant_set_state(wpa_s, WPA_COMPLETED);
++}
++#endif /* CONFIG_WIFI_QCOM_ENTERPRISE */
+diff --git a/src/drivers/driver_zephyr.h b/src/drivers/driver_zephyr.h
+index a24a8ead8..2a1af9cc0 100644
+--- a/src/drivers/driver_zephyr.h
++++ b/src/drivers/driver_zephyr.h
+@@ -354,4 +354,24 @@ struct zep_wpa_supp_dev_ops {
+ 	int (*signal_monitor)(void *if_priv, int threshold, int hysteresis);
+ };
+ 
++/* Forward declaration for use by fullmac drivers that post assoc events */
++struct zep_drv_if_ctx;
++void wpa_drv_zep_event_proc_assoc_resp(struct zep_drv_if_ctx *if_ctx,
++				       union wpa_event_data *event,
++				       unsigned int status);
++
++/*
++ * Suppress self-initiated EAPOL-Start on PMKSA cache-hit.
++ *
++ * Sets maxStart=0 so the SUPP_PAE SM transitions CONNECTING→AUTHENTICATED
++ * without sending any EAPOL-Start frames.  The SM stays alive and responds
++ * normally to AP-initiated EAP-Requests (periodic PMK refresh, reauth).
++ *
++ * Called by the QCC730 enterprise glue after a PMKSA cache-hit 4WHS completes
++ * (set_key(KEY_FLAG_PMK) was never called, so no EAP exchange occurred).
++ * Without this, the SM would send EAPOL-Start ~2s later, triggering a
++ * fast-reauth that produces a new PMK conflicting with the firmware's cached PMK.
++ */
++void wpa_drv_zep_eapol_suppress_start(struct zep_drv_if_ctx *if_ctx);
++
+ #endif /* DRIVER_ZEPHYR_H */
+diff --git a/src/l2_packet/l2_packet_zephyr.c b/src/l2_packet/l2_packet_zephyr.c
+index 3a20428b0..f222cba56 100644
+--- a/src/l2_packet/l2_packet_zephyr.c
++++ b/src/l2_packet/l2_packet_zephyr.c
+@@ -66,8 +66,8 @@ int l2_packet_send(struct l2_packet_data *l2, const u8 *dst_addr, u16 proto,
+ 		ret = sendto(l2->fd, buf, len, 0, (struct sockaddr *) &ll,
+ 			     sizeof(ll));
+ 		if (ret < 0) {
+-			wpa_printf(MSG_ERROR, "l2_packet_send - sendto: %s",
+-				   strerror(errno));
++			wpa_printf(MSG_ERROR, "l2_packet_send - sendto FAILED ret=%d errno=%d: %s",
++				   ret, errno, strerror(errno));
+ 		}
+ 	}
+ 	return ret;
+diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
+index 61d016136..8ec71cefe 100644
+--- a/wpa_supplicant/wpa_supplicant.c
++++ b/wpa_supplicant/wpa_supplicant.c
+@@ -1109,7 +1109,21 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
+ 		sme_sched_obss_scan(wpa_s, 1);
+ 
+ #ifdef __ZEPHYR__
+-		supplicant_send_wifi_mgmt_conn_event(wpa_s, 0);
++		/*
++		 * For fullmac drivers that handle the RSN 4-way handshake in
++		 * firmware (WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X), WPA_COMPLETED
++		 * fires here when EAP auth finishes — but the firmware still needs
++		 * ~200 ms to complete M1→M4.  Raising the connect event now would
++		 * start DHCP prematurely and flood the WMI event queue, causing the
++		 * subsequent FOURWAY_HANDSHAKE_SUCCESS notification to be silently
++		 * dropped by nt_osal_queue_send(timeout=0).  For these drivers the
++		 * connect event is raised from qcom_ent_4way_hs_done() once the
++		 * firmware confirms the 4WHS is complete.
++		 */
++		if (!(wpa_s->drv_flags & WPA_DRIVER_FLAGS_4WAY_HANDSHAKE_8021X) ||
++		    !wpa_key_mgmt_wpa_ieee8021x(wpa_s->key_mgmt)) {
++			supplicant_send_wifi_mgmt_conn_event(wpa_s, 0);
++		}
+ #endif /* __ZEPHYR__ */
+ #if defined(CONFIG_FILS) && defined(IEEE8021X_EAPOL)
+ 		if (!fils_hlp_sent && ssid && ssid->eap.erp)
+diff --git a/wpa_supplicant/wpas_glue.c b/wpa_supplicant/wpas_glue.c
+index 1ef48c9ba..addfbe3d0 100644
+--- a/wpa_supplicant/wpas_glue.c
++++ b/wpa_supplicant/wpas_glue.c
+@@ -220,8 +220,8 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
+ 	if (msg == NULL)
+ 		return -1;
+ 
+-	wpa_printf(MSG_DEBUG, "TX EAPOL: dst=" MACSTR, MAC2STR(dst));
+-	wpa_hexdump(MSG_MSGDUMP, "TX EAPOL", msg, msglen);
++	wpa_printf(MSG_DEBUG, "TX EAPOL: type=%d len=%lu dst=" MACSTR,
++		   type, (unsigned long)msglen, MAC2STR(dst));
+ 	res = wpa_ether_send(wpa_s, dst, ETH_P_EAPOL, msg, msglen);
+ 	os_free(msg);
+ 	return res;
+@@ -357,8 +357,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
+ 	}
+ 
+ 	if (res) {
+-		wpa_printf(MSG_DEBUG, "Failed to get PMK from EAPOL state "
+-			   "machines");
++		wpa_printf(MSG_DEBUG, "Failed to get PMK from EAPOL state machines");
+ 		return;
+ 	}
+ 
+-- 
+2.43.0
+

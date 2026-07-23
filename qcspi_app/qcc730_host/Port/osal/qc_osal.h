@@ -56,6 +56,13 @@ typedef void *qc_osal_mutex_t;
 int qc_osal_mutex_init(qc_osal_mutex_t *mutex);
 
 /**
+ * @brief Deinitialize a mutex and free associated resources
+ * @param mutex Pointer to mutex handle (set to NULL on success)
+ * @return 0 on success, negative errno on failure
+ */
+int qc_osal_mutex_deinit(qc_osal_mutex_t *mutex);
+
+/**
  * @brief Lock a mutex
  * @param mutex Mutex handle
  * @param timeout_ms Timeout in milliseconds (0 = no wait, -1 = forever)
@@ -84,6 +91,13 @@ typedef void *qc_osal_sem_t;
  * @return 0 on success, negative errno on failure
  */
 int qc_osal_sem_init(qc_osal_sem_t *sem, uint32_t initial_count, uint32_t max_count);
+
+/**
+ * @brief Deinitialize a semaphore and free associated resources
+ * @param sem Pointer to semaphore handle (set to NULL on success)
+ * @return 0 on success, negative errno on failure
+ */
+int qc_osal_sem_deinit(qc_osal_sem_t *sem);
 
 /**
  * @brief Take/wait on a semaphore
@@ -190,6 +204,13 @@ typedef void (*qc_osal_work_handler_t)(qc_osal_work_t work);
 int qc_osal_work_init(qc_osal_work_t *work, qc_osal_work_handler_t handler);
 
 /**
+ * @brief Deinitialize a work item and free associated resources
+ * @param work Pointer to work item handle (set to NULL on success)
+ * @return 0 on success, negative errno on failure
+ */
+int qc_osal_work_deinit(qc_osal_work_t *work);
+
+/**
  * @brief Initialize a work queue
  * @param work_q Pointer to work queue handle
  * @param stack_size Stack size for work queue thread
@@ -197,6 +218,13 @@ int qc_osal_work_init(qc_osal_work_t *work, qc_osal_work_handler_t handler);
  * @return 0 on success, negative errno on failure
  */
 int qc_osal_work_queue_init(qc_osal_work_q_t *work_q, size_t stack_size, int priority);
+
+/**
+ * @brief Deinitialize a work queue, stopping its thread and freeing all resources
+ * @param work_q Pointer to work queue handle (set to NULL on success)
+ * @return 0 on success, negative errno on failure
+ */
+int qc_osal_work_queue_deinit(qc_osal_work_q_t *work_q);
 
 /**
  * @brief Submit work to a work queue

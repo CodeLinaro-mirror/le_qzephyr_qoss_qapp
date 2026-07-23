@@ -1,0 +1,39 @@
+# Copyright (c) 2026 Qualcomm Innovation Center, Inc. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+
+config HTTPC_AT
+	bool "HTTP/HTTPS AT command handler"
+	depends on NETWORKING
+	depends on NET_SOCKETS
+	depends on DNS_RESOLVER
+	select HTTP_CLIENT
+	select TLS_CREDENTIALS if HTTPC_AT_TLS
+	help
+	  Enable the HTTP/HTTPS AT command handler module.
+	  Provides AT+HTTPCLIENT, AT+HTTPGETSIZE, AT+HTTPGET,
+	  AT+HTTPPOST, AT+HTTPPUT, AT+HTTPURLCFG, AT+HTTPSSLCFG,
+	  and AT+HTTPNETCFG
+	  command handlers using Zephyr's http_client_req() API.
+
+if HTTPC_AT
+
+config HTTPC_AT_TLS
+        bool "TLS/HTTPS support for HTTPC AT handler"
+        depends on NET_SOCKETS_SOCKOPT_TLS
+        depends on FILE_SYSTEM
+        default y
+        help
+          Enable TLS/HTTPS support. When enabled, AT+HTTPSSLCFG can be
+          used to configure certificates for HTTPS connections.
+          Certificates are loaded from the Zephyr filesystem at connection
+          time using the TLS credentials subsystem.
+
+config HTTPC_AT_LOG_LEVEL
+	int "Log level for HTTPC AT handler"
+	default 3
+	range 0 4
+	help
+	  Sets the log level for all httpc_at_* modules.
+	  0=OFF, 1=ERR, 2=WRN, 3=INF, 4=DBG
+
+endif # HTTPC_AT

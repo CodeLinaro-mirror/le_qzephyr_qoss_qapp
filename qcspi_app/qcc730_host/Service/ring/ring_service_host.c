@@ -76,6 +76,7 @@ void ring_rx_handler(void)
         /* Submit work item for this ring */
         if (g_ring_service.callback) {
             qc_osal_work_submit(ring_host_work_q, rx_works[i].work);
+            /* NOTE: printf is NOT safe in ISR context - do not add logging here */
         }
     }
 }
@@ -97,6 +98,24 @@ void ring_service_deinit(void)
     //    /* Clear callback */
     //    g_ring_service.callback = NULL;
     //    g_ring_service.callback_data = NULL;
+    /* NOTE: callback is intentionally preserved across reset so the caller
+     * does not need to re-register after AT+RST. */
+
+    /* Free work items for each ring */
+    for (uint32_t i = 0; i < g_ring_service.num_rings; i++) {
+        qc_osal_work_deinit(&rx_works[i].work);
+    }
+
+    /* Stop work queue thread and free its resources */
+    qc_osal_work_queue_deinit(&ring_host_work_q);
+
+    /* Free per-ring synchronization objects */
+    for (uint32_t i = 0; i < g_ring_service.num_rings; i++) {
+        qc_osal_mutex_deinit(&g_ring_service.rings[i].tx_lock);
+        qc_osal_mutex_deinit(&g_ring_service.rings[i].rx_lock);
+        qc_osal_sem_deinit(&g_ring_service.rings[i].tx_sem);
+        qc_osal_sem_deinit(&g_ring_service.rings[i].rx_sem);
+    }
 
     const struct ring_adapter_ops *adapter = NULL;
 
@@ -113,6 +132,9 @@ void ring_service_deinit(void)
     }
 
     QC_OSAL_LOG_INF("QCSPI adapter deinitialized successfully");
+
+    /* Reset num_rings last — after all cleanup that depends on it */
+    g_ring_service.num_rings = 0;
 
     QC_OSAL_LOG_INF("Host ring service deinitialized");
 }
@@ -733,6 +755,11 @@ static int ring_service_host_init(uint32_t ctrl_block_addr, const struct ring_ad
     return 0;
 }
 
+#define INIT_QRING_RDSR_TIMEOUT  (-100)
+
+#define RDSR_POLL_MS   100
+#define RDSR_POLL_MAX  100   /* 100 × 100ms = 10s, covers external-flash boot (~6-7s) */
+
 int init_qring(void)
 {
     int ret = 0;
@@ -745,7 +772,7 @@ int init_qring(void)
         return -QC_OSAL_ENODEV;
     }
 
-    /* Initialize QCSPI adapter */
+    /* Initialize QCSPI adapter — SPI transport must be up before RDSR poll */
     ret = adapter->init();
     if (ret < 0) {
         QC_OSAL_LOG_ERR("QCSPI adapter initialization failed: %d", ret);
@@ -753,6 +780,27 @@ int init_qring(void)
     }
 
     QC_OSAL_LOG_INF("QCSPI adapter initialized successfully");
+
+    /* Poll RDSR until QCC730 SPI slave is ready (non-0xFF) or timeout.
+     * RDSR non-0xFF means SPI hardware is up; it does NOT mean ring SRAM
+     * is initialized yet — that is checked by ring_service_host_init().
+     * Returns INIT_QRING_RDSR_TIMEOUT (-100) on timeout so the caller can
+     * distinguish "hardware unresponsive" from "SRAM not ready". */
+    int rdsr_ok = 0;
+    for (int i = 0; i < RDSR_POLL_MAX; i++) {
+        uint32_t status = 0;
+        if (qcspi_RDSR(&status) == 0 && status != 0xffffffff) {
+            rdsr_ok = 1;
+            break;
+        }
+        qc_osal_msleep(RDSR_POLL_MS);
+    }
+
+    if (!rdsr_ok) {
+        QC_OSAL_LOG_ERR("RDSR timeout: QCC730 SPI not ready after %d ms",
+                        RDSR_POLL_MS * RDSR_POLL_MAX);
+        return INIT_QRING_RDSR_TIMEOUT;
+    }
 
     /* Initialize ring service */
     ret = ring_service_host_init(CONFIG_RING_CTRL_BLOCK_ADDR, adapter);

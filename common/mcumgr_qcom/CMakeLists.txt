@@ -3,11 +3,16 @@
 
 zephyr_library()
 
-zephyr_library_sources(
-    src/qcom_img_mgmt.c
+# Core fw_upgrade engine — no MCUmgr dependency
+zephyr_library_sources_ifdef(CONFIG_QCOM_FW_UPGRADE
     src/fw_upgrade.c
     src/fw_upgrade_mem.c
     src/flash_adapter.c
+)
+
+# MCUmgr protocol handler — requires full MCUmgr stack
+zephyr_library_sources_ifdef(CONFIG_QCOM_IMG_MGMT
+    src/qcom_img_mgmt.c
 )
 
 zephyr_library_include_directories(

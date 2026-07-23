@@ -27,6 +27,10 @@
 
 #define FLASH_ERASED_VALUE 0xFFFFFFFF
 
+#define FW_UPGRADE_FLAG_AUTO_REBOOT             (1 << 0)
+#define FW_UPGRADE_FLAG_DUPLICATE_ACTIVE_FS     (1 << 1)
+#define FW_UPGRADE_FLAG_DUPLICATE_KEEP_TRIAL_FS (1 << 2)
+
 /**********************************************************************************************************/
 /* Type Declarations																                      */
 /**********************************************************************************************************/

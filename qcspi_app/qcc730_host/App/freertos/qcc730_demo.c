@@ -35,24 +35,51 @@ int qcc730_ring_reset()
 
     return ret;
 }
+
 void qcc730_reset()
 {
-#define DELAY_TIMING 300
+#define CHIP_ON_LOW_MS    300   /* chip_on hold-low time */
+#define CHIP_ON_HIGH_MS   300   /* settle time after chip_on HIGH */
+#define RING_RETRY_MS     500   /* interval between ring_reset attempts */
+#define RING_RETRY_MAX    20    /* max retries per chip_on cycle (~10s) */
+
     int ret = -1;
 
+    printf("%s\n\r", __func__);
     HAL_NVIC_DisableIRQ(EXTI12_IRQn);
 
     while (ret < 0) {
-        /* host toggle */
-        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_RESET); // chip_on test
-        qc_hal_delay(DELAY_TIMING);
-        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_SET); // chip_on test
-        qc_hal_delay(DELAY_TIMING);
-        qc_hal_delay(1000);
+        /* Toggle chip_on to hardware-reset QCC730 */
+        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_RESET);
+        qc_hal_delay(5);
+        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_SET);
+        qc_hal_delay(CHIP_ON_HIGH_MS);
+        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_RESET);
+        qc_hal_delay(CHIP_ON_LOW_MS);
+        qc_hal_gpio_write(QC_CHIP_ON_Port, QC_CHIO_ON_Pin, QC_HAL_GPIO_PIN_SET);
+        qc_hal_delay(CHIP_ON_HIGH_MS);
 
-        ret = qcc730_ring_reset();
+        /* Retry ring establishment after each chip_on toggle */
+        for (int i = 0; i < RING_RETRY_MAX; i++) {
+            ret = qcc730_ring_reset();
+            if (ret == 0)
+                break;
+            if (ret == -100) {
+                /* Still unresponsive — toggle again */
+                printf("qcc730_reset: RDSR timeout, retrying chip_on\r\n");
+                break;
+            }
+            printf("qcc730_reset: ring init failed (%d), retry %d/%d\r\n",
+                   ret, i + 1, RING_RETRY_MAX);
+            qc_hal_delay(RING_RETRY_MS);
+        }
     }
 
+done:
+    /* Clear any EXTI12 pending bit before re-enabling to avoid spurious
+     * interrupt from GPIO activity during reset sequence. */
+    __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_12);
+    HAL_NVIC_ClearPendingIRQ(EXTI12_IRQn);
     HAL_NVIC_EnableIRQ(EXTI12_IRQn);
 }
 

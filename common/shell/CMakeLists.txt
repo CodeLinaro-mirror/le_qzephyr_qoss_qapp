@@ -7,6 +7,7 @@ zephyr_sources_ifdef(CONFIG_QCRYPTO src/qcrypto_shell.c)
 zephyr_sources_ifdef(CONFIG_WIFI src/qwifi_shell.c)
 zephyr_sources_ifdef(CONFIG_PM src/qpower_shell.c)
 zephyr_sources_ifdef(CONFIG_PM_DEVICE_SYSTEM_MANAGED src/qbmps_shell.c)
+zephyr_sources_ifdef(CONFIG_SIGMADUT_TRAFFIC src/sigmadut_traffic.c)
 
 zephyr_include_directories_ifdef(CONFIG_QCRYPTO_SUPPORT ${ZEPHYR_LIBCRYPTOQCC730_MODULE_DIR}/inc)
 zephyr_include_directories_ifdef(CONFIG_QCRYPTO

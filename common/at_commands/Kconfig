@@ -10,6 +10,18 @@ config QAT_COMMON
 	  This provides basic AT commands.
 	  Requires both QAT and QAT_COMMON to be enabled.
 
+config QAT_WLAN
+	bool "QAT WiFi AT Commands"
+	depends on QAT && WIFI
+	select NET_MGMT
+	select NET_MGMT_EVENT
+	select NET_MGMT_EVENT_INFO
+	default y
+	help
+	  Enable WiFi related AT commands for QAT module.
+	  This provides commands like AT+CWJAP for WiFi connection.
+	  Uses Zephyr's standard WiFi management APIs.
+
 config QAT_TCPIP
 	bool "QAT TCP/IP AT Commands"
 	depends on QAT
@@ -17,3 +29,83 @@ config QAT_TCPIP
 	help
 	  Enable TCP/IP related AT commands for QAT module.
 	  This provides commands like AT+CIPSEND for data passthrough mode.
+
+config QAT_HTTPC
+	bool "QAT HTTP Client AT Commands"
+	depends on QAT
+	select HTTPC_AT
+	select HTTPC_AT_TLS
+	default y
+	help
+	  Enable HTTP client AT commands for QAT module.
+	  This provides AT+HTTPCLIENT/HTTPGETSIZE/HTTPGET/HTTPPOST/HTTPPUT/
+	  HTTPURLCFG/HTTPSSLCFG/HTTPNETCFG.
+
+config QAT_FSTORE
+	bool "QAT File Store AT Commands"
+	depends on QAT && FILE_SYSTEM
+	default y
+	help
+	  Enable file storage AT commands for QAT module.
+	  This provides AT+WRITEFILE/READFILE/DELFILE to transfer and manage
+	  files on the QCC730 LittleFS filesystem from the host side.
+
+config QAT_WIFI_CRED
+	bool "QAT WiFi Credential Persistence"
+	depends on QAT_WLAN && FILE_SYSTEM
+	default y
+	help
+	  Enable WiFi credential persistence commands for QAT module.
+	  This provides AT+CWSAVE/CWLOAD to store and restore SSID, passphrase,
+	  and security parameters to the QCC730 LittleFS filesystem.
+
+config QAT_HTTPSERVER
+	bool "QAT HTTP Server AT Commands"
+	depends on QAT && HTTP_SERVER && NET_SOCKETS_SOCKOPT_TLS && TLS_CREDENTIALS
+	select FDTABLE
+	default n
+	help
+	  Enable AT+WEBSERVER, AT+WEBSERVERCFG and AT+SYSCFG commands plus five
+	  HTTP URI handlers for WiFi provisioning. Both plain HTTP and HTTPS are
+	  supported at runtime via AT+WEBSERVERCFG (scheme=0 for HTTP, 1 for HTTPS,
+	  2 for mutual TLS). HTTP and HTTPS service instances are always compiled in;
+	  AT+WEBSERVER activates the appropriate one at runtime without recompiling.
+
+config QAT_OTA
+	bool "QAT OTA Firmware Upgrade AT Commands"
+	depends on QAT
+	select QCOM_FW_UPGRADE
+	select HTTPC_AT
+	select NET_TCP
+	help
+	  Enable AT+OTAFWUP and AT+OTATRIAL commands for over-the-air firmware
+	  upgrade via HTTP. Requires the QCOM image management backend and a
+	  TCP/IP stack. Not enabled by default; must be opted in via prj.conf
+	  or board defconfig.
+
+config QAT_OTA_STACK_SIZE
+	int "OTA worker thread stack size (bytes)"
+	depends on QAT_OTA
+	default 4096
+	help
+	  Stack size for the dedicated OTA download thread. Must be large enough
+	  to accommodate the httpc_at_execute() stack frame and the mbedTLS SHA-256
+	  context used by fw_upgrade_session_process(). 4096 bytes is the minimum.
+
+config QAT_OTA_THREAD_PRIORITY
+	int "OTA worker thread cooperative priority"
+	depends on QAT_OTA
+	default 5
+	help
+	  Zephyr thread priority for the OTA worker thread. Lower values are higher
+	  priority. Non-negative values are preemptive. Default 5 is preemptive and
+	  runs below the system workqueue (0) and the AT service thread.
+
+config QAT_MQTTC
+	bool "QAT MQTT Client AT Commands"
+	depends on QAT && MQTTC_AT
+	default y
+	help
+	  Enable MQTT client AT commands for QAT module.
+	  This provides AT+MQTTINIT/MQTTCONN/MQTTSUB/MQTTPUB/MQTTPUBRAW/
+	  MQTTUNSUB/MQTTDISCONN/MQTTDESTROY/MQTTMODE.

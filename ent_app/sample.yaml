@@ -1,0 +1,7 @@
+sample:
+  description: Qcom ent app
+    application
+  name: ent app
+common:
+  tags: introduction
+  harness: console

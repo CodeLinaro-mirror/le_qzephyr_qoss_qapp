@@ -1,0 +1,28 @@
+
+/*
+ * This overlay is only used when both CONFIG_DEBUG_COREDUMP and
+ * CONFIG_DEBUG_COREDUMP_BACKEND_FLASH_PARTITION are enabled.
+ *
+ * Usage:
+ *   west build -b <board> -s <app> -- \
+ *     -DDTC_OVERLAY_FILE="coredump.overlay"
+ *
+ * It defines a dedicated flash partition for storing coredump data.
+ */
+
+&qspi_nor_flash3 {
+    status = "okay";
+    write-block-size = <256>;
+    erase-block-size = <4096>;
+    partitions {
+        compatible = "fixed-partitions";
+        #address-cells = <1>;
+        #size-cells = <1>;
+        coredump_partition: coredump@380000 {
+            label = "coredump_partition";
+            reg = <0x380000 0x80000>;
+            status = "okay";
+        };
+    };
+};
+

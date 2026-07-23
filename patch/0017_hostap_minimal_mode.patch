@@ -1,0 +1,150 @@
+diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
+index 41a50842b71..1f702fbb512 100644
+--- a/modules/hostap/CMakeLists.txt
++++ b/modules/hostap/CMakeLists.txt
+@@ -16,6 +16,89 @@ set(WIFI_NM_HOSTAPD_BASE ${HOSTAP_BASE}/hostapd)
+ set(CMAKE_EXE_LINKER_FLAGS "--specs=nosys.specs -lnosys")
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMISSING_SYSCALL_NAMES")
+ 
++if(CONFIG_WIFI_NM_WPA_SUPPLICANT_MINIMAL)
++
++zephyr_include_directories(
++  src/
++  ${HOSTAP_BASE}/
++  ${WIFI_NM_WPA_SUPPLICANT_BASE}/
++  ${HOSTAP_SRC_BASE}/
++  ${HOSTAP_SRC_BASE}/common/
++  ${HOSTAP_SRC_BASE}/utils/
++)
++
++target_include_directories(hostap INTERFACE
++  ${HOSTAP_SRC_BASE}/utils/
++)
++
++zephyr_library_compile_definitions(
++  CONFIG_NO_STDOUT_DEBUG
++)
++
++zephyr_library_include_directories(
++  ${CMAKE_CURRENT_SOURCE_DIR}/src
++  ${HOSTAP_BASE}/
++  ${HOSTAP_SRC_BASE}/utils
++  ${HOSTAP_BASE}/src
++  ${ZEPHYR_BASE}/include
++  ${ZEPHYR_BASE}/include/net
++)
++
++zephyr_library_sources(
++  ${HOSTAP_SRC_BASE}/utils/eloop.c
++  ${HOSTAP_SRC_BASE}/utils/os_zephyr.c
++  ${HOSTAP_SRC_BASE}/utils/wpa_debug_zephyr.c
++  ${HOSTAP_SRC_BASE}/utils/wpabuf.c
++  ${HOSTAP_SRC_BASE}/utils/common.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
++  ${HOSTAP_SRC_BASE}/common/wpa_common.c
++  ${HOSTAP_SRC_BASE}/common/ieee802_11_common.c
++  ${HOSTAP_SRC_BASE}/common/hw_features_common.c
++  ${HOSTAP_SRC_BASE}/common/wpa_ctrl.c
++  ${HOSTAP_SRC_BASE}/common/cli.c
++  ${HOSTAP_SRC_BASE}/common/ptksa_cache.c
++  ${HOSTAP_SRC_BASE}/common/ctrl_iface_common.c
++  ${HOSTAP_SRC_BASE}/common/wpa_helpers.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_WPA3
++  ${HOSTAP_SRC_BASE}/common/sae.c
++  ${HOSTAP_SRC_BASE}/common/dragonfly.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_SAE_PK
++  ${HOSTAP_SRC_BASE}/common/sae_pk.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_DPP
++  ${HOSTAP_SRC_BASE}/common/dpp.c
++  ${HOSTAP_SRC_BASE}/common/dpp_auth.c
++  ${HOSTAP_SRC_BASE}/common/dpp_backup.c
++  ${HOSTAP_SRC_BASE}/common/dpp_crypto.c
++  ${HOSTAP_SRC_BASE}/common/dpp_pkex.c
++  ${HOSTAP_SRC_BASE}/common/dpp_reconfig.c
++  ${HOSTAP_SRC_BASE}/common/dpp_tcp.c
++  ${HOSTAP_SRC_BASE}/common/gas_server.c
++  ${HOSTAP_SRC_BASE}/common/gas.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_OCV
++  ${HOSTAP_SRC_BASE}/common/ocv.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_NAN
++  ${HOSTAP_SRC_BASE}/common/nan_de.c
++)
++
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_WPS
++  ${HOSTAP_SRC_BASE}/wps/wps_attr_build.c
++  ${HOSTAP_SRC_BASE}/wps/wps_attr_parse.c
++)
++
++else()
++
+ zephyr_include_directories(
+   src/
+   ${HOSTAP_BASE}/
+@@ -746,4 +829,6 @@ if(CONFIG_SAE_PWE_EARLY_EXIT)
+   "please use it carefully and do not use it production.")
+ endif()
+ 
++endif() # !CONFIG_WIFI_NM_WPA_SUPPLICANT_MINIMAL
++
+ endif()
+diff --git a/modules/hostap/Kconfig b/modules/hostap/Kconfig
+index ccc3b189981..141eeda20c4 100644
+--- a/modules/hostap/Kconfig
++++ b/modules/hostap/Kconfig
+@@ -131,6 +131,7 @@ endif # WIFI_NM_WPA_SUPPLICANT_LOG_LEVEL_DBG
+ # Memory optimizations
+ config WIFI_NM_WPA_SUPPLICANT_ADVANCED_FEATURES
+ 	bool "Advanced features"
++	default n if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default y if !SOC_FAMILY_NORDIC_NRF
+ 
+ if WIFI_NM_WPA_SUPPLICANT_ADVANCED_FEATURES
+@@ -162,6 +174,7 @@ config WIFI_NM_WPA_SUPPLICANT_WEP
+ 
+ choice WIFI_NM_WPA_SUPPLICANT_CRYPTO_BACKEND
+ 	prompt "WPA supplicant crypto implementation"
++	default WIFI_NM_WPA_SUPPLICANT_CRYPTO_NONE if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default WIFI_NM_WPA_SUPPLICANT_CRYPTO_ALT
+ 	help
+ 	  Select the crypto implementation to use for WPA supplicant.
+@@ -319,10 +332,12 @@ endif # WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
+ config WIFI_NM_WPA_SUPPLICANT_WPA3
+ 	bool "WPA3 support"
+ 	depends on !WIFI_NM_WPA_SUPPLICANT_CRYPTO_NONE
++	default n if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default y
+ 
+ config WIFI_NM_WPA_SUPPLICANT_AP
+ 	bool "SoftAP mode support based on WPA supplicant"
++	default n if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default y if WIFI_USAGE_MODE_AP || WIFI_USAGE_MODE_STA_AP
+ 
+ config WIFI_NM_WPA_SUPPLICANT_WPS
+@@ -342,6 +357,7 @@ config WIFI_NM_WPA_SUPPLICANT_P2P
+ 
+ config WIFI_NM_WPA_SUPPLICANT_EAPOL
+ 	bool "EAPoL supplicant"
++	default n if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default y if WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
+ 
+ config WIFI_NM_WPA_SUPPLICANT_CLI
+@@ -349,6 +365,7 @@ config WIFI_NM_WPA_SUPPLICANT_CLI
+ 
+ config WIFI_NM_WPA_SUPPLICANT_INF_MON
+ 	bool "Monitor the net mgmt event to add/del interface"
++	default n if WIFI_NM_WPA_SUPPLICANT_MINIMAL
+ 	default y
+ 
+ config WIFI_NM_HOSTAPD_AP

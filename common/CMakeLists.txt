@@ -8,8 +8,10 @@ endif()
 
 add_subdirectory_ifdef(CONFIG_SHELL shell)
 add_subdirectory(pm_service)
-add_subdirectory_ifdef(CONFIG_QCOM_IMG_MGMT mcumgr_qcom)
+add_subdirectory_ifdef(CONFIG_QCOM_FW_UPGRADE mcumgr_qcom)
 add_subdirectory_ifdef(CONFIG_QAT at_commands)
+add_subdirectory_ifdef(CONFIG_HTTPC_AT httpc_at)
+add_subdirectory_ifdef(CONFIG_MQTTC_AT mqttc_at)
 
 function(gen_crm_number)
     set(CRM_NUMBER 999)
