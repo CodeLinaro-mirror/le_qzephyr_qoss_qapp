@@ -1,0 +1,17 @@
+diff --git a/src/crypto/crypto_mbedtls_alt.c b/src/crypto/crypto_mbedtls_alt.c
+index da359d840..af8e3a1f9 100644
+--- a/src/crypto/crypto_mbedtls_alt.c
++++ b/src/crypto/crypto_mbedtls_alt.c
+@@ -412,8 +412,11 @@ __attribute_noinline__ static int hmac_vector(const u8 *key,
+         return -1;
+     }
+     mbedtls_md_hmac_starts(&ctx, key, key_len);
+-    for (size_t i = 0; i < num_elem; ++i)
++    for (size_t i = 0; i < num_elem; ++i) {
++        if (len[i] == 0)
++            continue; /* mbedtls rejects (NULL,0); zero-length update is a no-op */
+         mbedtls_md_hmac_update(&ctx, addr[i], len[i]);
++    }
+     mbedtls_md_hmac_finish(&ctx, mac);
+     mbedtls_md_free(&ctx);
+     return 0;
