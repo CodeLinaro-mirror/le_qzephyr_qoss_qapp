@@ -2,7 +2,7 @@ diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
 index 41a50842b71..1f702fbb512 100644
 --- a/modules/hostap/CMakeLists.txt
 +++ b/modules/hostap/CMakeLists.txt
-@@ -16,6 +16,89 @@ set(WIFI_NM_HOSTAPD_BASE ${HOSTAP_BASE}/hostapd)
+@@ -16,6 +16,97 @@ set(WIFI_NM_HOSTAPD_BASE ${HOSTAP_BASE}/hostapd)
  set(CMAKE_EXE_LINKER_FLAGS "--specs=nosys.specs -lnosys")
  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMISSING_SYSCALL_NAMES")
  
@@ -56,6 +56,14 @@ index 41a50842b71..1f702fbb512 100644
 +zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_WPA3
 +  ${HOSTAP_SRC_BASE}/common/sae.c
 +  ${HOSTAP_SRC_BASE}/common/dragonfly.c
++)
++
++# MINIMAL build compiles sae.c/dragonfly.c above but the CONFIG_SAE/CONFIG_ECC
++# compile-defs only existed in the non-MINIMAL branch, so crypto_mbedtls_alt.c
++# left the CRYPTO_MBEDTLS_CRYPTO_EC block out -> undefined crypto_ec_* at link.
++zephyr_library_compile_definitions_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_WPA3
++  CONFIG_SAE
++  CONFIG_ECC
 +)
 +
 +zephyr_library_sources_ifdef(CONFIG_SAE_PK
