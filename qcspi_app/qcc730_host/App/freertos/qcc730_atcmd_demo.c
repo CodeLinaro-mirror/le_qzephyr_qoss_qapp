@@ -231,7 +231,7 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
 /**
  * @brief Wrapper function for compatibility
  */
-extern void qcc730_reset();
+extern int qcc730_ring_reset();
 void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 {
     if (NULL == cmd || 1 >= len) {
@@ -240,10 +240,11 @@ void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 
     // reset spi state
     if (QCC730_SPI_NOT_READY == qapi_atcmd_get_spi_state()) {
-        if (atcmd_ring_reset() < 0) {
-            demo_print("atcmd_ring_reset failed\r\n");
+        if (qcc730_ring_reset() < 0) {
+            demo_print("qcc730_ring_reset failed\r\n");
             return;
         }
+        qapi_atcmd_set_spi_state(QCC730_SPI_READY);
     }
 
     atcmd_send(cmd, len);
@@ -1524,6 +1525,7 @@ void atcmd_demo_init(void)
 /**
  * @brief Register AT command shell commands
  */
+extern void qcc730_reset();
 static int atcmd_ring_reset(void)
 {
     int ret;
