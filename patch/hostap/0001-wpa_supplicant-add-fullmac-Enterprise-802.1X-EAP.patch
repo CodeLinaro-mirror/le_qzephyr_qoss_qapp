@@ -1,4 +1,4 @@
-From 4260ff5ae5c0319856f42eca0885d47419ae3cd1 Mon Sep 17 00:00:00 2001
+From e6a215383e3e37b3cf08c4492ce9ed368314da1d Mon Sep 17 00:00:00 2001
 From: Ronghua Zeng <ronghuaz@qti.qualcomm.com>
 Date: Thu, 16 Jul 2026 03:27:24 -0700
 Subject: [PATCH] hostap: Add WPA2/WPA3 Enterprise (802.1X/EAP) support with
@@ -21,21 +21,49 @@ Key Features:
   so the host does not force a periodic wakeup that is unrelated to any
   real work (root cause of periodic RTOS-timer wakeups out of BMPS on
   QCC730 fullmac builds: EXIT_REASON_RTOS_TIME every ~10s)
+- Invalidate the global TLS session cache (used for the fast-reauth
+  resumption above) whenever the host detects that EAP credentials for
+  an SSID have changed, so a wrong/changed password cannot reconnect by
+  resuming a session established under the old credentials and skipping
+  the inner EAP method (MSCHAPv2/PAP/CHAP) entirely
 ---
- src/crypto/tls_mbedtls_alt.c      | 105 ++++++++++++++++++++++++++++++++++----
- src/drivers/driver.h              |  11 ++++
- src/drivers/driver_common.c       |   3 ++
- src/drivers/driver_zephyr.c       |  85 ++++++++++++++++++++++++++++--
- src/drivers/driver_zephyr.h       |  20 ++++++++
+ src/crypto/tls.h                  |  11 +++
+ src/crypto/tls_mbedtls_alt.c      | 130 +++++++++++++++++++++++++++---
+ src/drivers/driver.h              |  11 +++
+ src/drivers/driver_common.c       |   3 +
+ src/drivers/driver_zephyr.c       |  85 ++++++++++++++++++-
+ src/drivers/driver_zephyr.h       |  20 +++++
  src/l2_packet/l2_packet_zephyr.c  |   4 +-
- wpa_supplicant/events.c           |   7 +++
- wpa_supplicant/wpa_supplicant.c   |  53 ++++++++++++++++++-
- wpa_supplicant/wpa_supplicant_i.h |  36 +++++++++++++
- wpa_supplicant/wpas_glue.c        |   7 ++-
- 10 files changed, 311 insertions(+), 20 deletions(-)
+ wpa_supplicant/events.c           |   7 ++
+ wpa_supplicant/wpa_supplicant.c   |  53 +++++++++++-
+ wpa_supplicant/wpa_supplicant_i.h |  36 +++++++++
+ wpa_supplicant/wpas_glue.c        |   7 +-
+ 11 files changed, 347 insertions(+), 20 deletions(-)
 
+diff --git a/src/crypto/tls.h b/src/crypto/tls.h
+index 415d738d3..bca5ad85d 100644
+--- a/src/crypto/tls.h
++++ b/src/crypto/tls.h
+@@ -658,6 +658,17 @@ tls_connection_get_success_data(struct tls_connection *conn);
+ 
+ void tls_connection_remove_session(struct tls_connection *conn);
+ 
++/**
++ * tls_global_session_cache_invalidate - Drop the cached global TLS session
++ * used for fast-reauth (abbreviated handshake) resumption, if any.
++ *
++ * Call this when EAP credentials configured for an SSID change (identity,
++ * password, or AKM), to prevent an abbreviated TLS handshake from resuming
++ * a session established under the OLD credentials and bypassing the inner
++ * EAP method (MSCHAPv2/PAP/CHAP) on the next connect attempt.
++ */
++void tls_global_session_cache_invalidate(void);
++
+ /**
+  * tls_get_tls_unique - Fetch "tls-unique" for channel binding
+  * @conn: Connection context data from tls_connection_init()
 diff --git a/src/crypto/tls_mbedtls_alt.c b/src/crypto/tls_mbedtls_alt.c
-index 0e7124c8f..73ff416ee 100644
+index 0e7124c8f..886c6f463 100644
 --- a/src/crypto/tls_mbedtls_alt.c
 +++ b/src/crypto/tls_mbedtls_alt.c
 @@ -172,6 +172,9 @@ struct tls_global
@@ -46,19 +74,19 @@ index 0e7124c8f..73ff416ee 100644
 +    unsigned int has_saved : 1; /* saved_session holds a valid session for fast reauth */
 +    mbedtls_ssl_session saved_session; /* global TLS session cache; persists across conn deinit */
  };
-
+ 
  static struct tls_global tls_ctx_global;
 @@ -376,6 +379,9 @@ __attribute_cold__ void *tls_init(const struct tls_config *conf)
      if (++tls_ctx_global.refcnt > 1)
          return &tls_ctx_global;
-
+ 
 +    mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
 +    tls_ctx_global.has_saved = 0;
 +
  #if !defined(MBEDTLS_PSA_CRYPTO_EXTERNAL_RNG)
      tls_ctx_global.ctr_drbg = crypto_mbedtls_ctr_drbg();
  #endif
-@@ -410,6 +416,7 @@ __attribute_cold__ void tls_deinit(void *tls_ctx)
+@@ -410,12 +416,38 @@ __attribute_cold__ void tls_deinit(void *tls_ctx)
      char *openssl_ciphers; /*(allocated in tls_init())*/
      *(const char **)&openssl_ciphers = tls_ctx_global.init_conf.openssl_ciphers;
      os_free(openssl_ciphers);
@@ -66,17 +94,48 @@ index 0e7124c8f..73ff416ee 100644
  #ifdef MBEDTLS_SSL_SESSION_TICKETS
      mbedtls_ssl_ticket_free(&tls_ctx_global.ticket_ctx);
  #endif
-@@ -559,9 +566,18 @@ int tls_connection_shutdown(void *tls_ctx, struct tls_connection *conn)
+     os_memset(&tls_ctx_global, 0, sizeof(tls_ctx_global));
+ }
+ 
++/*
++ * tls_global_session_cache_invalidate - drop the cached global TLS session
++ * (used for EAP-TLS/PEAP/TTLS fast-reauth abbreviated handshake resumption).
++ *
++ * Called from qcom_wifi_enterprise_glue.c's qcom_ent_setup_supplicant() when
++ * this connect's credential fingerprint (identity||password||AKM) differs
++ * from the one recorded for this SSID.  Without this, a changed password
++ * (or identity) can still be accepted by an abbreviated TLS handshake that
++ * resumes the OLD (pre-change) session ID/master secret, which skips the
++ * inner EAP method (MSCHAPv2/PAP/CHAP) entirely — the AP that has already
++ * cached this session-id would authenticate the DUT using the stale
++ * password, bypassing the credential change.  Invalidating the cache here
++ * forces a full TLS handshake (and therefore inner-method re-auth) on the
++ * next connect after a credential change, mirroring the firmware PMKSA
++ * invalidation done in the same code path.
++ */
++void tls_global_session_cache_invalidate(void)
++{
++    if (tls_ctx_global.has_saved) {
++        mbedtls_ssl_session_free(&tls_ctx_global.saved_session);
++        mbedtls_ssl_session_init(&tls_ctx_global.saved_session);
++        tls_ctx_global.has_saved = 0;
++    }
++}
++
+ int tls_get_errors(void *tls_ctx)
+ {
+     return 0;
+@@ -559,9 +591,18 @@ int tls_connection_shutdown(void *tls_ctx, struct tls_connection *conn)
  #endif
          tls_connection_deinit_expkey(conn);
-
+ 
 -    /* RFE: prepare for session resumption? (see doc in crypto/tls.h) */
 +    /* Fast reauth (Route A+): re-offer session from global cache so the
 +     * next client_hello carries the prior session_id even after conn recreation. */
 +    int _reset = mbedtls_ssl_session_reset(&conn->ssl);
 +    if (_reset != 0)
 +        return _reset;
-
+ 
 -    return mbedtls_ssl_session_reset(&conn->ssl);
 +    if (tls_ctx_global.has_saved) {
 +        int _ss = mbedtls_ssl_set_session(&conn->ssl, &tls_ctx_global.saved_session);
@@ -85,12 +144,12 @@ index 0e7124c8f..73ff416ee 100644
 +    }
 +    return 0;
  }
-
+ 
  static int tls_wpabuf_resize_put_data(struct wpabuf **buf, const unsigned char *data, size_t dlen)
-@@ -643,6 +659,15 @@ static int tls_mbedtls_ssl_setup(struct tls_connection *conn)
+@@ -643,6 +684,15 @@ static int tls_mbedtls_ssl_setup(struct tls_connection *conn)
      if (conn->verify_peer)
          mbedtls_ssl_set_verify(&conn->ssl, tls_mbedtls_verify_cb, conn);
-
+ 
 +    /* Fast reauth (Route A+): offer the saved session from the global cache so
 +     * the first client_hello from this new conn carries the prior session_id. */
 +    if (tls_ctx_global.has_saved) {
@@ -102,34 +161,34 @@ index 0e7124c8f..73ff416ee 100644
 +
      return 0;
  }
-
-@@ -711,7 +736,7 @@ static void tls_mbedtls_set_allowed_tls_vers(struct tls_conf *tls_conf, mbedtls_
-
+ 
+@@ -711,7 +761,7 @@ static void tls_mbedtls_set_allowed_tls_vers(struct tls_conf *tls_conf, mbedtls_
+ 
  __attribute_noinline__ static int tls_mbedtls_readfile(const char *path, u8 **buf, size_t *n);
-
+ 
 -#ifdef MBEDTLS_DHM_C
 +#if defined(MBEDTLS_DHM_C) && defined(MBEDTLS_SSL_SRV_C)
  static int tls_mbedtls_set_dhparams(struct tls_conf *tls_conf, const struct tls_connection_params *params)
  {
      size_t len;
-@@ -1638,7 +1663,7 @@ static int tls_mbedtls_set_params(struct tls_conf *tls_conf, const struct tls_co
+@@ -1638,7 +1688,7 @@ static int tls_mbedtls_set_params(struct tls_conf *tls_conf, const struct tls_co
      if (ret != 0)
          return -1;
-
+ 
 -#ifdef MBEDTLS_DHM_C
 +#if defined(MBEDTLS_DHM_C) && defined(MBEDTLS_SSL_SRV_C)
      if (params->dh_blob && !tls_mbedtls_set_dhparams(tls_conf, params))
      {
          return -1;
-@@ -1695,7 +1720,6 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn, const
+@@ -1695,7 +1745,6 @@ int tls_connection_set_params(void *tls_ctx, struct tls_connection *conn, const
      if (tls_mbedtls_set_params(tls_conf, params) != 0)
          return -1;
      conn->verify_peer = tls_conf->verify_peer;
 -
      return tls_mbedtls_ssl_setup(conn);
  }
-
-@@ -2145,7 +2169,18 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+ 
+@@ -2145,7 +2194,18 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
              wpabuf_put(*appl_data, res);
      }
      else
@@ -149,7 +208,7 @@ index 0e7124c8f..73ff416ee 100644
  #else
      int ret = 0;
      while (conn->ssl.MBEDTLS_PRIVATE(state) != MBEDTLS_SSL_HANDSHAKE_OVER)
-@@ -2165,6 +2200,40 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+@@ -2165,6 +2225,40 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
      {
          case 0:
              conn->established = 1;
@@ -190,7 +249,7 @@ index 0e7124c8f..73ff416ee 100644
              if (conn->push_buf == NULL)
                  /* Need to return something to get final TLS ACK. */
                  conn->push_buf = wpabuf_alloc(0);
-@@ -2173,9 +2242,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+@@ -2173,9 +2267,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
          case MBEDTLS_ERR_SSL_WANT_READ:
          case MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS:
          case MBEDTLS_ERR_SSL_ASYNC_IN_PROGRESS:
@@ -210,15 +269,15 @@ index 0e7124c8f..73ff416ee 100644
                  conn->push_buf = wpabuf_alloc(0);
              break;
          default:
-@@ -2200,12 +2276,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
+@@ -2200,12 +2301,16 @@ struct wpabuf *tls_connection_handshake(void *tls_ctx,
                      break;
              }
-
+ 
 -            ilog(ret, "mbedtls_ssl_handshake");
 +            //elog(ret, "mbedtls_ssl_handshake");
              break;
      }
-
+ 
      struct wpabuf *out_data = conn->push_buf;
      conn->push_buf          = NULL;
 +    /*
@@ -227,17 +286,17 @@ index 0e7124c8f..73ff416ee 100644
 +               */
      return out_data;
  }
-
-@@ -2977,6 +3057,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+ 
+@@ -2977,6 +3082,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
      struct tls_conf *tls_conf   = conn->tls_conf;
      uint32_t flags_in           = *flags;
-
+ 
 +    //wpa_printf(MSG_ERROR, "MTLS: verify_cb depth=%d flags_in=0x%08X", depth, flags_in);
 +
  #if defined(TLS_MBEDTLS_CERT_DISABLE_KEY_USAGE_CHECK)
      crt->MBEDTLS_PRIVATE(ext_types) &= ~MBEDTLS_X509_EXT_KEY_USAGE;
      crt->MBEDTLS_PRIVATE(ext_types) &= ~MBEDTLS_X509_EXT_EXTENDED_KEY_USAGE;
-@@ -3012,6 +3094,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+@@ -3012,6 +3119,8 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
      {
          if (!conn->peer_subject)
              tls_mbedtls_set_peer_subject(conn, crt);
@@ -246,10 +305,10 @@ index 0e7124c8f..73ff416ee 100644
          /*(use same labels to tls_mbedtls_verify_fail_event() as used in
           * other TLS modules so that hwsim tests find exact string match)*/
          if (!conn->peer_subject)
-@@ -3172,6 +3256,7 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
+@@ -3172,6 +3281,7 @@ static int tls_mbedtls_verify_cb(void *arg, mbedtls_x509_crt *crt, int depth, ui
          }
      }
-
+ 
 +    //wpa_printf(MSG_ERROR, "MTLS: verify_cb depth=%d flags_out=0x%08X", depth, *flags);
      return 0;
  }
@@ -274,8 +333,8 @@ index 5b9a467c7..0e8ba1bce 100644
 +	EVENT_BMPS_EXIT,
 +#endif /* __ZEPHYR__ */
  };
-
-
+ 
+ 
 diff --git a/src/drivers/driver_common.c b/src/drivers/driver_common.c
 index 9bc5a731d..5cf89e396 100644
 --- a/src/drivers/driver_common.c
@@ -288,7 +347,7 @@ index 9bc5a731d..5cf89e396 100644
 +	E2S(BMPS_EXIT);
 +#endif /* __ZEPHYR__ */
  	}
-
+ 
  	return "UNKNOWN";
 diff --git a/src/drivers/driver_zephyr.c b/src/drivers/driver_zephyr.c
 index 1094d562d..8cd4bd388 100644
@@ -323,7 +382,7 @@ index 1094d562d..8cd4bd388 100644
 +			data_tmp->eapol_rx.data = frame_copy;
  		}
  	}
-
+ 
 -	zephyr_wifi_send_event(&msg);
 +	if (zephyr_wifi_send_event(&msg) != 0) {
 +		if (event == EVENT_EAPOL_RX && msg.data) {
@@ -335,12 +394,12 @@ index 1094d562d..8cd4bd388 100644
 +		os_free(msg.data);
 +	}
  }
-
+ 
  void wpa_drv_zep_event_chan_list_changed(struct zep_drv_if_ctx *if_ctx, union wpa_event_data *event)
 @@ -549,6 +580,13 @@ void wpa_drv_zep_event_proc_assoc_resp(struct zep_drv_if_ctx *if_ctx,
  			  event->assoc_info.addr,
  			  ETH_ALEN);
-
+ 
 +		wpa_printf(MSG_DEBUG,
 +			   "%s: posting EVENT_ASSOC bssid=%02x:%02x:%02x:%02x:%02x:%02x ssid_len=%d",
 +			   __func__,
@@ -353,7 +412,7 @@ index 1094d562d..8cd4bd388 100644
  				event);
 @@ -1841,9 +1879,10 @@ static int wpa_drv_zep_get_ssid(void *priv,
  	if_ctx = priv;
-
+ 
  	wpa_printf(MSG_DEBUG,
 -		   "%s: SSID size: %d",
 +		   "%s: ssid_len=%d ssid=\"%.*s\"",
@@ -361,9 +420,9 @@ index 1094d562d..8cd4bd388 100644
 -		   if_ctx->ssid_len);
 +		   if_ctx->ssid_len,
 +		   if_ctx->ssid_len, (const char *)if_ctx->ssid);
-
+ 
  	os_memcpy(ssid, if_ctx->ssid, if_ctx->ssid_len);
-
+ 
 @@ -2809,3 +2848,43 @@ const struct wpa_driver_ops wpa_driver_zep_ops = {
  	.cancel_remain_on_channel = wpa_drv_zep_cancel_remain_on_channel,
  	.send_action_cancel_wait = wpa_drv_zep_send_action_cancel_wait,
@@ -415,7 +474,7 @@ index a24a8ead8..2a1af9cc0 100644
 @@ -354,4 +354,24 @@ struct zep_wpa_supp_dev_ops {
  	int (*signal_monitor)(void *if_priv, int threshold, int hysteresis);
  };
-
+ 
 +/* Forward declaration for use by fullmac drivers that post assoc events */
 +struct zep_drv_if_ctx;
 +void wpa_drv_zep_event_proc_assoc_resp(struct zep_drv_if_ctx *if_ctx,
@@ -459,7 +518,7 @@ index bd3ef007f..82d3ab736 100644
 @@ -7041,6 +7041,13 @@ void wpa_supplicant_event_global(void *ctx, enum wpa_event_type event,
  {
  	struct wpa_supplicant *wpa_s;
-
+ 
 +#ifdef __ZEPHYR__
 +	if (event == EVENT_BMPS_EXIT) {
 +		wpas_bmps_resume_periodic(ctx);
@@ -469,14 +528,14 @@ index bd3ef007f..82d3ab736 100644
 +
  	if (event != EVENT_INTERFACE_STATUS)
  		return;
-
+ 
 diff --git a/wpa_supplicant/wpa_supplicant.c b/wpa_supplicant/wpa_supplicant.c
 index 61d016136..91390bb52 100644
 --- a/wpa_supplicant/wpa_supplicant.c
 +++ b/wpa_supplicant/wpa_supplicant.c
 @@ -1109,7 +1109,21 @@ void wpa_supplicant_set_state(struct wpa_supplicant *wpa_s,
  		sme_sched_obss_scan(wpa_s, 1);
-
+ 
  #ifdef __ZEPHYR__
 -		supplicant_send_wifi_mgmt_conn_event(wpa_s, 0);
 +		/*
@@ -500,7 +559,7 @@ index 61d016136..91390bb52 100644
 @@ -7765,6 +7779,18 @@ static void wpas_periodic(void *eloop_ctx, void *timeout_ctx)
  	struct wpa_global *global = eloop_ctx;
  	struct wpa_supplicant *wpa_s;
-
+ 
 +#ifdef __ZEPHYR__
 +	/*
 +	 * Device is in BMPS: skip the self-rearm so the eloop thread has no
@@ -515,11 +574,11 @@ index 61d016136..91390bb52 100644
 +
  	eloop_register_timeout(WPA_SUPPLICANT_CLEANUP_INTERVAL, 0,
  			       wpas_periodic, global, NULL);
-
+ 
 @@ -7781,6 +7807,31 @@ static void wpas_periodic(void *eloop_ctx, void *timeout_ctx)
  	}
  }
-
+ 
 +#ifdef __ZEPHYR__
 +void wpas_bmps_pause_periodic(struct wpa_global *global)
 +{
@@ -545,7 +604,7 @@ index 61d016136..91390bb52 100644
 +}
 +#endif /* __ZEPHYR__ */
 +
-
+ 
  /**
   * wpa_supplicant_init - Initialize %wpa_supplicant
 diff --git a/wpa_supplicant/wpa_supplicant_i.h b/wpa_supplicant/wpa_supplicant_i.h
@@ -555,7 +614,7 @@ index 5e24bea4c..864bd5082 100644
 @@ -9,6 +9,10 @@
  #ifndef WPA_SUPPLICANT_I_H
  #define WPA_SUPPLICANT_I_H
-
+ 
 +#ifdef __ZEPHYR__
 +#include <zephyr/sys/atomic.h>
 +#endif /* __ZEPHYR__ */
@@ -565,7 +624,7 @@ index 5e24bea4c..864bd5082 100644
  #include "common/defs.h"
 @@ -320,6 +324,19 @@ struct wpa_global {
  #endif /* CONFIG_WIFI_DISPLAY */
-
+ 
  	struct psk_list_entry *add_psk; /* From group formation */
 +
 +#ifdef __ZEPHYR__
@@ -581,12 +640,12 @@ index 5e24bea4c..864bd5082 100644
 +	atomic_t bmps_active;
 +#endif /* __ZEPHYR__ */
  };
-
-
+ 
+ 
 @@ -2037,4 +2054,23 @@ bool wpas_ap_supports_rsn_overriding(struct wpa_supplicant *wpa_s,
  bool wpas_ap_supports_rsn_overriding_2(struct wpa_supplicant *wpa_s,
  				       struct wpa_bss *bss);
-
+ 
 +#ifdef __ZEPHYR__
 +/*
 + * wpas_bmps_pause_periodic - pause wpas_periodic() for the duration of BMPS.
@@ -614,7 +673,7 @@ index 1ef48c9ba..addfbe3d0 100644
 @@ -220,8 +220,8 @@ static int wpa_supplicant_eapol_send(void *ctx, int type, const u8 *buf,
  	if (msg == NULL)
  		return -1;
-
+ 
 -	wpa_printf(MSG_DEBUG, "TX EAPOL: dst=" MACSTR, MAC2STR(dst));
 -	wpa_hexdump(MSG_MSGDUMP, "TX EAPOL", msg, msglen);
 +	wpa_printf(MSG_DEBUG, "TX EAPOL: type=%d len=%lu dst=" MACSTR,
@@ -624,13 +683,14 @@ index 1ef48c9ba..addfbe3d0 100644
  	return res;
 @@ -357,8 +357,7 @@ static void wpa_supplicant_eapol_cb(struct eapol_sm *eapol,
  	}
-
+ 
  	if (res) {
 -		wpa_printf(MSG_DEBUG, "Failed to get PMK from EAPOL state "
 -			   "machines");
 +		wpa_printf(MSG_DEBUG, "Failed to get PMK from EAPOL state machines");
  		return;
  	}
-
---
+ 
+-- 
 2.43.0
+
