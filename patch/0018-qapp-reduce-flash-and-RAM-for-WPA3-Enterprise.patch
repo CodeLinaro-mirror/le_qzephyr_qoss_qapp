@@ -34,7 +34,7 @@ Also adds zephyr_wifi_bmps_enter()/zephyr_wifi_bmps_exit() bridge functions
 in supp_main.c/.h, called from qcom_wifi_drv.c's BMPS enable/disable path to
 pause/resume wpa_supplicant's wpas_periodic() 10s eloop timeout for the
 duration of BMPS (root cause of periodic EXIT_REASON_RTOS_TIME wakeups out
-of BMPS on QCC730 fullmac builds — see wpa_supplicant.c in the hostap patch).
+of BMPS on QCC730 fullmac builds -- see wpa_supplicant.c in the hostap patch).
 ---
  modules/hostap/CMakeLists.txt            |  34 ++-
  modules/hostap/Kconfig                   |  19 +-
@@ -565,7 +565,7 @@ index ea1c64c7b28..6a89cb07c42 100644
  #include "wpa_cli_zephyr.h"
 +#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
 +#include "driver_i.h"
-+/* Forward declarations for fullmac direct-API calls (avoids notify.h → p2p.h
++/* Forward declarations for fullmac direct-API calls (avoids notify.h -> p2p.h
 + * which would conflict with the local WPS_PBC enum value).
 + */
 +struct wpa_ssid;
