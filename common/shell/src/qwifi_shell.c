@@ -9,9 +9,56 @@
 #include <qwifi_api.h>
 #include <zephyr/net/net_if.h>
 #include <qcom_wifi_mgmt.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <zephyr/net/wifi_utils.h>
 #include <wlan_lib_version.h>
+
+#ifdef CONFIG_WIFI_QCOM_P2P
+/* Shell-side pending state for the qwifi p2p command set.
+ *
+ * `cfg` mirrors struct qcom_p2p_params and is what `qwifi p2p enable` hands
+ * to qcom_p2p_enable(). `qwifi p2p set <param> <value>` mutates fields in
+ * place; live changes are propagated through qcom_p2p_apply_runtime_cfg /
+ * qcom_p2p_apply_disc_int when P2P is already enabled.
+ *
+ * Fields outside cfg:
+ *  - go_intent: per-connect arg; stored here so `qwifi p2p connect`
+ *    inherits a default the user can override with `set go_intent <n>`.
+ *    0 (always client) matches the GC focus of this FR.
+ *  - disc_{min,max,max_tu}: hostap p2p_set_disc_int() inputs. Defaults
+ *    mirror hostap's own (1, 3, -1). disc_set tracks whether the user
+ *    has explicitly configured them — when false, we don't call into
+ *    hostap so the default randomized listen window stays in effect.
+ */
+static struct {
+    struct qcom_p2p_params cfg;
+    int  go_intent;
+    int  disc_min;
+    int  disc_max;
+    int  disc_max_tu;
+    bool disc_set;
+} g_p2p_shell = {
+    .cfg = {
+        .device_name      = "QC-IOT",
+        .country          = { 'X', 'X', 0x04 },
+        .listen_reg_class = 81,
+        .listen_channel   = 6,
+        .op_reg_class     = 81,
+        .op_channel       = 6,
+        .config_methods   = 0x188, /* Display + PBC + Keypad */
+        /* Primary device type: WPS_DEV_NETWORK_INFRA / WPS_DEV_NETWORK_INFRA_ROUTER
+         * (Android renders this as a network / IoT-router icon). */
+        .pri_dev_type     = { 0x00, 0x06, 0x00, 0x50, 0xF2, 0x04, 0x00, 0x02 },
+        .pbc_auto_auth    = true,
+    },
+    .go_intent   = 0,
+    .disc_min    = 1,
+    .disc_max    = 3,
+    .disc_max_tu = -1,
+    .disc_set    = false,
+};
+#endif /* CONFIG_WIFI_QCOM_P2P */
 
 static int cmd_set_tx_power(const struct shell *ctx, size_t argc, char **argv)
 {
@@ -1132,6 +1179,696 @@ static int cmd_wnm_enable(const struct shell *ctx, size_t argc, char **argv)
     return 0;
 }
 
+#ifdef CONFIG_WIFI_QCOM_P2P
+/* Parse a hex byte sequence (with or without colons) into an output buffer
+ * of exact length `out_len`. Returns 0 on success, -1 on length / format
+ * mismatch. Accepts "00:06:00:50:F2:04:00:02" or "0006005050F20402" style.
+ */
+static int parse_hex_bytes(const char *s, uint8_t *out, size_t out_len)
+{
+    size_t got = 0;
+    while (*s && got < out_len) {
+        while (*s == ':' || *s == ' ') s++;
+        if (!*s) break;
+        unsigned int v;
+        int n = 0;
+        if (sscanf(s, "%2x%n", &v, &n) != 1 || n != 2) return -1;
+        out[got++] = (uint8_t)v;
+        s += n;
+    }
+    while (*s == ':' || *s == ' ') s++;
+    return (got == out_len && *s == '\0') ? 0 : -1;
+}
+
+static int cmd_p2p_set(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+
+    if (argc < 3) {
+        shell_error(ctx, "Usage: qwifi p2p set <param> <value>");
+        shell_print(ctx, "Params: device_name | listen_channel | op_channel"
+                         " | country | config_methods | pri_dev_type | go_intent"
+                         " | disc_int | pbc_auto_auth");
+        return -EINVAL;
+    }
+
+    const char *p = argv[1];
+    const char *v = argv[2];
+
+    /* disc_int has its own arg layout: <min> <max> [<max_tu>]
+     * (3 or 4 tokens after "set"). Handle it before the single-value
+     * dispatch below. */
+    if (strcmp(p, "disc_int") == 0) {
+        if (argc < 4 || argc > 5) {
+            shell_error(ctx,
+                "Usage: qwifi p2p set disc_int <min> <max> [<max_tu>]");
+            shell_print(ctx,
+                "  min/max: discoverable interval in units of 100 TU (defaults 1, 3)");
+            shell_print(ctx,
+                "  max_tu : optional cap in raw TUs; -1 (default) = no cap");
+            return -EINVAL;
+        }
+        int mn = (int)shell_strtol(argv[2], 10, &err);
+        if (err || mn < 0) { shell_error(ctx, "Invalid min"); return -EINVAL; }
+        int mx = (int)shell_strtol(argv[3], 10, &err);
+        if (err || mx < mn) {
+            shell_error(ctx, "Invalid max (must be >= min)");
+            return -EINVAL;
+        }
+        int mt = -1;
+        if (argc == 5) {
+            mt = (int)shell_strtol(argv[4], 10, &err);
+            if (err) { shell_error(ctx, "Invalid max_tu"); return -EINVAL; }
+        }
+        g_p2p_shell.disc_min = mn;
+        g_p2p_shell.disc_max = mx;
+        g_p2p_shell.disc_max_tu  = mt;
+        g_p2p_shell.disc_set     = true;
+
+        struct net_if *iface = net_if_get_wifi_sta();
+        struct qcom_wifi_p2p_params dp = {
+            .subcmd = P2P_SUBCMD_APPLY_DISC_INT,
+            .apply_disc_int = { .min_disc_int = mn, .max_disc_int = mx,
+                                .max_disc_tu = mt },
+        };
+        int rc = net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &dp, sizeof(dp));
+        if (rc == 0) {
+            shell_print(ctx, "OK (applied live)");
+        } else {
+            shell_print(ctx,
+                "OK (pending — will apply on next 'qwifi p2p enable')");
+        }
+        return 0;
+    }
+
+    if (strcmp(p, "device_name") == 0) {
+        if (strlen(v) >= QCOM_P2P_MAX_DEV_NAME_LEN) {
+            shell_error(ctx, "device_name too long (max %d)",
+                        QCOM_P2P_MAX_DEV_NAME_LEN - 1);
+            return -EINVAL;
+        }
+        memset(g_p2p_shell.cfg.device_name, 0, QCOM_P2P_MAX_DEV_NAME_LEN);
+        snprintf(g_p2p_shell.cfg.device_name, QCOM_P2P_MAX_DEV_NAME_LEN,
+                 "%s", v);
+    } else if (strcmp(p, "listen_channel") == 0) {
+        int ch = shell_strtoul(v, 10, &err);
+        /* P2P social channels are 2.4 GHz only by spec — reg_class 81
+         * covers 1..13. Listen window is always on 2.4 GHz so peers can
+         * find us regardless of operating-channel preference. */
+        if (err || ch < 1 || ch > 13) {
+            shell_error(ctx, "Invalid listen_channel (1..13, 2.4 GHz only)");
+            return -EINVAL;
+        }
+        g_p2p_shell.cfg.listen_reg_class = 81;
+        g_p2p_shell.cfg.listen_channel   = (uint8_t)ch;
+    } else if (strcmp(p, "op_channel") == 0) {
+        int ch = shell_strtoul(v, 10, &err);
+        /* Operating channel can be 2.4 GHz (reg_class 81: 1..13) or
+         * 5 GHz UNII-1 (reg_class 115: 36/40/44/48). UNII-2/2e/3 need
+         * DFS or country-specific allow-lists not yet implemented. */
+        if (err) {
+            shell_error(ctx, "Invalid op_channel");
+            return -EINVAL;
+        }
+        if (ch >= 1 && ch <= 13) {
+            g_p2p_shell.cfg.op_reg_class = 81;
+        } else if (ch == 36 || ch == 40 || ch == 44 || ch == 48) {
+            g_p2p_shell.cfg.op_reg_class = 115;
+        } else {
+            shell_error(ctx, "Invalid op_channel "
+                "(2.4 GHz: 1..13 / 5 GHz UNII-1: 36/40/44/48)");
+            return -EINVAL;
+        }
+        g_p2p_shell.cfg.op_channel = (uint8_t)ch;
+    } else if (strcmp(p, "country") == 0) {
+        if (strlen(v) != 2) {
+            shell_error(ctx, "country must be 2 chars (e.g. CN, US, XX)");
+            return -EINVAL;
+        }
+        g_p2p_shell.cfg.country[0] = v[0];
+        g_p2p_shell.cfg.country[1] = v[1];
+        /* country[2] keeps the regulatory environment byte (0x04 = "all"). */
+    } else if (strcmp(p, "config_methods") == 0) {
+        unsigned long cm = shell_strtoul(v, 0, &err); /* base 0 -> 0x prefix OK */
+        if (err || cm > 0xFFFF) {
+            shell_error(ctx, "Invalid config_methods (16-bit hex/dec)");
+            return -EINVAL;
+        }
+        g_p2p_shell.cfg.config_methods = (uint16_t)cm;
+    } else if (strcmp(p, "pri_dev_type") == 0) {
+        uint8_t buf[QCOM_P2P_DEV_TYPE_LEN];
+        if (parse_hex_bytes(v, buf, QCOM_P2P_DEV_TYPE_LEN) != 0) {
+            shell_error(ctx, "Invalid pri_dev_type — expect 8 hex bytes "
+                             "(e.g. 00:06:00:50:F2:04:00:02)");
+            return -EINVAL;
+        }
+        memcpy(g_p2p_shell.cfg.pri_dev_type, buf, QCOM_P2P_DEV_TYPE_LEN);
+    } else if (strcmp(p, "go_intent") == 0) {
+        int gi = shell_strtoul(v, 10, &err);
+        if (err || gi < 0 || gi > 15) {
+            shell_error(ctx, "Invalid go_intent (0..15)");
+            return -EINVAL;
+        }
+        g_p2p_shell.go_intent = gi;
+        /* go_intent is a per-connect parameter, no hostap state to push. */
+        shell_print(ctx, "OK");
+        return 0;
+    } else if (strcmp(p, "pbc_auto_auth") == 0) {
+        int en = shell_strtoul(v, 10, &err);
+        if (err || (en != 0 && en != 1)) {
+            shell_error(ctx, "Invalid pbc_auto_auth (0 or 1)");
+            return -EINVAL;
+        }
+        g_p2p_shell.cfg.pbc_auto_auth = (bool)en;
+        /* Falls through to the generic apply_cfg push below — reuses
+         * struct qcom_p2p_params's existing tail padding (see its doc
+         * comment) instead of a dedicated subcmd, so this never changes
+         * the wire size of struct qcom_wifi_p2p_params. */
+    } else {
+        shell_error(ctx, "Unknown param '%s'", p);
+        return -EINVAL;
+    }
+
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params ap = {
+        .subcmd = P2P_SUBCMD_APPLY_CFG,
+        .apply_cfg = { .cfg = g_p2p_shell.cfg },
+    };
+    int rc = net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &ap, sizeof(ap));
+    if (rc == 0) {
+        shell_print(ctx, "OK (applied live)");
+    } else {
+        shell_print(ctx, "OK (pending — will apply on next 'qwifi p2p enable')");
+    }
+    return 0;
+}
+
+static int cmd_p2p_show(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    const struct qcom_p2p_params *c = &g_p2p_shell.cfg;
+    shell_print(ctx, "device_name    : %s", c->device_name);
+    shell_print(ctx, "country        : %c%c", c->country[0], c->country[1]);
+    shell_print(ctx, "listen_channel : %u", c->listen_channel);
+    shell_print(ctx, "op_channel     : %u", c->op_channel);
+    shell_print(ctx, "config_methods : 0x%04x", c->config_methods);
+    shell_print(ctx, "pri_dev_type   : %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x",
+                c->pri_dev_type[0], c->pri_dev_type[1],
+                c->pri_dev_type[2], c->pri_dev_type[3],
+                c->pri_dev_type[4], c->pri_dev_type[5],
+                c->pri_dev_type[6], c->pri_dev_type[7]);
+    shell_print(ctx, "go_intent      : %d", g_p2p_shell.go_intent);
+    if (g_p2p_shell.disc_set) {
+        shell_print(ctx, "disc_int       : min=%d max=%d max_tu=%d",
+                    g_p2p_shell.disc_min, g_p2p_shell.disc_max,
+                    g_p2p_shell.disc_max_tu);
+    } else {
+        shell_print(ctx, "disc_int       : (hostap default)");
+    }
+    shell_print(ctx, "pbc_auto_auth  : %d", c->pbc_auto_auth);
+    return 0;
+}
+
+static int cmd_p2p_enable(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_get_mac_address_params mac = {0};
+    struct qcom_wifi_p2p_params params = {
+        .subcmd = P2P_SUBCMD_ENABLE,
+        .enable = { .cfg = g_p2p_shell.cfg },
+    };
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_GET_MAC_ADDRESS, iface, &mac, sizeof(mac)) == 0) {
+        memcpy(params.enable.cfg.dev_addr, mac.mac, QCOM_P2P_MAC_LEN);
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P init failed");
+        return -ENOEXEC;
+    }
+
+    if (g_p2p_shell.disc_set) {
+        struct qcom_wifi_p2p_params dp = {
+            .subcmd = P2P_SUBCMD_APPLY_DISC_INT,
+            .apply_disc_int = { .min_disc_int = g_p2p_shell.disc_min,
+                                .max_disc_int = g_p2p_shell.disc_max,
+                                .max_disc_tu = g_p2p_shell.disc_max_tu },
+        };
+        (void)net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &dp, sizeof(dp));
+    }
+
+    shell_print(ctx, "P2P enabled, listen=%u op=%u",
+                g_p2p_shell.cfg.listen_channel, g_p2p_shell.cfg.op_channel);
+    return 0;
+}
+
+static int cmd_p2p_disable(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_DISABLE };
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P disable failed");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P disabled");
+    return 0;
+}
+
+static int cmd_p2p_find(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_FIND };
+
+    if (argc >= 2) {
+        params.find.timeout = shell_strtoul(argv[1], 10, &err);
+        if (err) {
+            shell_error(ctx, "Unable to parse <timeout> (err %d)", err);
+            return err;
+        }
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P find failed (not enabled?)");
+        return -ENOEXEC;
+    }
+
+    shell_print(ctx, "P2P find started (timeout=%us)", params.find.timeout);
+    return 0;
+}
+
+static void p2p_shell_print(void *cb_ctx, const char *fmt, ...)
+{
+    const struct shell *ctx = cb_ctx;
+    va_list ap;
+    char buf[160];
+
+    va_start(ap, fmt);
+    vsnprintk(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    shell_print(ctx, "%s", buf);
+}
+
+static int cmd_p2p_peers(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = {
+        .subcmd = P2P_SUBCMD_PEERS_DUMP,
+        .peers_dump = { .cb = p2p_shell_print, .cb_ctx = (void *)ctx },
+    };
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P peer list unavailable (not enabled?)");
+        return -ENOEXEC;
+    }
+    if (params.peers_dump.n == 0) {
+        shell_print(ctx, "(no peers found)");
+    } else {
+        shell_print(ctx, "%d peer(s)", params.peers_dump.n);
+    }
+    return 0;
+}
+
+static int cmd_p2p_peer(const struct shell *ctx, size_t argc, char **argv)
+{
+    unsigned int v[QCOM_P2P_MAC_LEN];
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = {
+        .subcmd = P2P_SUBCMD_PEER_DUMP,
+        .peer_dump = { .cb = p2p_shell_print, .cb_ctx = (void *)ctx },
+    };
+
+    if (argc != 2) {
+        shell_error(ctx, "Usage: qwifi p2p peer <xx:xx:xx:xx:xx:xx>");
+        return -EINVAL;
+    }
+    if (sscanf(argv[1], "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        shell_error(ctx, "Invalid MAC address: %s", argv[1]);
+        return -EINVAL;
+    }
+    for (int i = 0; i < QCOM_P2P_MAC_LEN; i++) {
+        params.peer_dump.mac[i] = (uint8_t)v[i];
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "Peer not found");
+        return -ENOEXEC;
+    }
+    return 0;
+}
+
+static int cmd_p2p_connect(const struct shell *ctx, size_t argc, char **argv)
+{
+    unsigned int v[QCOM_P2P_MAC_LEN];
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = {
+        .subcmd = P2P_SUBCMD_CONNECT,
+        .connect = { .wps_method = QCOM_P2P_WPS_PBC,
+                     .go_intent = g_p2p_shell.go_intent },
+    };
+    int err = 0;
+    int next_arg;
+
+    if (argc < 3) {
+        shell_error(ctx, "Usage: qwifi p2p connect <xx:xx:xx:xx:xx:xx>"
+                         " pbc|pin <PIN>|display [<go_intent>] [auth]");
+        return -EINVAL;
+    }
+
+    if (sscanf(argv[1], "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        shell_error(ctx, "Invalid peer MAC: %s", argv[1]);
+        return -EINVAL;
+    }
+    for (int i = 0; i < QCOM_P2P_MAC_LEN; i++) {
+        params.connect.mac[i] = (uint8_t)v[i];
+    }
+
+    if (strcmp(argv[2], "pbc") == 0) {
+        params.connect.wps_method = QCOM_P2P_WPS_PBC;
+        next_arg = 3;
+    } else if (strcmp(argv[2], "display") == 0) {
+        params.connect.wps_method = QCOM_P2P_WPS_PIN_DISPLAY;
+        next_arg = 3;
+    } else if (strcmp(argv[2], "pin") == 0) {
+        if (argc < 4) {
+            shell_error(ctx, "pin method requires an 8-digit PIN argument");
+            return -EINVAL;
+        }
+        params.connect.wps_method = QCOM_P2P_WPS_PIN_KEYPAD;
+        next_arg = 4;
+        (void)argv[3];
+    } else {
+        shell_error(ctx, "Unknown WPS method '%s' (expected pbc|pin|display)",
+                    argv[2]);
+        return -EINVAL;
+    }
+
+    for (size_t i = (size_t)next_arg; i < argc; i++) {
+        if (strcmp(argv[i], "auth") == 0) {
+            params.connect.auth = 1;
+        } else {
+            int tmp = shell_strtoul(argv[i], 10, &err);
+            if (err) {
+                shell_error(ctx, "Unknown argument '%s' (expected go_intent or 'auth')",
+                            argv[i]);
+                return err;
+            }
+            params.connect.go_intent = tmp;
+        }
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P connect rejected");
+        return -ENOEXEC;
+    }
+    if (params.connect.auth) {
+        shell_print(ctx, "P2P authorize issued (peer=%s method=%d go_intent=%d)"
+                         " — waiting for peer to retry GO Neg",
+                    argv[1], params.connect.wps_method, params.connect.go_intent);
+    } else {
+        shell_print(ctx, "P2P connect issued (peer=%s method=%d go_intent=%d)",
+                    argv[1], params.connect.wps_method, params.connect.go_intent);
+    }
+    return 0;
+}
+
+static int cmd_p2p_stop_find(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_STOP_FIND };
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P stop_find failed (not enabled?)");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P find stopped");
+    return 0;
+}
+
+static int cmd_p2p_listen(const struct shell *ctx, size_t argc, char **argv)
+{
+    int err = 0;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_LISTEN };
+
+    if (argc >= 2) {
+        params.listen.timeout = shell_strtoul(argv[1], 10, &err);
+        if (err) {
+            shell_error(ctx, "Invalid timeout '%s'", argv[1]);
+            return err;
+        }
+    }
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P listen rejected");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P listen started%s%u%s",
+                params.listen.timeout ? " (timeout=" : "",
+                params.listen.timeout, params.listen.timeout ? " sec)" : "");
+    return 0;
+}
+
+static int cmd_p2p_cancel(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_CANCEL };
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P cancel failed (not enabled?)");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P cancel issued");
+    return 0;
+}
+
+static int cmd_p2p_flush(const struct shell *ctx, size_t argc, char **argv)
+{
+    (void)argc; (void)argv;
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_FLUSH };
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P flush failed (not enabled?)");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P device table flushed");
+    return 0;
+}
+
+static int cmd_p2p_reject(const struct shell *ctx, size_t argc, char **argv)
+{
+    unsigned int v[QCOM_P2P_MAC_LEN];
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_REJECT };
+
+    if (argc < 2) {
+        shell_error(ctx, "Usage: qwifi p2p reject <xx:xx:xx:xx:xx:xx>");
+        return -EINVAL;
+    }
+    if (sscanf(argv[1], "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        shell_error(ctx, "Invalid peer MAC: %s", argv[1]);
+        return -EINVAL;
+    }
+    for (int i = 0; i < QCOM_P2P_MAC_LEN; i++) {
+        params.reject.mac[i] = (uint8_t)v[i];
+    }
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P reject failed (peer not in table?)");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P peer %s rejected", argv[1]);
+    return 0;
+}
+
+static int cmd_p2p_auth_invite(const struct shell *ctx, size_t argc, char **argv)
+{
+    unsigned int v[QCOM_P2P_MAC_LEN];
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = { .subcmd = P2P_SUBCMD_AUTH_INVITE };
+
+    if (argc == 1 || (argc == 2 && strcmp(argv[1], "clear") == 0)) {
+        params.auth_invite.clear = true;
+        if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+            shell_error(ctx, "auth_invite clear failed (P2P not enabled?)");
+            return -ENOEXEC;
+        }
+        shell_print(ctx, "P2P invitation pre-auth cleared");
+        return 0;
+    }
+    if (sscanf(argv[1], "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        shell_error(ctx, "Invalid peer MAC: %s", argv[1]);
+        return -EINVAL;
+    }
+    for (int i = 0; i < QCOM_P2P_MAC_LEN; i++) {
+        params.auth_invite.mac[i] = (uint8_t)v[i];
+    }
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "auth_invite failed (P2P not enabled?)");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P invitation pre-auth set: %s", argv[1]);
+    return 0;
+}
+
+static int cmd_p2p_invite(const struct shell *ctx, size_t argc, char **argv)
+{
+    unsigned int v[QCOM_P2P_MAC_LEN];
+    struct net_if *iface = net_if_get_wifi_sta();
+    struct qcom_wifi_p2p_params params = {
+        .subcmd = P2P_SUBCMD_INVITE,
+        .invite = { .role = QCOM_P2P_INVITE_ROLE_GO },
+    };
+    int err = 0;
+    size_t i;
+
+    if (argc < 3) {
+        shell_error(ctx, "Usage: qwifi p2p invite <peer_mac> <ssid>"
+                         " [role=go|active_go|client] [freq=<MHz>] [persistent]");
+        return -EINVAL;
+    }
+    if (sscanf(argv[1], "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) {
+        shell_error(ctx, "Invalid peer MAC: %s", argv[1]);
+        return -EINVAL;
+    }
+    for (int j = 0; j < QCOM_P2P_MAC_LEN; j++) {
+        params.invite.mac[j] = (uint8_t)v[j];
+    }
+
+    params.invite.ssid     = (const uint8_t *)argv[2];
+    params.invite.ssid_len = strlen(argv[2]);
+    if (params.invite.ssid_len == 0) {
+        shell_error(ctx, "Empty SSID");
+        return -EINVAL;
+    }
+
+    for (i = 3; i < argc; i++) {
+        if (strncmp(argv[i], "role=", 5) == 0) {
+            const char *r = argv[i] + 5;
+            if (strcmp(r, "go") == 0)              params.invite.role = QCOM_P2P_INVITE_ROLE_GO;
+            else if (strcmp(r, "active_go") == 0)  params.invite.role = QCOM_P2P_INVITE_ROLE_ACTIVE_GO;
+            else if (strcmp(r, "client") == 0)     params.invite.role = QCOM_P2P_INVITE_ROLE_CLIENT;
+            else {
+                shell_error(ctx, "Invalid role '%s' (expected go|active_go|client)", r);
+                return -EINVAL;
+            }
+        } else if (strncmp(argv[i], "freq=", 5) == 0) {
+            params.invite.freq = shell_strtoul(argv[i] + 5, 10, &err);
+            if (err) {
+                shell_error(ctx, "Invalid freq '%s'", argv[i] + 5);
+                return err;
+            }
+        } else if (strcmp(argv[i], "persistent") == 0) {
+            params.invite.persistent_group = 1;
+        } else {
+            shell_error(ctx, "Unknown argument '%s'", argv[i]);
+            return -EINVAL;
+        }
+    }
+
+    if (net_mgmt(NET_REQUEST_WIFI_QCOM_P2P, iface, &params, sizeof(params))) {
+        shell_error(ctx, "P2P invite rejected");
+        return -ENOEXEC;
+    }
+    shell_print(ctx, "P2P invite issued (peer=%s ssid=\"%s\" role=%d freq=%u%s)",
+                argv[1], argv[2], params.invite.role, params.invite.freq,
+                params.invite.persistent_group ? " persistent" : "");
+    return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_p2p_commands,
+                               SHELL_CMD_ARG(set, NULL,
+                                             "Set a P2P parameter. Live if P2P enabled, else pending.\n"
+                                             "Usage: qwifi p2p set <param> <value>\n"
+                                             "Params:\n"
+                                             "  device_name    <string up to 31 chars>\n"
+                                             "  listen_channel <1..13>          (2.4 GHz only — P2P social channels are 2.4 GHz by spec)\n"
+                                             "  op_channel     <1..13|36|40|44|48> (2.4 GHz reg_class 81 or 5 GHz UNII-1 reg_class 115)\n"
+                                             "  country        <XX>\n"
+                                             "  config_methods <hex16, e.g. 0x188>\n"
+                                             "  pri_dev_type   <8 hex bytes, e.g. 00:06:00:50:F2:04:00:02>\n"
+                                             "  go_intent      <0..15>\n"
+                                             "  disc_int       <min> <max> [<max_tu>]\n"
+                                             "                  (min/max in 100 TU units; max_tu raw TUs, -1=no cap)\n"
+                                             "  pbc_auto_auth  <0|1> (default 1 — auto-authorize PBC GO Neg requests)\n",
+                                             cmd_p2p_set, 3, 2),
+                               SHELL_CMD_ARG(show, NULL,
+                                             "Show pending P2P configuration.\n"
+                                             "Usage: qwifi p2p show\n",
+                                             cmd_p2p_show, 1, 0),
+                               SHELL_CMD_ARG(enable, NULL,
+                                             "Enable P2P.\n"
+                                             "Usage: qwifi p2p enable\n",
+                                             cmd_p2p_enable, 1, 0),
+                               SHELL_CMD_ARG(disable, NULL,
+                                             "Disable P2P (tears down hostap p2p, releases eloop).\n"
+                                             "Usage: qwifi p2p disable\n",
+                                             cmd_p2p_disable, 1, 0),
+                               SHELL_CMD_ARG(find, NULL,
+                                             "Start P2P device discovery.\n"
+                                             "Usage: qwifi p2p find [<timeout_sec>]\n",
+                                             cmd_p2p_find, 1, 1),
+                               SHELL_CMD_ARG(stop_find, NULL,
+                                             "Stop an ongoing P2P device discovery.\n"
+                                             "Usage: qwifi p2p stop_find\n",
+                                             cmd_p2p_stop_find, 1, 0),
+                               SHELL_CMD_ARG(peers, NULL,
+                                             "List all discovered P2P peers.\n"
+                                             "Usage: qwifi p2p peers\n",
+                                             cmd_p2p_peers, 1, 0),
+                               SHELL_CMD_ARG(peer, NULL,
+                                             "Dump details of one P2P peer.\n"
+                                             "Usage: qwifi p2p peer <xx:xx:xx:xx:xx:xx>\n",
+                                             cmd_p2p_peer, 2, 0),
+                               SHELL_CMD_ARG(connect, NULL,
+                                             "Initiate or accept P2P group formation.\n"
+                                             "Usage: qwifi p2p connect <peer_mac> pbc|display [<go_intent>] [auth]\n"
+                                             "       qwifi p2p connect <peer_mac> pin <PIN> [<go_intent>] [auth]\n"
+                                             "Add the 'auth' keyword to accept an incoming P2P-GO-NEG-REQUEST\n"
+                                             "(authorize-only; we wait for the peer to retry GO Neg).\n",
+                                             cmd_p2p_connect, 3, 3),
+                               SHELL_CMD_ARG(listen, NULL,
+                                             "Enter listen-only state for [<timeout_sec>] seconds.\n"
+                                             "Usage: qwifi p2p listen [<timeout_sec>]\n"
+                                             "0 or omitted = use hostap default (5 s).\n",
+                                             cmd_p2p_listen, 1, 1),
+                               SHELL_CMD_ARG(cancel, NULL,
+                                             "Cancel pending GO negotiation and stop find.\n"
+                                             "Usage: qwifi p2p cancel\n",
+                                             cmd_p2p_cancel, 1, 0),
+                               SHELL_CMD_ARG(flush, NULL,
+                                             "Drop all known P2P peers.\n"
+                                             "Usage: qwifi p2p flush\n",
+                                             cmd_p2p_flush, 1, 0),
+                               SHELL_CMD_ARG(reject, NULL,
+                                             "Reject any further connection attempts from a peer.\n"
+                                             "Usage: qwifi p2p reject <xx:xx:xx:xx:xx:xx>\n",
+                                             cmd_p2p_reject, 2, 0),
+                               SHELL_CMD_ARG(auth_invite, NULL,
+                                             "Pre-authorize a peer to invite us into a group.\n"
+                                             "Usage: qwifi p2p auth_invite <xx:xx:xx:xx:xx:xx>\n"
+                                             "       qwifi p2p auth_invite clear   (or no arg)\n"
+                                             "Authorization is one-shot; consumed on the next matching\n"
+                                             "Invitation Request from the peer (matched against either\n"
+                                             "the source MAC or the GO Device Address).\n",
+                                             cmd_p2p_auth_invite, 1, 1),
+                               SHELL_CMD_ARG(invite, NULL,
+                                             "Send a P2P Invitation Request to a peer.\n"
+                                             "Usage: qwifi p2p invite <peer_mac> <ssid>"
+                                             " [role=go|active_go|client] [freq=<MHz>] [persistent]\n"
+                                             "Skeleton — wire-level Invitation Request is sent, but the full\n"
+                                             "lifecycle (GO bring-up / persistent group reuse) is not yet\n"
+                                             "implemented. Useful for protocol testing.\n",
+                                             cmd_p2p_invite, 3, 3),
+                               SHELL_SUBCMD_SET_END);
+#endif /* CONFIG_WIFI_QCOM_P2P */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                SHELL_CMD_ARG(set_tx_power, NULL,
                                              "Set the transmit power in dbm.\n"
@@ -1296,6 +2033,28 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "Enable or disable WNM Sleep Mode. Must be set before association.\n"
                                              "Usage: qwifi wnm_enable <0|1>\n",
                                              cmd_wnm_enable, 2, 0),
+#ifdef CONFIG_WIFI_QCOM_P2P
+                               SHELL_CMD(p2p, &sub_qwifi_p2p_commands,
+                                         "Wi-Fi Direct (P2P) command set.\n"
+                                         "Usage: qwifi p2p <subcommand> [args]\n"
+                                         "Typical flow:\n"
+                                         "  qwifi p2p set <param> <value>     (optional, before enable)\n"
+                                         "  qwifi p2p enable\n"
+                                         "  qwifi p2p find [<timeout_sec>]    (or 'listen' to be discoverable)\n"
+                                         "  qwifi p2p peers                   (list discovered peers)\n"
+                                         "  qwifi p2p connect <mac> pbc [<go_intent>] [auth]\n"
+                                         "Subcommands:\n"
+                                         "  set / show           : configure / inspect P2P parameters\n"
+                                         "  enable / disable     : bring P2P up or tear it down\n"
+                                         "  find / stop_find     : start / stop device discovery\n"
+                                         "  listen / cancel      : enter listen state / cancel ongoing op\n"
+                                         "  peers / peer         : list peers / dump one peer\n"
+                                         "  connect / reject     : initiate GO neg / reject a peer\n"
+                                         "  flush                : drop all known peers\n"
+                                         "  auth_invite / invite : pre-authorize / send Invitation Request\n"
+                                         "Run 'qwifi p2p <subcommand>' with no further args to see its usage.\n",
+                                         NULL),
+#endif /* CONFIG_WIFI_QCOM_P2P */
                                SHELL_SUBCMD_SET_END);
 
 SHELL_CMD_REGISTER(qwifi, &sub_qwifi_commands, "qwifi commands", NULL);
