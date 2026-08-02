@@ -1,8 +1,28 @@
+# Purpose: Build MINIMAL-mode hostap (utils-only, no full supplicant protocol
+# stack) for fullmac Wi-Fi devices such as QCC730.
+#
+# Update (FR203517 / NAN USD): also adds the CMakeLists.txt rules that compile
+# crypto/sha256-internal.c (service-name hash) and define CONFIG_NAN_USD
+# when CONFIG_WIFI_NM_WPA_SUPPLICANT_NAN_USD is enabled. This piggybacks on
+# the existing NAN_USD-adjacent hunks in this patch instead of a separate
+# patch file, because a standalone patch for these two lines would need to
+# anchor on context lines this patch itself introduces (e.g. common/nan_de.c)
+# -- which do not exist yet on a clean Zephyr checkout and defeats
+# apply_patches.py's pre-validation step (which checks every patch
+# independently against the unpatched tree).
+#
+# Note: the WIFI_NM_WPA_SUPPLICANT_NAN_USD Kconfig symbol itself is declared
+# in qcc730/drivers/wifi/qcom/Kconfig.qcom (committed source, not patched),
+# not here -- Kconfig parsing happens before apply_patches.py runs during
+# CMake configure, so a symbol referenced directly from prj.conf must live
+# in a file that already exists pre-patch, or the very first build after a
+# clean checkout / patch revert fails with "undefined symbol".
+#
 diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
-index 41a50842b71..1f702fbb512 100644
+index 5d570e9..56f6937 100644
 --- a/modules/hostap/CMakeLists.txt
 +++ b/modules/hostap/CMakeLists.txt
-@@ -16,6 +16,97 @@ set(WIFI_NM_HOSTAPD_BASE ${HOSTAP_BASE}/hostapd)
+@@ -16,6 +16,105 @@ set(WIFI_NM_HOSTAPD_BASE ${HOSTAP_BASE}/hostapd)
  set(CMAKE_EXE_LINKER_FLAGS "--specs=nosys.specs -lnosys")
  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DMISSING_SYSCALL_NAMES")
  
@@ -90,6 +110,14 @@ index 41a50842b71..1f702fbb512 100644
 +  ${HOSTAP_SRC_BASE}/common/nan_de.c
 +)
 +
++# NAN USD: SHA-256 needed for service name hash (not in MINIMAL base set)
++zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_NAN_USD
++  ${HOSTAP_SRC_BASE}/crypto/sha256-internal.c
++)
++zephyr_library_compile_definitions_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_NAN_USD
++  CONFIG_NAN_USD
++)
++
 +zephyr_library_sources_ifdef(CONFIG_WIFI_NM_WPA_SUPPLICANT_WPS
 +  ${HOSTAP_SRC_BASE}/wps/wps_attr_build.c
 +  ${HOSTAP_SRC_BASE}/wps/wps_attr_parse.c
@@ -100,7 +128,7 @@ index 41a50842b71..1f702fbb512 100644
  zephyr_include_directories(
    src/
    ${HOSTAP_BASE}/
-@@ -746,4 +829,6 @@ if(CONFIG_SAE_PWE_EARLY_EXIT)
+@@ -803,4 +902,6 @@ if(CONFIG_SAE_PWE_EARLY_EXIT)
    "please use it carefully and do not use it production.")
  endif()
  
@@ -108,7 +136,7 @@ index 41a50842b71..1f702fbb512 100644
 +
  endif()
 diff --git a/modules/hostap/Kconfig b/modules/hostap/Kconfig
-index ccc3b189981..141eeda20c4 100644
+index ccc3b18..1756792 100644
 --- a/modules/hostap/Kconfig
 +++ b/modules/hostap/Kconfig
 @@ -131,6 +131,7 @@ endif # WIFI_NM_WPA_SUPPLICANT_LOG_LEVEL_DBG
@@ -119,7 +147,7 @@ index ccc3b189981..141eeda20c4 100644
  	default y if !SOC_FAMILY_NORDIC_NRF
  
  if WIFI_NM_WPA_SUPPLICANT_ADVANCED_FEATURES
-@@ -162,6 +174,7 @@ config WIFI_NM_WPA_SUPPLICANT_WEP
+@@ -162,6 +163,7 @@ config WIFI_NM_WPA_SUPPLICANT_WEP
  
  choice WIFI_NM_WPA_SUPPLICANT_CRYPTO_BACKEND
  	prompt "WPA supplicant crypto implementation"
@@ -127,7 +155,7 @@ index ccc3b189981..141eeda20c4 100644
  	default WIFI_NM_WPA_SUPPLICANT_CRYPTO_ALT
  	help
  	  Select the crypto implementation to use for WPA supplicant.
-@@ -319,10 +332,12 @@ endif # WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
+@@ -319,10 +321,12 @@ endif # WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
  config WIFI_NM_WPA_SUPPLICANT_WPA3
  	bool "WPA3 support"
  	depends on !WIFI_NM_WPA_SUPPLICANT_CRYPTO_NONE
@@ -140,7 +168,7 @@ index ccc3b189981..141eeda20c4 100644
  	default y if WIFI_USAGE_MODE_AP || WIFI_USAGE_MODE_STA_AP
  
  config WIFI_NM_WPA_SUPPLICANT_WPS
-@@ -342,6 +357,7 @@ config WIFI_NM_WPA_SUPPLICANT_P2P
+@@ -342,6 +346,7 @@ config WIFI_NM_WPA_SUPPLICANT_P2P
  
  config WIFI_NM_WPA_SUPPLICANT_EAPOL
  	bool "EAPoL supplicant"
@@ -148,7 +176,7 @@ index ccc3b189981..141eeda20c4 100644
  	default y if WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
  
  config WIFI_NM_WPA_SUPPLICANT_CLI
-@@ -349,6 +365,7 @@ config WIFI_NM_WPA_SUPPLICANT_CLI
+@@ -349,6 +354,7 @@ config WIFI_NM_WPA_SUPPLICANT_CLI
  
  config WIFI_NM_WPA_SUPPLICANT_INF_MON
  	bool "Monitor the net mgmt event to add/del interface"
