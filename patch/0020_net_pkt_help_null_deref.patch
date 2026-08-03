@@ -5,7 +5,7 @@ index 3306b05d1a7..09816b37712 100644
 @@ -148,6 +148,11 @@ static int cmd_net_pkt(const struct shell *sh, size_t argc, char *argv[])
  {
  	struct net_pkt *pkt;
-
+ 
 +	if (argc < 2) {
 +		PR_ERROR("Invalid ptr value. Example: 0x01020304\n");
 +		return -ENOEXEC;

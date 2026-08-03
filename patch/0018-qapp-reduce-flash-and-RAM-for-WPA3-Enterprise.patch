@@ -873,7 +873,7 @@ index 13f8714c111..240f4a38b73 100644
 @@ -176,6 +176,29 @@ out:
  	return ret;
  }
-
+ 
 +void zephyr_wifi_bmps_enter(void)
 +{
 +	struct wpa_global *global = get_default_context()->supplicant;
@@ -901,9 +901,9 @@ index 13f8714c111..240f4a38b73 100644
  static int send_event(const struct wpa_supplicant_event_msg *msg)
  {
 @@ -310,6 +333,22 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
-
+ 
  	LOG_DBG("Adding interface %s [%d] (%p)", ifname, net_if_get_by_iface(iface), iface);
-
+ 
 +#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
 +	{
 +		struct wpa_interface iface_params;
@@ -928,13 +928,13 @@ index 13f8714c111..240f4a38b73 100644
  		goto out;
  	}
 +#endif
-
+ 
  	wpa_s->conf->filter_ssids = 1;
  	wpa_s->conf->ap_scan = 1;
 @@ -336,12 +376,6 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  		net_if_get_name(iface, ctx->if_name, CONFIG_NET_INTERFACE_NAME_LEN);
  	}
-
+ 
 -	ret = zephyr_wpa_ctrl_init(wpa_s);
 -	if (ret) {
 -		LOG_ERR("Failed to initialize supplicant control interface");
@@ -947,7 +947,7 @@ index 13f8714c111..240f4a38b73 100644
 @@ -351,6 +385,14 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  		goto out;
  	}
-
+ 
 +#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
 +	ret = zephyr_wpa_ctrl_init(wpa_s);
 +	if (ret) {
@@ -957,7 +957,7 @@ index 13f8714c111..240f4a38b73 100644
 +#endif
 +
  	supplicant_generate_state_event(ifname, NET_EVENT_SUPPLICANT_CMD_IFACE_ADDED, 0);
-
+ 
  	if (get_iface_count(ctx) == 1) {
 @@ -711,7 +753,9 @@ static void handler(void)
  		LOG_WRN("Failed to add CLI FST ctrl");
@@ -966,19 +966,19 @@ index 13f8714c111..240f4a38b73 100644
 +#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
  	zephyr_global_wpa_ctrl_init();
 +#endif
-
+ 
  	register_supplicant_event_socket(ctx);
-
+ 
 @@ -728,7 +772,9 @@ static void handler(void)
-
+ 
  	eloop_unregister_read_sock(ctx->sock);
-
+ 
 +#ifndef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
  	zephyr_global_wpa_ctrl_deinit();
 +#endif
-
+ 
  	fst_global_deinit();
-
+ 
 diff --git a/modules/hostap/src/supp_main.h b/modules/hostap/src/supp_main.h
 index 2b2d5fc6111..7784bef1c50 100644
 --- a/modules/hostap/src/supp_main.h
@@ -1059,4 +1059,4 @@ index 0b52143e3aa..537a044dd2b 100644
  /* This is not supported by Mbed TLS in TLS 1.3 mode
 -- 
 2.43.0
-
+ 
