@@ -480,7 +480,8 @@ static int setwifi_handler(struct http_client_ctx *client, enum http_data_status
 	g_scratch_len = 0;
 
 	if (!form_get_field(g_scratch, "ssid", ssid, sizeof(ssid)) ||
-	    !form_get_field(g_scratch, "password", password, sizeof(password))) {
+	    !form_get_field(g_scratch, "password", password, sizeof(password)) ||
+	    ssid[0] == '\0') {
 		response_ctx->status = HTTP_400_BAD_REQUEST;
 		response_ctx->body = (const uint8_t *)fail_body;
 		response_ctx->body_len = sizeof(fail_body) - 1;
