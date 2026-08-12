@@ -922,6 +922,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_qwifi_commands,
                                              "  qwifi unit_test 1 4 1 0\n"
                                              "Example: To perform HW readouts\n"
                                              "  qwifi unit_test 1 4 1 12\n"
+                                             "Example: MCC spike - pause AP beacon for 50ms then resume (module 30=MCC_SPIKE)\n"
+                                             "  qwifi unit_test 0 30 1 50\n"
                                              "Note: Ensure the count in <num_args> exactly matches the number of <arg>s provided.\n", cmd_qwifi_unit_test, 4, 20),
                                SHELL_CMD_ARG(set_operation_mode, NULL,
                                              "Set operation mode.\n"
