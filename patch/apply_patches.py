@@ -56,7 +56,7 @@ def run(cmd, cwd=None, check=True, capture_output=False, text=False):
 
 
 # ---------------------------------------------------------------------------
-# Marker-file helpers (all take explicit paths — no globals)
+# Marker-file helpers (all take explicit paths -- no globals)
 # ---------------------------------------------------------------------------
 
 def _check_if_patches_applied(marker_file):
@@ -140,7 +140,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
     patch_files = sorted(patches_dir.glob('*.patch'))
     if not patch_files:
         print(f"No patch files found in {patches_dir}")
-        return True  # nothing to do — not an error
+        return True  # nothing to do -- not an error
 
     # Skip if already applied (unless forced)
     if not force:

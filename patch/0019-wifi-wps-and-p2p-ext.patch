@@ -234,7 +234,7 @@ index 00000000000..696d8537b82
 + *
 + * SPDX-License-Identifier: Apache-2.0
 + *
-+ * wps_registrar_stub.c — Enrollee-only stub for wps_registrar symbols.
++ * wps_registrar_stub.c -- Enrollee-only stub for wps_registrar symbols.
 + *
 + * QCC730 acts as WPS Enrollee only.  The registrar code (wps_registrar.c,
 + * ~60 KB) is not compiled in.  wps.c references a small number of registrar
@@ -243,7 +243,7 @@ index 00000000000..696d8537b82
 + * linker without pulling in the full registrar implementation.
 + *
 + * If any stub is unexpectedly called at runtime, it logs an error and
-+ * returns a safe failure value — this makes silent mis-use visible.
++ * returns a safe failure value -- this makes silent mis-use visible.
 + */
 +
 +#include "includes.h"
