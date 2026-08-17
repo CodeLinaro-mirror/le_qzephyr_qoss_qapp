@@ -1,0 +1,54 @@
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ *
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
+#include <zephyr/dt-bindings/pinctrl/qcom-qcc730-pinctrl.h>
+
+/ {
+	rcp_shmem: memory@99800 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0x99800 0x6800>;
+		zephyr,memory-region = "RCP_SHMEM";
+	};
+
+	rcp_bus_qcspi: rcp_bus_qcspi {
+		compatible = "qcom,rcp-bus-qcspi";
+		spi = <&qcspi>;
+		irq-gpios = <&gpioa 8 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/* Shrink sram0 to leave room for .rcp_shmem at top */
+&sram0 {
+	reg = <0x10000 0x89800>;
+};
+
+&pinctrl {
+	qcspi_rcp: qcspi_rcp {
+		group1 {
+			pinmux = <
+				QCOM_PINMUX_PIN_NUM(0)  /* CLK  - GPIO0 */
+				QCOM_PINMUX_PIN_NUM(3)  /* MISO - GPIO3 */
+				QCOM_PINMUX_PIN_NUM(2)  /* MOSI - GPIO2 */
+			>;
+			bias-disable;
+			high-drive-strength;
+		};
+	};
+};
+
+&gpioa {
+	status = "okay";
+};
+
+&qcspi {
+	status = "okay";
+	pinctrl-0 = <&qcspi_rcp>;
+	pinctrl-names = "default";
+};
+
+&qspi_nor_flash3 {
+	status = "okay";
+};

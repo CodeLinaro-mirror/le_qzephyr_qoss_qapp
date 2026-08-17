@@ -16,5 +16,5 @@ zephyr_include_directories_ifdef(CONFIG_QCRYPTO
     ${ZEPHYR_MBEDTLS_MODULE_DIR}/library
 )
 
-zephyr_include_directories(${ZEPHYR_HAL_QCOM_MODULE_DIR}/qwifi/inc/libwifi)
+zephyr_include_directories(${ZEPHYR_HAL_QCOM_MODULE_DIR}/qwifi/inc)
 zephyr_include_directories_ifdef(CONFIG_WIFI ${CMAKE_CURRENT_SOURCE_DIR}/../../../qcc730/drivers/wifi/qcom/inc)
