@@ -26,8 +26,10 @@ if [ -d prebuilt_HY11 ]; then
     echo "It is HY11 build,copy lib to folder modules\hal\qcom\zephyr\blobs"
     cp ./prebuilt_HY11/*.a ./modules/hal/qcom/zephyr/blobs/
     cp ./prebuilt_HY11/*.bin ./modules/hal/qcom/zephyr/blobs/
-    rm -rf ./prop
-    echo "start compile with lib"
+    # Keep prop until the app builds regenerate libwifiqcc730.a from the
+    # current source. Removing it here leaves stale HY11 prebuilt libraries
+    # when a Gerrit change updates the Wi-Fi/TWT implementation.
+    echo "start compile with current source and prebuilt support libs"
     cd qapp
     for d in "${subdirs[@]}"; do
         echo "=== enter $d and build ==="
@@ -50,7 +52,8 @@ if [ -d prebuilt_HY11 ]; then
         west build -b qcc730evbx -d build/qcc730evbx | tee build/build_qcc730evbx.log
         cd $basedirs
     done
-    
+
+    rm -rf ./prop
     cd $basedirs
     exit
 fi
