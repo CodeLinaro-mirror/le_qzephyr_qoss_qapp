@@ -20,7 +20,7 @@
 #include "mbedtls/sha256.h"
 #include "mbedtls/entropy.h"
 #include "entropy_poll.h"
-#if CONFIG_MBEDTLS_PSA_CRYPTO_C
+#if defined(CONFIG_MBEDTLS_PSA_CRYPTO_C)
 #include <psa/internal_trusted_storage.h>
 #endif
 
@@ -527,7 +527,7 @@ static int cmd_entropy_hw_poll(const struct shell *ctx, size_t argc, char **argv
 }
 #endif /* MBEDTLS_ENTROPY_HARDWARE_ALT */
 
-#if CONFIG_SECURE_STORAGE_ITS_IMPLEMENTATION_ZEPHYR
+#if defined(CONFIG_SECURE_STORAGE_ITS_IMPLEMENTATION_ZEPHYR)
 static int cmd_secure_write(const struct shell *ctx, size_t argc, char **argv)
 {
 	int err = 0;
@@ -831,7 +831,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_pm_cmds,
                                              "Poll HW entropy bytes\n"
                                              "Usage: entropy_hw_poll <len>\n",
                                              cmd_entropy_hw_poll, 2, 0),
-#if CONFIG_SECURE_STORAGE_ITS_IMPLEMENTATION_ZEPHYR                                        
+#if defined(CONFIG_SECURE_STORAGE_ITS_IMPLEMENTATION_ZEPHYR)                                        
                                SHELL_CMD_ARG(secure_write, NULL,
                                              "encrypts the hex data and writes it with the provided uid\n"
                                              "Usage: secure_write <uid> <hex_data> [optional: <length>]\n",
