@@ -538,7 +538,7 @@ static void on_idle_pre_sleep(void)
 
         SYS_SLIST_FOR_EACH_CONTAINER(&g_pm_timer_list, mt, node) {
             if (!mt->suspendable || !mt->timer) continue;
-    
+
             mt->saved_remaining.ticks = k_timer_remaining_ticks(mt->timer);
             mt->saved_period.ticks = mt->timer->period.ticks;
 
@@ -637,7 +637,16 @@ static void on_idle_post_sleep(void)
         if (!mt->was_running || !mt->timer) continue;
 
         if (mt->auto_restart) {
-            k_timer_start(mt->timer, mt->saved_remaining, mt->saved_period);
+            /* saved_remaining < 0 means k_timer_remaining_ticks() returned a
+             * negative value (timer had already expired when we stopped it,
+             * due to elapsed() being inflated by repeated sys_clock_set_timeout
+             * calls while IRQ was locked). Any negative value passed to
+             * k_timer_start() is treated as K_FOREVER and the timer will never
+             * be restarted. Use saved_period instead. */
+            k_timeout_t restart_dur = (mt->saved_remaining.ticks > 0)
+                                      ? mt->saved_remaining
+                                      : mt->saved_period;
+            k_timer_start(mt->timer, restart_dur, mt->saved_period);
         }
         mt->was_running = false;
     }
