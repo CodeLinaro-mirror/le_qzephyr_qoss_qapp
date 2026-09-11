@@ -3728,16 +3728,45 @@ static cat_return_state cmd_dnsc_query(const struct cat_command *cmd,
 {
     char buffer[256] = {0};
     int offset = 0;
+    int server_index = 0;
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
 
     *data_size = 0;
 
-    /* Per AT guide: +DNSC:<index>,<ip> and index range is 0-1 */
-    for (int i = 0; i < DNSC_MAX_SERVERS; i++) {
-        if (dnsc_servers[i].valid) {
-            offset += snprintf(buffer + offset, sizeof(buffer) - offset,
-                               "+DNSC:%d,%s\r\n", i, dnsc_servers[i].addr);
-        }
+    if (!ctx) {
+        return QAT_Response_Str(QAT_RC_OK, NULL);
     }
+
+    /* Query the resolver's live server table instead of the AT command's
+     * manual-only shadow list. DHCP/RA supplied DNS servers are stored here
+     * by Zephyr and must also be visible through AT+DNSC?. */
+    k_mutex_lock(&ctx->lock, K_FOREVER);
+    for (int i = 0; i < DNS_RESOLVER_MAX_POLL && server_index < DNSC_MAX_SERVERS; i++) {
+        const struct dns_server *server = &ctx->servers[i];
+        char addr[INET6_ADDRSTRLEN];
+        const void *ip = NULL;
+        int family = server->dns_server.sa_family;
+
+        if (server->is_mdns || server->is_llmnr) {
+            continue;
+        }
+
+        if (family == AF_INET) {
+            ip = &((const struct sockaddr_in *)&server->dns_server)->sin_addr;
+        } else if (family == AF_INET6) {
+            ip = &((const struct sockaddr_in6 *)&server->dns_server)->sin6_addr;
+        } else {
+            continue;
+        }
+
+        if (!zsock_inet_ntop(family, ip, addr, sizeof(addr))) {
+            continue;
+        }
+
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset,
+                           "+DNSC:%d,%s\r\n", server_index++, addr);
+    }
+    k_mutex_unlock(&ctx->lock);
 
     return QAT_Response_Str(QAT_RC_OK, offset > 0 ? buffer : NULL);
 }
@@ -3748,14 +3777,25 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
                                      const size_t args_num)
 {
     char subcmd[32];
-    char param[DNSC_SERVER_LEN];
+    char param[DNSC_SERVER_LEN] = {0};
     char response[256];
+    int parsed;
 
-    if (sscanf((char *)data, "%31[^,],%63s", subcmd, param) < 1) {
+    parsed = sscanf((char *)data, "%31[^,],%63s", subcmd, param);
+    if (parsed < 1) {
         return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: Invalid parameters\r\n");
     }
 
     if (strcmp(subcmd, "addsvr") == 0) {
+        struct in_addr addr4;
+        struct in6_addr addr6;
+
+        if (parsed != 2 ||
+            (zsock_inet_pton(AF_INET, param, &addr4) != 1 &&
+             zsock_inet_pton(AF_INET6, param, &addr6) != 1)) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: Invalid IP address\r\n");
+        }
+
         /* Check duplicate */
         for (int i = 0; i < DNSC_MAX_SERVERS; i++) {
             if (dnsc_servers[i].valid && strcmp(dnsc_servers[i].addr, param) == 0) {
