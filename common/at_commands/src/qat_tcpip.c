@@ -324,6 +324,8 @@ static struct {
     .exit_length_valid = true,
 };
 
+static void cipsend_exit_online_mode(void);
+
 /* Throughput-test mode: when true, suppress verbose data-path LOG_INF
  * (CIPSEND/CIPSENDDATA/recv-mode-set) to avoid log printing impacting
  * measured throughput. Toggled via AT+QLOGCTL. */
@@ -1040,6 +1042,14 @@ static void client_recv_work_handler(struct k_work *work)
             snprintf(response, sizeof(response), "+IPS:CLOSED:%d", conn->id);
             QAT_Response_Str(QAT_RC_QUIET, response);
 
+            /* A remote FIN/RST is also the end of online-data mode.  Without
+             * this transition, subsequent UART bytes are still delivered to
+             * cipsend_data_callback instead of the AT command parser. */
+            if (cipsend_state.conns == g_client_conns &&
+                cipsend_state.link_id == conn->id) {
+                cipsend_exit_online_mode();
+            }
+
             zsock_close(conn->sock_fd);
             cleanup_client_conn(conn->id);
             return;
@@ -1431,6 +1441,7 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
 
     /* Send all data, handling partial sends */
     size_t total = 0;
+    uint32_t send_start = k_uptime_get_32();
     while (total < send_len) {
         ssize_t sent;
         if (udp_server_send) {
@@ -1441,6 +1452,18 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
         }
         if (sent < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* A peer close can leave the socket unwritable for a while.
+                 * Do not keep the AT online-data callback alive forever: the
+                 * host TX ring will otherwise stop draining and the host
+                 * shell appears to be hung. */
+                if ((uint32_t)(k_uptime_get_32() - send_start) >= 3000U) {
+                    LOG_ERR("CIPSEND: send retry timeout, fd=%d", sock_fd);
+                    snprintf(response, sizeof(response), "+IPS:SEND FAILED:%d\r\n",
+                             cipsend_state.link_id);
+                    QAT_Response_Str(QAT_RC_ERROR, response);
+                    cipsend_exit_online_mode();
+                    return -ETIMEDOUT;
+                }
                 k_msleep(10);
                 continue;
             }

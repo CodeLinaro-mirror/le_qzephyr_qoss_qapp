@@ -129,8 +129,8 @@ uint8_t cmd_shell_char_received()
             cmd_shell_exec(buf);
         } else if (buf[0] != '\r') {
             buf[pos++] = '\r';
-            extern void qcc730_atcmd_send_handler(uint8_t * cmd, uint32_t len);
-            qcc730_atcmd_send_handler(buf, pos);
+            extern int qcc730_atcmd_send_handler(uint8_t * cmd, uint32_t len);
+            (void)qcc730_atcmd_send_handler(buf, pos);
         }
 #else
         cmd_shell_exec(buf);

@@ -119,7 +119,7 @@ static atcmd_parser_func_t atcmd_parser_evt_func_list[ATCMD_PARSER_FUNC_LIST_MAX
 
 atcmd_mqtt_rx_test_t *rx_mqtt_test_param = NULL;
 atcmd_tx_test_t *tx_test_param = NULL;
-uint8_t tx_quit = 0;
+volatile uint8_t tx_quit = 0;
 uint8_t rx_quit = 0;
 
 /* HTTP test variables */
@@ -215,11 +215,20 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
     while (sent < len) {
         uint32_t chunk = (len - sent) > ATCMD_BUF_LEN ? ATCMD_BUF_LEN : (len - sent);
         int ret;
+        uint32_t retry_start = qc_osal_uptime_get_ms();
+
         do {
             ret = ring_send(RING_AT, cmd + sent, chunk, 1000);
             if (ret == -QC_OSAL_EAGAIN)
                 qc_osal_msleep(1);
-        } while (ret == -QC_OSAL_EAGAIN);
+        } while (ret == -QC_OSAL_EAGAIN &&
+                 (qc_osal_uptime_get_ms() - retry_start) < 3000);
+
+        if (ret == -QC_OSAL_EAGAIN) {
+            demo_print("ring_send timeout: ring=%d, len=%lu\r\n",
+                       RING_AT, (unsigned long)chunk);
+            return -QC_OSAL_ETIMEDOUT;
+        }
         if (ret < 0) {
             demo_print("ring_send error: %d\r\n", ret);
             return ret;
@@ -234,22 +243,22 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
  * @brief Wrapper function for compatibility
  */
 extern int qcc730_ring_reset();
-void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
+int qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 {
     if (NULL == cmd || 1 >= len) {
-        return;
+        return -QC_OSAL_EINVAL;
     }
 
     // reset spi state
     if (QCC730_SPI_NOT_READY == qapi_atcmd_get_spi_state()) {
         if (qcc730_ring_reset() < 0) {
             demo_print("qcc730_ring_reset failed\r\n");
-            return;
+            return -QC_OSAL_ENODEV;
         }
         qapi_atcmd_set_spi_state(QCC730_SPI_READY);
     }
 
-    atcmd_send(cmd, len);
+    return atcmd_send(cmd, len);
 }
 
 /* ============================================================================
@@ -607,6 +616,13 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
             packet_count++;
             switch (ring_id) {
             case RING_AT:
+                /* A remote TCP close must stop a running online-data test.
+                 * Otherwise its producer can keep filling the TX ring after
+                 * the DUT has already left the socket data path. */
+                if (strstr((char *)qcc730_atcmd->rx_buf, "+IPS:CLOSED:") != NULL) {
+                    tx_quit = 1;
+                }
+
                 /* Print received response */
                 if (rx_mqtt_test_param->task_started == 0) {
                     print_atcmd_resp(qcc730_atcmd->rx_buf, ret);
@@ -899,7 +915,11 @@ static void atcmd_demo_net_tx_loop(void)
             break;
         }
 
-        qcc730_atcmd_send_handler(write_buf, tx_test_param->len);
+        if (qcc730_atcmd_send_handler(write_buf, tx_test_param->len) < 0) {
+            tx_quit = 1;
+            is_test_done = 1;
+            break;
+        }
         packets_num_b += tx_test_param->len;
         packets_num_per_10s += tx_test_param->len;
 
@@ -940,7 +960,11 @@ static void atcmd_demo_net_tx_loop(void)
         }
     }
 
-    qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
+    /* Do not inject an escape sequence after the peer has already closed.
+     * It can only enqueue more data and may delay returning to the shell. */
+    if (!tx_quit) {
+        (void)qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
+    }
 
     tx_test_start = 0;
 
