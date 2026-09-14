@@ -403,6 +403,7 @@ static int circular_buffer_read(circular_buffer_t *cb, uint8_t *data, size_t len
  * Helper Functions
  *-----------------------------------------------------------------------*/
 static const char *protocol_type_to_at_name(protocol_type_t type);
+static const char *protocol_type_to_ipd_name(protocol_type_t type);
 static bool queue_pop_front(struct k_msgq *queue, queue_elem_t *elem);
 static bool queue_push_front(struct k_msgq *queue, const queue_elem_t *elem);
 static void cleanup_server_queue_entries(protocol_type_t type, int link_id);
@@ -1007,7 +1008,7 @@ static void client_recv_work_handler(struct k_work *work)
         if (recv_len > 0) {
             if (conn->recv_mode == RECV_MODE_ACTIVE) {
                 /* Active mode: print data immediately */
-                const char *proto = (conn->type == PROTOCOL_TCP || conn->type == PROTOCOL_TCPv6) ? "TCP" : "UDP";
+                const char *proto = protocol_type_to_ipd_name(conn->type);
 
                 if (is_passthrough_mode) {
                     int offset = snprintf(s_recv_response, sizeof(s_recv_response),
@@ -1028,7 +1029,7 @@ static void client_recv_work_handler(struct k_work *work)
 
                     if (ipd_message_print_flag) {
                         char response[64];
-                        const char *proto = (conn->type == PROTOCOL_TCP || conn->type == PROTOCOL_TCPv6) ? "TCP" : "UDP";
+                        const char *proto = protocol_type_to_ipd_name(conn->type);
                         snprintf(response, sizeof(response), "+IPD:C,%s,%d,%zd\r\n",
                                 proto, conn->id, recv_len);
                         QAT_Response_Str(QAT_RC_QUIET, response);
@@ -2341,6 +2342,25 @@ static const char *protocol_type_to_at_name(protocol_type_t type)
     }
 }
 
+/* Preserve the IP version in +IPD notifications.  Keep this separate from
+ * protocol_type_to_at_name(), whose TCP/UDP-only output is part of the
+ * existing CIPRECVTYPE/CIPRECVDATA command interface. */
+static const char *protocol_type_to_ipd_name(protocol_type_t type)
+{
+    switch (type) {
+    case PROTOCOL_TCP:
+        return "TCP";
+    case PROTOCOL_TCPv6:
+        return "TCPv6";
+    case PROTOCOL_UDP:
+        return "UDP";
+    case PROTOCOL_UDPv6:
+        return "UDPv6";
+    default:
+        return NULL;
+    }
+}
+
 static bool queue_pop_front(struct k_msgq *queue, queue_elem_t *elem)
 {
     return k_msgq_get(queue, elem, K_NO_WAIT) == 0;
@@ -2859,17 +2879,20 @@ static void udp_server_work_handler(struct k_work *work)
             }
 
             if (slot >= 0) {
+                const char *server_proto =
+                    (g_listen_udp_clients[slot].type == PROTOCOL_UDPv6) ? "UDPv6" : "UDP";
+
                 if (g_listen_udp_clients[slot].recv_mode == RECV_MODE_ACTIVE) {
                     /* Active mode */
                     if (is_passthrough_mode) {
                         int offset = snprintf(s_recv_response, sizeof(s_recv_response),
-                                            "+IPDHEX:S,UDP,%d,%zd,", slot, recv_len);
+                                            "+IPDHEX:S,%s,%d,%zd,", server_proto, slot, recv_len);
                         memcpy(s_recv_response + offset, s_recv_buf, recv_len);
                         QAT_Output(offset + recv_len, s_recv_response);
                     } else {
                         s_recv_buf[recv_len] = '\0';
-                        snprintf(s_recv_response, sizeof(s_recv_response), "+IPD:S,UDP,%d,%zd,%s",
-                                slot, recv_len, s_recv_buf);
+                        snprintf(s_recv_response, sizeof(s_recv_response), "+IPD:S,%s,%d,%zd,%s",
+                                server_proto, slot, recv_len, s_recv_buf);
                         QAT_Response_Str(QAT_RC_QUIET, s_recv_response);
                     }
                 } else {
@@ -2880,7 +2903,8 @@ static void udp_server_work_handler(struct k_work *work)
 
                         if (udp_server_ipd_message_print_flag) {
                             char response[64];
-                            snprintf(response, sizeof(response), "+IPD:S,UDP,%d,%zd\r\n", slot, recv_len);
+                            snprintf(response, sizeof(response), "+IPD:S,%s,%d,%zd\r\n",
+                                     server_proto, slot, recv_len);
                             QAT_Response_Str(QAT_RC_QUIET, response);
                             udp_server_ipd_message_print_flag = false;
                         }
