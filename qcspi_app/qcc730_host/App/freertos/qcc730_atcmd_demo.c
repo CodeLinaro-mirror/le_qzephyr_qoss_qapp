@@ -121,6 +121,7 @@ atcmd_mqtt_rx_test_t *rx_mqtt_test_param = NULL;
 atcmd_tx_test_t *tx_test_param = NULL;
 volatile uint8_t tx_quit = 0;
 uint8_t rx_quit = 0;
+static volatile uint8_t g_ips_link_down = 0;
 
 /* HTTP test variables */
 static int http_mode = -1;
@@ -490,6 +491,27 @@ void atcmd_response_parser_EVT_WAKEUP(int argc, uint32_t **argv, char *orig_cmd)
     g_qcc730_sleep_state = QCC730_SLEEP_STATE_AWAKE;
 }
 
+/* +IPS:SEND FAILED:<id> / +IPS:CLOSED:<id> — QCC730 has (silently) left
+ * CIPSEND online mode or torn the link down. If net_tx_loop is running,
+ * it must stop pushing raw payload immediately: once QCC730 is back in
+ * AT command mode, further payload bytes get parsed as garbled AT
+ * commands instead of data. */
+void atcmd_response_parser_IPS(int argc, uint32_t **argv, char *orig_cmd)
+{
+    char *arg0 = (char *)argv[0];
+
+    if (!tx_test_start) {
+        return;
+    }
+
+    if (!strncmp(arg0, "SEND FAILED", strlen("SEND FAILED")) ||
+        !strncmp(arg0, "CLOSED", strlen("CLOSED"))) {
+        printf("net_tx_loop: link failure detected (%s), stopping\r\n", orig_cmd);
+        g_ips_link_down = 1;
+        tx_quit = 1;
+    }
+}
+
 static char original_cmd[AT_RESPONSE_MAX] = {0};
 uint8_t atcmd_response_handler(uint16_t buf_len, char *cmd)
 {
@@ -619,7 +641,9 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
                 /* A remote TCP close must stop a running online-data test.
                  * Otherwise its producer can keep filling the TX ring after
                  * the DUT has already left the socket data path. */
-                if (strstr((char *)qcc730_atcmd->rx_buf, "+IPS:CLOSED:") != NULL) {
+                if (strstr((char *)qcc730_atcmd->rx_buf, "+IPS:CLOSED:") != NULL ||
+                    strstr((char *)qcc730_atcmd->rx_buf, "+IPS:SEND FAILED:") != NULL) {
+                    g_ips_link_down = 1;
                     tx_quit = 1;
                 }
 
@@ -886,6 +910,7 @@ static void atcmd_demo_net_tx_loop(void)
     }
 
     tx_quit = 0;
+    g_ips_link_down = 0;
     tx_test_start = 1;
 
     srand(time(NULL));
@@ -960,9 +985,9 @@ static void atcmd_demo_net_tx_loop(void)
         }
     }
 
-    /* Do not inject an escape sequence after the peer has already closed.
-     * It can only enqueue more data and may delay returning to the shell. */
-    if (!tx_quit) {
+    if (g_ips_link_down) {
+        printf("net_tx_loop: link already down, skip '+++' exit sequence\r\n");
+    } else {
         (void)qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
     }
 
@@ -1517,6 +1542,8 @@ void atcmd_add_command_parser(void)
     atcmd_parser_func_add("+RDMEM", (void *)atcmd_response_parser_RDMEM, "parse RDMEM response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+IPDHEX", (void *)atcmd_response_parser_IPDHEX, "parse +IPD response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+RST", (void *)atcmd_response_parser_RST, "parse +RST response", QAT_RESP_TYPE);
+    atcmd_parser_func_add("+IPS", (void *)atcmd_response_parser_IPS,
+                          "detect CIPSEND link failure/close during net_tx_loop", QAT_RESP_TYPE);
     atcmd_parser_func_add("+OTATRIAL", (void *)atcmd_response_parser_EVT_OTATRIAL,
                           "parse AT_OTATRIAL response", QAT_RESP_TYPE);
 }
