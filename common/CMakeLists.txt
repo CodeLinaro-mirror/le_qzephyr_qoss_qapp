@@ -15,7 +15,7 @@ add_subdirectory_ifdef(CONFIG_MQTTC_AT mqttc_at)
 
 function(gen_crm_number)
     set(CRM_NUMBER 999)
-    set(AU_BUILD_VERSION_FILE /local/mnt/workspace/au_build_version.txt)
+    set(AU_BUILD_VERSION_FILE /local/mnt/workspace/lnxbuild/project/au_build_version.txt)
     set(BUILD_VERSION_FILE ${CMAKE_CURRENT_SOURCE_DIR}/build_version.txt)
     if(EXISTS ${AU_BUILD_VERSION_FILE})
         set(CRM_NUMBER_SOURCE_FILE ${AU_BUILD_VERSION_FILE})
