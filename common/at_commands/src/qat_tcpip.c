@@ -3771,6 +3771,46 @@ static cat_return_state cmd_dnsc_query(const struct cat_command *cmd,
     return QAT_Response_Str(QAT_RC_OK, offset > 0 ? buffer : NULL);
 }
 
+static bool dnsc_manual_server_is_active(const char *addr_str)
+{
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
+    bool found = false;
+
+    if (!ctx) {
+        return false;
+    }
+
+    k_mutex_lock(&ctx->lock, K_FOREVER);
+    for (int i = 0; i < DNS_RESOLVER_MAX_POLL; i++) {
+        const struct dns_server *server = &ctx->servers[i];
+        char current_addr[INET6_ADDRSTRLEN];
+        const void *ip = NULL;
+        int family = server->dns_server.sa_family;
+
+        if (server->source != DNS_SOURCE_MANUAL ||
+            server->is_mdns || server->is_llmnr) {
+            continue;
+        }
+
+        if (family == AF_INET) {
+            ip = &((const struct sockaddr_in *)&server->dns_server)->sin_addr;
+        } else if (family == AF_INET6) {
+            ip = &((const struct sockaddr_in6 *)&server->dns_server)->sin6_addr;
+        } else {
+            continue;
+        }
+
+        if (zsock_inet_ntop(family, ip, current_addr, sizeof(current_addr)) &&
+            strcmp(current_addr, addr_str) == 0) {
+            found = true;
+            break;
+        }
+    }
+    k_mutex_unlock(&ctx->lock);
+
+    return found;
+}
+
 static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
                                      const uint8_t *data,
                                      const size_t data_size,
@@ -3814,14 +3854,24 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: DNS server list is full\r\n");
 
     } else if (strcmp(subcmd, "delsvr") == 0) {
+        bool found = false;
+
         for (int i = 0; i < DNSC_MAX_SERVERS; i++) {
             if (dnsc_servers[i].valid && strcmp(dnsc_servers[i].addr, param) == 0) {
                 dnsc_servers[i].valid = false;
                 LOG_INF("DNSC: removed server[%d]=%s", i, param);
-                goto dnsc_reconfigure;
+                found = true;
+                break;
             }
         }
-        return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: DNS server not found\r\n");
+
+        /* Also accept an active manual resolver entry if the shadow list is
+         * already out of sync, for example after an earlier failed delete. */
+        if (!found && !dnsc_manual_server_is_active(param)) {
+            return QAT_Response_Str(QAT_RC_ERROR,
+                                    "+DNSC: DNS server not found\r\n");
+        }
+        goto dnsc_reconfigure;
 
     } else if (strcmp(subcmd, "gethostbyname") == 0) {
         /* Per AT guide: return OK immediately; result arrives as
@@ -3945,10 +3995,24 @@ dnsc_reconfigure: {
         servers[count] = NULL;
 
         struct dns_resolve_context *ctx = dns_resolve_get_default();
-        if (ctx && count > 0) {
-            int ret = dns_resolve_reconfigure(ctx, servers, NULL, DNS_SOURCE_MANUAL);
+        if (ctx) {
+            int ret;
+
+            if (count > 0) {
+                ret = dns_resolve_reconfigure(ctx, servers, NULL,
+                                              DNS_SOURCE_MANUAL);
+            } else {
+                /* An empty list is treated as "no change" by
+                 * dns_resolve_reconfigure(). Close the resolver explicitly
+                 * so deleting the last manual server takes effect. */
+                ret = dns_resolve_close(ctx);
+                if (ret == -ENOENT) {
+                    ret = 0;
+                }
+            }
+
             if (ret < 0) {
-                LOG_WRN("DNSC: dns_resolve_reconfigure failed: %d", ret);
+                LOG_WRN("DNSC: resolver update failed: %d", ret);
             } else {
                 LOG_INF("DNSC: DNS resolver updated with %d server(s)", count);
             }
