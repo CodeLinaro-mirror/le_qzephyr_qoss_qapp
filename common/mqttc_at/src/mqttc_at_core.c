@@ -70,6 +70,11 @@ typedef struct {
     uint8_t sub_qos[MQTTC_AT_MAX_TOPICS];
     int sub_count;
     char pending_unsub_topic[MQTTC_AT_MAX_TOPIC_LEN];
+    /* pending QoS1/2 publish: remember payload length keyed by message_id so
+     * the PUBACK/PUBCOMP handler can report it (the ACK packet carries only the
+     * message_id, not the payload length). */
+    uint16_t pending_pub_msg_id;
+    size_t pending_pub_len;
     /* receive thread */
     struct k_thread recv_thread;
     k_thread_stack_t *recv_stack;
@@ -400,10 +405,12 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         break;
     }
 
-    case MQTT_EVT_PUBACK:
-        mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,0,%s,\"%s\",%d\r\n", sid, mqttc_transport_scheme(s), s->host,
-                         s->port);
+    case MQTT_EVT_PUBACK: {
+        size_t pub_len = (evt->param.puback.message_id == s->pending_pub_msg_id) ? s->pending_pub_len : 0;
+        mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,%zu,%s,\"%s\",%d\r\n", sid, pub_len, mqttc_transport_scheme(s),
+                         s->host, s->port);
         break;
+    }
 
     case MQTT_EVT_PUBREC: {
         const struct mqtt_pubrec_param *pubrec = &evt->param.pubrec;
@@ -412,10 +419,12 @@ static void mqtt_evt_cb(struct mqtt_client *client, const struct mqtt_evt *evt)
         break;
     }
 
-    case MQTT_EVT_PUBCOMP:
-        mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,0,%s,\"%s\",%d\r\n", sid, mqttc_transport_scheme(s), s->host,
-                         s->port);
+    case MQTT_EVT_PUBCOMP: {
+        size_t pub_len = (evt->param.pubcomp.message_id == s->pending_pub_msg_id) ? s->pending_pub_len : 0;
+        mqttc_output_urc("\r\n+EVT:MQTT_PUBSUC:%d,%zu,%s,\"%s\",%d\r\n", sid, pub_len, mqttc_transport_scheme(s),
+                         s->host, s->port);
         break;
+    }
 
     case MQTT_EVT_SUBACK: {
         const struct mqtt_suback_param *sub = &evt->param.suback;
@@ -902,6 +911,12 @@ int mqttc_at_core_publish(int sid, const char *topic, uint8_t qos, const uint8_t
     pub.message_id = (qos > 0) ? msg_id++ : 0;
     pub.retain_flag = retain;
     pub.dup_flag = 0;
+
+    /* Remember payload length for the QoS1/2 ACK handler to report. */
+    if (qos > 0) {
+        s->pending_pub_msg_id = pub.message_id;
+        s->pending_pub_len = payload_len;
+    }
 
     k_mutex_lock(&s->lock, K_FOREVER);
     rc = mqtt_publish(&s->client, &pub);

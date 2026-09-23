@@ -1,0 +1,101 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Yingqian Yang <yingqian@qti.qualcomm.com>
+Date: Sat, 08 Aug 2026 00:00:00 +0800
+Subject: [PATCH] nan_de: add nan_de_pause_service() for single-radio
+ concurrency (FR203519)
+
+QCC730 has a single radio, so NAN USD publish/subscribe and the WiFi
+STA association scan/connect flow compete for the same channel. During
+WiFiPAF commissioning, once the commissioner has received the WiFi
+credentials over NAN and the device needs to scan+associate to the AP,
+the periodic NAN Publish SDF broadcast (and any solicited replies it
+triggers) must stop hogging the radio -- otherwise the WiFi scan is
+starved and commissioning stalls.
+
+nan_de already has a per-service "pause" mechanism (pause_state_end /
+sel_peer_addr / sel_peer_id fields on struct nan_de_service), but it
+was previously only set internally by nan_de itself after a solicited
+publish response, as a short anti-flood cooldown against one specific
+peer. This adds nan_de_pause_service(), a public API that:
+
+  - Extends the pause window to an arbitrary duration (used with 120s
+    by qcc730_nan_glue_allow_wifi_scan() in qcc730_nan_de_glue.c,
+    committed separately in the qcc730 project).
+  - Always overrides sel_peer to a dummy NAN cluster address
+    (51:6f:9a:01:00:00) that no real subscriber can present as its own
+    address. This makes the existing pause_state peer-mismatch check
+    suppress ALL incoming subscribe SDFs during the pause window,
+    regardless of which peer previously triggered a response --
+    without this override, the active commissioner's SDF flood would
+    still match sel_peer and trigger solicited publish TX (and the
+    RXP DISABLE0=0xffffffff config path), blocking the WiFi scan the
+    pause was meant to protect.
+
+The publish service slot itself stays alive during the pause (only
+periodic/solicited broadcast is suppressed), so nan_de_transmit()
+(follow-up TX, used to deliver WiFiNetworkEnable's response back to
+the commissioner) continues to work normally.
+
+Change-Id: I5f8f2c1a3d6b4e0a9c7d2b5e8f1a4c6d0b3e7f92
+Signed-off-by: Yingqian Yang <yingqian@qti.qualcomm.com>
+---
+ src/common/nan_de.c | 26 ++++++++++++++++++++++++++
+ src/common/nan_de.h |  6 ++++++
+ 2 files changed, 32 insertions(+)
+
+diff --git a/src/common/nan_de.c b/src/common/nan_de.c
+index 12fad3112..c42debc17 100644
+--- a/src/common/nan_de.c
++++ b/src/common/nan_de.c
+@@ -1285,6 +1285,32 @@ void nan_de_cancel_publish(struct nan_de *de, int publish_id)
+ }
+
+
++void nan_de_pause_service(struct nan_de *de, int service_id, unsigned int seconds)
++{
++	static const u8 nan_cluster_addr[ETH_ALEN] = {0x51, 0x6f, 0x9a, 0x01, 0x00, 0x00};
++	struct nan_de_service *srv;
++
++	if (!de || service_id < 1 || service_id > NAN_DE_MAX_SERVICE)
++		return;
++	srv = de->service[service_id - 1];
++	if (!srv)
++		return;
++	os_get_reltime(&srv->pause_state_end);
++	srv->pause_state_end.sec += seconds;
++	/* Always override sel_peer to the NAN cluster addr (a dummy value that
++	 * no real subscriber will present as its own address).  This ensures
++	 * ALL incoming subscribe SDFs are treated as "from a different peer"
++	 * by the pause_state check, suppressing every solicited publish
++	 * response regardless of whether a peer was already discovered.
++	 * Without this override, if sel_peer was already set to the active
++	 * commissioner, its SDF flood would still trigger solicited publish
++	 * TX responses (and DISABLE0=0xffffffff), blocking WiFi scan. */
++	os_memcpy(srv->sel_peer_addr, nan_cluster_addr, ETH_ALEN);
++	srv->sel_peer_id = 1;
++	wpa_printf(MSG_DEBUG, "NAN: pause_service id=%d for %u s", service_id, seconds);
++}
++
++
+ int nan_de_update_publish(struct nan_de *de, int publish_id,
+ 			  const struct wpabuf *ssi)
+ {
+diff --git a/src/common/nan_de.h b/src/common/nan_de.h
+index 62235064b..11c7b3d0f 100644
+--- a/src/common/nan_de.h
++++ b/src/common/nan_de.h
+@@ -109,6 +109,12 @@ int nan_de_publish(struct nan_de *de, const char *service_name,
+
+ void nan_de_cancel_publish(struct nan_de *de, int publish_id);
+
++/* Pause periodic SDF broadcasts for a publish service for |seconds| seconds.
++ * The service slot stays alive so nan_de_transmit() (follow-up TX) still works.
++ * Used by qcc730_nan_glue_allow_wifi_scan() before initiating WiFi association
++ * scan to stop NAN TX from blocking the radio on the discovery channel. */
++void nan_de_pause_service(struct nan_de *de, int service_id, unsigned int seconds);
++
+ int nan_de_update_publish(struct nan_de *de, int publish_id,
+ 			  const struct wpabuf *ssi);
+
+--
+2.34.1

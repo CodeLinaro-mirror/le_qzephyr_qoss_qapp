@@ -29,16 +29,23 @@ P2    CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC=y
 P3-3  CONFIG_MBEDTLS_ECP_ALL_ENABLED=n + CONFIG_MBEDTLS_ECP_DP_SECP256R1_ENABLED=y
   Restrict ECP curves to secp256r1 (P-256); enterprise test cases use
   only AKM5/WPA2-Enterprise, none require Suite B 192-bit (P-384).
+
+Also adds zephyr_wifi_bmps_enter()/zephyr_wifi_bmps_exit() bridge functions
+in supp_main.c/.h, called from qcom_wifi_drv.c's BMPS enable/disable path to
+pause/resume wpa_supplicant's wpas_periodic() 10s eloop timeout for the
+duration of BMPS (root cause of periodic EXIT_REASON_RTOS_TIME wakeups out
+of BMPS on QCC730 fullmac builds -- see wpa_supplicant.c in the hostap patch).
 ---
  modules/hostap/CMakeLists.txt            |  34 ++-
  modules/hostap/Kconfig                   |  19 +-
  modules/hostap/src/bss_fullmac_stub.c    | 370 +++++++++++++++++++++++
  modules/hostap/src/supp_api.c            | 218 ++++++++++++-
- modules/hostap/src/supp_main.c           |  35 ++-
+ modules/hostap/src/supp_main.c           |  58 +++-
+ modules/hostap/src/supp_main.h           |  11 +
  modules/mbedtls/CMakeLists.txt           |   9 +-
  modules/mbedtls/Kconfig.mbedtls          |   7 +
  modules/mbedtls/configs/config-mbedtls.h |   2 +
- 8 files changed, 669 insertions(+), 25 deletions(-)
+ 9 files changed, 692 insertions(+), 25 deletions(-)
  create mode 100644 modules/hostap/src/bss_fullmac_stub.c
 
 diff --git a/modules/hostap/CMakeLists.txt b/modules/hostap/CMakeLists.txt
@@ -558,7 +565,7 @@ index ea1c64c7b28..6a89cb07c42 100644
  #include "wpa_cli_zephyr.h"
 +#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_FULLMAC
 +#include "driver_i.h"
-+/* Forward declarations for fullmac direct-API calls (avoids notify.h → p2p.h
++/* Forward declarations for fullmac direct-API calls (avoids notify.h -> p2p.h
 + * which would conflict with the local WPS_PBC enum value).
 + */
 +struct wpa_ssid;
@@ -863,7 +870,37 @@ diff --git a/modules/hostap/src/supp_main.c b/modules/hostap/src/supp_main.c
 index 13f8714c111..240f4a38b73 100644
 --- a/modules/hostap/src/supp_main.c
 +++ b/modules/hostap/src/supp_main.c
-@@ -310,6 +310,22 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+@@ -176,6 +176,29 @@ out:
+ 	return ret;
+ }
+ 
++void zephyr_wifi_bmps_enter(void)
++{
++	struct wpa_global *global = get_default_context()->supplicant;
++
++	if (global)
++		wpas_bmps_pause_periodic(global);
++}
++
++void zephyr_wifi_bmps_exit(void)
++{
++	struct wpa_supplicant_event_msg msg = { 0 };
++
++	if (!get_default_context()->supplicant)
++		return;
++
++	msg.global = true;
++	msg.ctx = get_default_context()->supplicant;
++	msg.event = EVENT_BMPS_EXIT;
++	msg.data = NULL;
++
++	zephyr_wifi_send_event(&msg);
++}
++
+ #ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_INF_MON
+ static int send_event(const struct wpa_supplicant_event_msg *msg)
+ {
+@@ -310,6 +333,22 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  
  	LOG_DBG("Adding interface %s [%d] (%p)", ifname, net_if_get_by_iface(iface), iface);
  
@@ -886,7 +923,7 @@ index 13f8714c111..240f4a38b73 100644
  	ret = zephyr_wpa_cli_global_cmd_v("interface_add %s %s %s %s",
  					  ifname, "zephyr", "zephyr", "zephyr");
  	if (ret) {
-@@ -326,6 +342,7 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+@@ -326,6 +365,7 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  		LOG_ERR("Failed to add iface %s", ifname);
  		goto out;
  	}
@@ -894,7 +931,7 @@ index 13f8714c111..240f4a38b73 100644
  
  	wpa_s->conf->filter_ssids = 1;
  	wpa_s->conf->ap_scan = 1;
-@@ -336,12 +353,6 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+@@ -336,12 +376,6 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  		net_if_get_name(iface, ctx->if_name, CONFIG_NET_INTERFACE_NAME_LEN);
  	}
  
@@ -907,7 +944,7 @@ index 13f8714c111..240f4a38b73 100644
  	ret = wifi_nm_register_mgd_type_iface(wifi_nm_get_instance("wifi_supplicant"),
  					      WIFI_TYPE_STA,
  					      iface);
-@@ -351,6 +362,14 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
+@@ -351,6 +385,14 @@ static int add_interface(struct supplicant_context *ctx, struct net_if *iface)
  		goto out;
  	}
  
@@ -922,7 +959,7 @@ index 13f8714c111..240f4a38b73 100644
  	supplicant_generate_state_event(ifname, NET_EVENT_SUPPLICANT_CMD_IFACE_ADDED, 0);
  
  	if (get_iface_count(ctx) == 1) {
-@@ -711,7 +730,9 @@ static void handler(void)
+@@ -711,7 +753,9 @@ static void handler(void)
  		LOG_WRN("Failed to add CLI FST ctrl");
  	}
  #endif
@@ -932,7 +969,7 @@ index 13f8714c111..240f4a38b73 100644
  
  	register_supplicant_event_socket(ctx);
  
-@@ -728,7 +749,9 @@ static void handler(void)
+@@ -728,7 +772,9 @@ static void handler(void)
  
  	eloop_unregister_read_sock(ctx->sock);
  
@@ -942,6 +979,26 @@ index 13f8714c111..240f4a38b73 100644
  
  	fst_global_deinit();
  
+diff --git a/modules/hostap/src/supp_main.h b/modules/hostap/src/supp_main.h
+index 2b2d5fc6111..7784bef1c50 100644
+--- a/modules/hostap/src/supp_main.h
++++ b/modules/hostap/src/supp_main.h
+@@ -68,4 +68,15 @@ struct wpa_supplicant_event_msg {
+ 	void *data;
+ };
+ int zephyr_wifi_send_event(const struct wpa_supplicant_event_msg *msg);
++
++/*
++ * zephyr_wifi_bmps_enter / zephyr_wifi_bmps_exit - notify the host supplicant
++ * of QCC730 BMPS enable/disable, so wpas_periodic()'s 10s eloop timeout is
++ * paused for the duration of BMPS (see wpas_bmps_pause_periodic /
++ * wpas_bmps_resume_periodic in wpa_supplicant.c).  Safe to call from any
++ * thread. No-op if the host supplicant is not running.
++ */
++void zephyr_wifi_bmps_enter(void);
++void zephyr_wifi_bmps_exit(void);
++
+ #endif /* __SUPP_MAIN_H_ */
 diff --git a/modules/mbedtls/CMakeLists.txt b/modules/mbedtls/CMakeLists.txt
 index b7582244196..549daeba874 100644
 --- a/modules/mbedtls/CMakeLists.txt
@@ -1002,4 +1059,4 @@ index 0b52143e3aa..537a044dd2b 100644
  /* This is not supported by Mbed TLS in TLS 1.3 mode
 -- 
 2.43.0
-
+ 

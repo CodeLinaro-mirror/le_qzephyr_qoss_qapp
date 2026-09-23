@@ -538,7 +538,7 @@ static void on_idle_pre_sleep(void)
 
         SYS_SLIST_FOR_EACH_CONTAINER(&g_pm_timer_list, mt, node) {
             if (!mt->suspendable || !mt->timer) continue;
-    
+
             mt->saved_remaining.ticks = k_timer_remaining_ticks(mt->timer);
             mt->saved_period.ticks = mt->timer->period.ticks;
 
@@ -590,6 +590,7 @@ bool if_os_default_tasks(char *name)
 
 static void suspend_thread_cb(const struct k_thread *thread, void *user_data)
 {
+    ARG_UNUSED(user_data);
     const char *name = k_thread_name_get((struct k_thread *)thread);
 
     if (name) {
@@ -598,7 +599,7 @@ static void suspend_thread_cb(const struct k_thread *thread, void *user_data)
             k_thread_suspend((struct k_thread *)thread);
         }
     }
-    return;
+
 }
 
 void suspend_all_os_default_tasks(void)
@@ -610,6 +611,7 @@ void suspend_all_os_default_tasks(void)
 /* callback for k_thread_foreach */
 static void resume_thread_cb(const struct k_thread *thread, void *user_data)
 {
+    ARG_UNUSED(user_data);
     const char *name = k_thread_name_get((struct k_thread *)thread);
 
     if (name) {
@@ -618,7 +620,7 @@ static void resume_thread_cb(const struct k_thread *thread, void *user_data)
             k_thread_resume((struct k_thread *)thread);
         }
     }
-    return;
+
 }
 
 void resume_all_os_default_tasks(void)
@@ -635,7 +637,16 @@ static void on_idle_post_sleep(void)
         if (!mt->was_running || !mt->timer) continue;
 
         if (mt->auto_restart) {
-            k_timer_start(mt->timer, mt->saved_remaining, mt->saved_period);
+            /* saved_remaining < 0 means k_timer_remaining_ticks() returned a
+             * negative value (timer had already expired when we stopped it,
+             * due to elapsed() being inflated by repeated sys_clock_set_timeout
+             * calls while IRQ was locked). Any negative value passed to
+             * k_timer_start() is treated as K_FOREVER and the timer will never
+             * be restarted. Use saved_period instead. */
+            k_timeout_t restart_dur = (mt->saved_remaining.ticks > 0)
+                                      ? mt->saved_remaining
+                                      : mt->saved_period;
+            k_timer_start(mt->timer, restart_dur, mt->saved_period);
         }
         mt->was_running = false;
     }

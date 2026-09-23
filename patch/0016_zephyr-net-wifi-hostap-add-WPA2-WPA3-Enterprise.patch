@@ -19,7 +19,7 @@ EVENT_ASSOC arrives before the EAP network is registered.
 Add WPA3-Enterprise Transition mode (WIFI_WPA3_ENTERPRISE_TRANSITION,
 -S 4): mixed deployments where WPA3-capable STAs select AKM5
 (WPA-EAP-SHA256) with MFPC=1/MFPR=0 while legacy WPA2-Enterprise
-clients continue to associate with AKM1.  Per WPA3 spec §3.3 a
+clients continue to associate with AKM1.  Per WPA3 spec Section 3.3 a
 WPA3-capable STA on a Transition AP must negotiate AKM5.
 
 Key changes:
@@ -49,15 +49,15 @@ Change-Id: I1f5d7ea0ee375aaf9eeee50f960d5eafee3d4e89
 ---
  include/zephyr/net/wifi.h |   2 ++
  include/zephyr/net/wifi_certs.h |  55 ++++++++++++++++++++++++++++++++++++++++
- modules/hostap/CMakeLists.txt |  61 ++++++++++++++++++++++++++++++++++++++++−−
- modules/hostap/src/supp_api.c | 188 ++++++++++++++++++++++++++++++++++++++++−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−−
- modules/hostap/src/supp_api.h |  13 ++++++++++++−
+ modules/hostap/CMakeLists.txt |  61 ++++++++++++++++++++++++++++++++++++++++--
+ modules/hostap/src/supp_api.c | 188 ++++++++++++++++++++++++++++++++++++++++----------------------------------------
+ modules/hostap/src/supp_api.h |  13 ++++++++++++-
  modules/hostap/src/supp_main.c |   3 +++
- subsys/mgmt/mcumgr/transport/Kconfig.udp |   1 −
- subsys/net/l2/wifi/wifi_certs.c |  21 ++++++++++−−−−−−−−−−−
+ subsys/mgmt/mcumgr/transport/Kconfig.udp |   1 -
+ subsys/net/l2/wifi/wifi_certs.c |  21 ++++++++++-----------
  subsys/net/l2/wifi/wifi_mgmt.c |   2 ++
- subsys/net/l2/wifi/wifi_shell.c | 122 ++++++++++++++++++++++++++++++++++++++++−−
- subsys/net/lib/sockets/sockets_packet.c |   3 ++−
+ subsys/net/l2/wifi/wifi_shell.c | 122 ++++++++++++++++++++++++++++++++++++++++--
+ subsys/net/lib/sockets/sockets_packet.c |   3 ++-
  11 files changed, 393 insertions(+), 78 deletions(-)
 
 diff --git a/include/zephyr/net/wifi.h b/include/zephyr/net/wifi.h
@@ -85,7 +85,7 @@ index ea9e02cf104..991eb09e4cb 100644
 +/**
 + * @brief TLS credential sec_tags used for enterprise certificates.
 + *
-+ * Both wifi_certs.c and the platform cert loader must use these values —
++ * Both wifi_certs.c and the platform cert loader must use these values --
 + * define them here once rather than duplicating in each file.
 + */
 +enum wifi_enterprise_cert_sec_tags {
@@ -104,7 +104,7 @@ index ea9e02cf104..991eb09e4cb 100644
 +#if defined(CONFIG_WIFI_SHELL_RUNTIME_CERTIFICATES) && \
 +    defined(CONFIG_FILE_SYSTEM_LITTLEFS)
 +
-+struct shell; /* forward declaration — avoids pulling in shell headers */
++struct shell; /* forward declaration -- avoids pulling in shell headers */
 +
 +/**
 + * @brief Load EAP-TLS certificates from specified file paths.
@@ -256,7 +256,7 @@ index b8042860186..ea1c64c7b28 100644
 +	} else if (params->wpa3_ent_mode == WIFI_WPA3_ENTERPRISE_TRANSITION) {
 +		/* Transition mode: STA selects AKM5 (SHA256) with MFPC=1, MFPR=0.
 +		 * The AP also advertises AKM1 for legacy clients, but a WPA3-capable
-+		 * STA must use AKM5 per WPA3 spec §3.3. */
++		 * STA must use AKM5 per WPA3 spec Section 3.3. */
 +		cipher_capa = WPA_CAPA_ENC_CCMP;
 +		gropu_mgmt_cipher_capa = WPA_CAPA_ENC_BIP;
 +		cipher_config->key_mgmt = "WPA-EAP-SHA256";
@@ -441,7 +441,7 @@ index b8042860186..ea1c64c7b28 100644
 +#ifdef CONFIG_WIFI_NM_WPA_SUPPLICANT_CRYPTO_ENTERPRISE
 +/* Called from qwifi_drv_connect() for EAP security types.
 + * Configures wpa_supplicant with EAP credentials (method, certs, identity)
-+ * and enables the network, but does NOT call select_network — the firmware
++ * and enables the network, but does NOT call select_network -- the firmware
 + * initiates 802.11 auth+assoc directly via qapi_WLAN_Commit().
 + * After QAPI_WLAN_CONNECT_CB_E fires, enterprise_glue posts EVENT_ASSOC
 + * to the supplicant, which starts the EAP state machine.
@@ -591,7 +591,7 @@ index 545010cbf77..3fb927e80c0 100644
  
  		err = tls_credential_get(certs[i].sec_tag, certs[i].type, NULL, &len);
 +		if (err == -ENOENT) {
-+			/* Credential not registered — treat as optional (not provided).
++			/* Credential not registered -- treat as optional (not provided).
 +			 * Phase-2 certs (ca_cert2, client_cert2, client_key2) are only
 +			 * needed for EAP-PEAP/TTLS inner-TLS; supp_api.c already guards
 +			 * their use with "len > 0" checks.  Leave data=NULL, len=0.
@@ -685,7 +685,7 @@ index 46f64dcb4f0..116d1f348c5 100644
 +		{"cert",     required_argument, 0, 'e'},
 +		{"key-pass", required_argument, 0, 'p'},
 +		{"list",     no_argument,       0, 'l'},
-+		/* 'x' is intentionally absent from the short-opts string —
++		/* 'x' is intentionally absent from the short-opts string --
 +		 * --clear has no short-form alias to avoid accidental use. */
 +		{"clear",    no_argument,       0, 'x'},
 +		{NULL, 0, NULL, 0}
@@ -766,7 +766,7 @@ index 46f64dcb4f0..116d1f348c5 100644
 +		 "  -k, --key      <path>  Load client private key (PEM)\n"
 +		 "  -e, --cert     <path>  Load client certificate (PEM)\n"
 +		 "  -p, --key-pass <pass>  Passphrase for encrypted private key\n"
-+		 "                         (visible in logs — development use only)\n"
++		 "                         (visible in logs -- development use only)\n"
 +		 "  -l, --list             Show loaded credentials and LittleFS files\n"
 +		 "      --clear            Unload all credentials from memory\n"
 +		 "Examples:\n"

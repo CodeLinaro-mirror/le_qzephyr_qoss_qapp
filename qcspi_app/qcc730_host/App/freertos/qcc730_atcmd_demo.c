@@ -43,7 +43,9 @@
 static int g_resp_print_enable = 1;
 
 static void atcmd_rx_callback(uint8_t ring_id, void *user_data);
-static int atcmd_ring_reset(void);
+
+/* Queue of reinit requests (payload = delay in ms before resetting the ring) */
+static qc_osal_queue_t g_ring_reinit_q;
 
 /* ============================================================================
  * Global Variables
@@ -117,8 +119,9 @@ static atcmd_parser_func_t atcmd_parser_evt_func_list[ATCMD_PARSER_FUNC_LIST_MAX
 
 atcmd_mqtt_rx_test_t *rx_mqtt_test_param = NULL;
 atcmd_tx_test_t *tx_test_param = NULL;
-uint8_t tx_quit = 0;
+volatile uint8_t tx_quit = 0;
 uint8_t rx_quit = 0;
+static volatile uint8_t g_ips_link_down = 0;
 
 /* HTTP test variables */
 static int http_mode = -1;
@@ -213,11 +216,20 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
     while (sent < len) {
         uint32_t chunk = (len - sent) > ATCMD_BUF_LEN ? ATCMD_BUF_LEN : (len - sent);
         int ret;
+        uint32_t retry_start = qc_osal_uptime_get_ms();
+
         do {
             ret = ring_send(RING_AT, cmd + sent, chunk, 1000);
             if (ret == -QC_OSAL_EAGAIN)
                 qc_osal_msleep(1);
-        } while (ret == -QC_OSAL_EAGAIN);
+        } while (ret == -QC_OSAL_EAGAIN &&
+                 (qc_osal_uptime_get_ms() - retry_start) < 3000);
+
+        if (ret == -QC_OSAL_EAGAIN) {
+            demo_print("ring_send timeout: ring=%d, len=%lu\r\n",
+                       RING_AT, (unsigned long)chunk);
+            return -QC_OSAL_ETIMEDOUT;
+        }
         if (ret < 0) {
             demo_print("ring_send error: %d\r\n", ret);
             return ret;
@@ -231,22 +243,23 @@ static int atcmd_send(const uint8_t *cmd, uint32_t len)
 /**
  * @brief Wrapper function for compatibility
  */
-extern void qcc730_reset();
-void qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
+extern int qcc730_ring_reset();
+int qcc730_atcmd_send_handler(uint8_t *cmd, uint32_t len)
 {
     if (NULL == cmd || 1 >= len) {
-        return;
+        return -QC_OSAL_EINVAL;
     }
 
     // reset spi state
     if (QCC730_SPI_NOT_READY == qapi_atcmd_get_spi_state()) {
-        if (atcmd_ring_reset() < 0) {
-            demo_print("atcmd_ring_reset failed\r\n");
-            return;
+        if (qcc730_ring_reset() < 0) {
+            demo_print("qcc730_ring_reset failed\r\n");
+            return -QC_OSAL_ENODEV;
         }
+        qapi_atcmd_set_spi_state(QCC730_SPI_READY);
     }
 
-    atcmd_send(cmd, len);
+    return atcmd_send(cmd, len);
 }
 
 /* ============================================================================
@@ -360,31 +373,36 @@ void atcmd_response_parser_IPDHEX(int argc, uint32_t **argv, char *orig_cmd)
     }
 }
 
-/* Task that runs qcc730_reset() asynchronously after AT+RST is received.
- * qcc730_reset() blocks for several seconds (RDSR poll + ring init), so it
- * must not run in the work_queue thread context that called this parser. */
-static void rst_recovery_task(void *arg)
+/* Resident thread that re-establishes the ring after the QCC730 resets.
+ * qcc730_ring_reset() blocks for several seconds, so it must not run in the
+ * ring work_queue thread context that calls the parsers. */
+static void atcmd_ring_reinit_thread(void *arg)
 {
+    uint32_t delay_ms;
+
     (void)arg;
-    /*printf("rst_recovery_task: starting ring re-establishment\r\n");*/
-    atcmd_ring_reset();
-    /*printf("rst_recovery_task: ring ready\r\n");*/
-    vTaskDelete(NULL);
+
+    while (qc_osal_queue_recv(g_ring_reinit_q, &delay_ms, QC_OSAL_TIMEOUT_FOREVER) == 0) {
+        qc_osal_msleep(delay_ms);
+        if (qcc730_ring_reset() < 0) {
+            demo_print("qcc730_ring_reset failed, lazy reconnect on next AT send\r\n");
+            continue;
+        }
+        qapi_atcmd_set_spi_state(QCC730_SPI_READY);
+    }
+}
+
+/* Mark the ring down here (caller context) so no AT command is sent to the
+ * dead ring, then let the reinit thread do the blocking part. */
+static void atcmd_ring_reinit(uint32_t delay_ms)
+{
+    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+    qc_osal_queue_send(g_ring_reinit_q, &delay_ms, 0);
 }
 
 void atcmd_response_parser_RST(int argc, uint32_t **argv, char *orig_cmd)
 {
-    HAL_NVIC_DisableIRQ(EXTI12_IRQn);
-    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
-
-    /* Spawn a one-shot task to re-establish the ring immediately instead of
-     * waiting for the next AT command to trigger lazy reconnection. */
-    BaseType_t r = xTaskCreate(rst_recovery_task, "rst_recovery",
-                               1024, NULL, 5, NULL);
-    if (r != pdPASS) {
-        printf("atcmd_response_parser_RST: failed to create recovery task\r\n");
-        /* Fallback: lazy reconnect on next AT send */
-    }
+    atcmd_ring_reinit(500);
 }
 
 void atcmd_response_parser_CIPDHCPV4C(int argc, uint32_t **argv, char *orig_cmd)
@@ -418,8 +436,7 @@ void atcmd_response_parser_EVT_OTAFWUP_FIN(int argc, uint32_t **argv, char *orig
     /* Wait for QCC730 to complete boot */
     if((argc == 1) && !strncmp(argv[0], "reset", strlen("reset")))
     {
-    	qc_osal_msleep(5000);
-	    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+        atcmd_ring_reinit(5000);
     }
 }
 
@@ -430,8 +447,7 @@ void atcmd_response_parser_EVT_OTATRIAL(int argc, uint32_t **argv, char *orig_cm
     if ((argc == 2) && (atoi(argv[1]) == 1) && !strncmp(argv[0], "Success", strlen("Success"))) {
         /* Reset will be handled by application */
         printf("OTATRIAL received, host will reset spi after 5s\r\n");
-		qc_osal_msleep(5000);
-		qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+        atcmd_ring_reinit(5000);
     }
 }
 
@@ -461,7 +477,7 @@ void atcmd_response_parser_EVT_MQTTSUBRECVHEX(int argc, uint32_t **argv, char *o
 void atcmd_response_parser_EVT_DSLEEP_PRE(int argc, uint32_t **argv, char *orig_cmd)
 {
     /* 730 will Reset after deep sleep, so host need reinit ring */
-    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
+    atcmd_ring_reinit(1000);
 }
 
 void atcmd_response_parser_EVT_DSLEEP_FAIL(int argc, uint32_t **argv, char *orig_cmd)
@@ -473,6 +489,27 @@ void atcmd_response_parser_EVT_WAKEUP(int argc, uint32_t **argv, char *orig_cmd)
 {
     printf("QCC730 wakeup event received\r\n");
     g_qcc730_sleep_state = QCC730_SLEEP_STATE_AWAKE;
+}
+
+/* +IPS:SEND FAILED:<id> / +IPS:CLOSED:<id> — QCC730 has (silently) left
+ * CIPSEND online mode or torn the link down. If net_tx_loop is running,
+ * it must stop pushing raw payload immediately: once QCC730 is back in
+ * AT command mode, further payload bytes get parsed as garbled AT
+ * commands instead of data. */
+void atcmd_response_parser_IPS(int argc, uint32_t **argv, char *orig_cmd)
+{
+    char *arg0 = (char *)argv[0];
+
+    if (!tx_test_start) {
+        return;
+    }
+
+    if (!strncmp(arg0, "SEND FAILED", strlen("SEND FAILED")) ||
+        !strncmp(arg0, "CLOSED", strlen("CLOSED"))) {
+        printf("net_tx_loop: link failure detected (%s), stopping\r\n", orig_cmd);
+        g_ips_link_down = 1;
+        tx_quit = 1;
+    }
 }
 
 static char original_cmd[AT_RESPONSE_MAX] = {0};
@@ -601,6 +638,15 @@ static void atcmd_rx_callback(uint8_t ring_id, void *user_data)
             packet_count++;
             switch (ring_id) {
             case RING_AT:
+                /* A remote TCP close must stop a running online-data test.
+                 * Otherwise its producer can keep filling the TX ring after
+                 * the DUT has already left the socket data path. */
+                if (strstr((char *)qcc730_atcmd->rx_buf, "+IPS:CLOSED:") != NULL ||
+                    strstr((char *)qcc730_atcmd->rx_buf, "+IPS:SEND FAILED:") != NULL) {
+                    g_ips_link_down = 1;
+                    tx_quit = 1;
+                }
+
                 /* Print received response */
                 if (rx_mqtt_test_param->task_started == 0) {
                     print_atcmd_resp(qcc730_atcmd->rx_buf, ret);
@@ -864,6 +910,7 @@ static void atcmd_demo_net_tx_loop(void)
     }
 
     tx_quit = 0;
+    g_ips_link_down = 0;
     tx_test_start = 1;
 
     srand(time(NULL));
@@ -893,7 +940,11 @@ static void atcmd_demo_net_tx_loop(void)
             break;
         }
 
-        qcc730_atcmd_send_handler(write_buf, tx_test_param->len);
+        if (qcc730_atcmd_send_handler(write_buf, tx_test_param->len) < 0) {
+            tx_quit = 1;
+            is_test_done = 1;
+            break;
+        }
         packets_num_b += tx_test_param->len;
         packets_num_per_10s += tx_test_param->len;
 
@@ -934,7 +985,11 @@ static void atcmd_demo_net_tx_loop(void)
         }
     }
 
-    qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
+    if (g_ips_link_down) {
+        printf("net_tx_loop: link already down, skip '+++' exit sequence\r\n");
+    } else {
+        (void)qcc730_atcmd_send_handler((uint8_t *)"+++", 3);
+    }
 
     tx_test_start = 0;
 
@@ -1487,6 +1542,8 @@ void atcmd_add_command_parser(void)
     atcmd_parser_func_add("+RDMEM", (void *)atcmd_response_parser_RDMEM, "parse RDMEM response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+IPDHEX", (void *)atcmd_response_parser_IPDHEX, "parse +IPD response", QAT_RESP_TYPE);
     atcmd_parser_func_add("+RST", (void *)atcmd_response_parser_RST, "parse +RST response", QAT_RESP_TYPE);
+    atcmd_parser_func_add("+IPS", (void *)atcmd_response_parser_IPS,
+                          "detect CIPSEND link failure/close during net_tx_loop", QAT_RESP_TYPE);
     atcmd_parser_func_add("+OTATRIAL", (void *)atcmd_response_parser_EVT_OTATRIAL,
                           "parse AT_OTATRIAL response", QAT_RESP_TYPE);
 }
@@ -1511,6 +1568,20 @@ void atcmd_demo_init(void)
     tx_test_param = qc_osal_malloc(sizeof(atcmd_tx_test_t));
     memset(tx_test_param, 0, sizeof(atcmd_tx_test_t));
 
+    /* Start the ring reinit worker (handles AT+RST / deep sleep / OTA resets) */
+    qc_osal_thread_t reinit_thread = NULL;
+    struct qc_osal_thread_config reinit_cfg = {
+        .name       = "ring_reinit",
+        .stack_size = 2048,
+        .priority   = 5,
+        .entry      = atcmd_ring_reinit_thread,
+        .arg        = NULL,
+    };
+    qc_osal_queue_init(&g_ring_reinit_q, 4, sizeof(uint32_t));
+    if (qc_osal_thread_create(&reinit_thread, &reinit_cfg) != QC_OSAL_EOK) {
+        printf("Failed to create ring reinit thread\r\n");
+    }
+
     /* Register AT command receive callback */
     int ret = ring_register_callback(atcmd_rx_callback, NULL);
     if (ret < 0) {
@@ -1524,34 +1595,13 @@ void atcmd_demo_init(void)
 /**
  * @brief Register AT command shell commands
  */
-static int atcmd_ring_reset(void)
-{
-    int ret;
-
-    qapi_atcmd_set_spi_state(QCC730_SPI_NOT_READY);
-
-    for (int i = 0; i < 10; i++) {
-        qcc730_reset();
-        ret = ring_register_callback(atcmd_rx_callback, NULL);
-        if (ret == 0) {
-            qapi_atcmd_set_spi_state(QCC730_SPI_READY);
-            printf("AT host ring reset completed\r\n");
-            return 0;
-        }
-        printf("Failed to register AT command callback: %d\r\n", ret);
-
-        qc_osal_msleep(500);
-    }
-
-    return ret;
-}
-
+extern void qcc730_reset();
 static int cmd_qcc730_reset_atcmd(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
-
-    return atcmd_ring_reset();
+    qcc730_reset();
+    return 0;
 }
 
 void atcmd_demo_register_commands(void)

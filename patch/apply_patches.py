@@ -56,7 +56,7 @@ def run(cmd, cwd=None, check=True, capture_output=False, text=False):
 
 
 # ---------------------------------------------------------------------------
-# Marker-file helpers (all take explicit paths — no globals)
+# Marker-file helpers (all take explicit paths -- no globals)
 # ---------------------------------------------------------------------------
 
 def _check_if_patches_applied(marker_file):
@@ -140,7 +140,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
     patch_files = sorted(patches_dir.glob('*.patch'))
     if not patch_files:
         print(f"No patch files found in {patches_dir}")
-        return True  # nothing to do — not an error
+        return True  # nothing to do -- not an error
 
     # Skip if already applied (unless forced)
     if not force:
@@ -152,7 +152,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
                 print(f"Applied: {len([p for p in applied if not p.startswith('#')])}")
                 return True
             else:
-                print(f"\u26a0\ufe0f  Applied patches have integrity issues:")
+                print(f"[WARN] Applied patches have integrity issues:")
                 for item in invalid:
                     print(f"  - {item}")
                 print("Use 'force' to reapply or 'revert' to clean up.")
@@ -166,7 +166,7 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
         print(f"  {i:02d}. {pf.name}")
 
     # Pre-validate all patches before touching the repo
-    print(f"\n\U0001f50d Pre-validating all patches...")
+    print(f"\nPre-validating all patches...")
     validation_failed = False
     for pf in patch_files:
         result = run(
@@ -177,18 +177,18 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
             text=True,
         )
         if result.returncode != 0:
-            print(f"  \u274c {pf.name}: Cannot be applied")
+            print(f"  [FAIL] {pf.name}: Cannot be applied")
             print(f"     {result.stderr.strip()}")
             validation_failed = True
         else:
-            print(f"  \u2705 {pf.name}: Ready to apply")
+            print(f"  [OK] {pf.name}: Ready to apply")
 
     if validation_failed and not force:
-        print(f"\n\u274c Pre-validation failed. Use 'force' to attempt applying anyway.")
+        print(f"\n[FAIL] Pre-validation failed. Use 'force' to attempt applying anyway.")
         return False
 
     # Apply patches in order
-    print(f"\n\U0001f527 Applying patches...")
+    print(f"\nApplying patches...")
     success_count = 0
     failed_patches = []
     applied_successfully = []
@@ -203,29 +203,29 @@ def _apply_patches_to_repo(label, repo_path, patches_dir, marker_file, force=Fal
             text=True,
         )
         if result.returncode == 0:
-            print(f"  \u2705 Successfully applied: {pf.name}")
+            print(f"  [OK] Successfully applied: {pf.name}")
             success_count += 1
             applied_successfully.append(pf)
         else:
-            print(f"  \u274c Failed to apply: {pf.name}")
+            print(f"  [FAIL] Failed to apply: {pf.name}")
             print(f"     {result.stderr.strip()}")
             failed_patches.append(pf.name)
             if not force:
-                print(f"\n\u26a0\ufe0f  Stopping due to failure. Use 'revert' to clean up.")
+                print(f"\n[WARN] Stopping due to failure. Use 'revert' to clean up.")
                 break
 
-    print(f"\n\U0001f4ca Results for [{label}]:")
-    print(f"  \u2705 Applied: {success_count}")
-    print(f"  \u274c Failed:  {len(failed_patches)}")
+    print(f"\nResults for [{label}]:")
+    print(f"  [OK] Applied: {success_count}")
+    print(f"  [FAIL] Failed:  {len(failed_patches)}")
 
     if applied_successfully:
         _mark_patches_applied(marker_file, applied_successfully)
 
     if not failed_patches:
-        print(f"\n\U0001f389 All {success_count} patch(es) applied successfully!")
+        print(f"\nAll {success_count} patch(es) applied successfully!")
         return True
     else:
-        print(f"\n\u26a0\ufe0f  {len(failed_patches)} patch(es) failed.")
+        print(f"\n[WARN] {len(failed_patches)} patch(es) failed.")
         return False
 
 
@@ -237,7 +237,7 @@ def _revert_repo(label, repo_path, marker_file):
     run(['git', 'reset', '--hard'], cwd=repo_path)
     run(['git', 'clean', '-fd'], cwd=repo_path)
     _remove_marker(marker_file)
-    print(f"\u2713 Reverted [{label}]")
+    print(f"Reverted [{label}]")
 
 
 def _status_repo(label, repo_path, patches_dir, marker_file):
@@ -250,7 +250,7 @@ def _status_repo(label, repo_path, patches_dir, marker_file):
         print(f"Patches applied ({len(data_lines)}):")
         for entry in data_lines:
             name = entry.split(':')[0] if ':' in entry else entry
-            print(f"  \u2713 {name}")
+            print(f"  [x] {name}")
     else:
         print("  No patches applied")
 
@@ -263,7 +263,7 @@ def _status_repo(label, repo_path, patches_dir, marker_file):
                     applied_names.add(entry.split(':')[0])
             print(f"Available patches in {patches_dir}:")
             for pf in patch_files:
-                mark = "\u2713" if pf.name in applied_names else " "
+                mark = "x" if pf.name in applied_names else " "
                 print(f"  [{mark}] {pf.name}")
 
 

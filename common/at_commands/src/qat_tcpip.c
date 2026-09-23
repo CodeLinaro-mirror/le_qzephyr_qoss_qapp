@@ -324,6 +324,8 @@ static struct {
     .exit_length_valid = true,
 };
 
+static void cipsend_exit_online_mode(void);
+
 /* Throughput-test mode: when true, suppress verbose data-path LOG_INF
  * (CIPSEND/CIPSENDDATA/recv-mode-set) to avoid log printing impacting
  * measured throughput. Toggled via AT+QLOGCTL. */
@@ -401,6 +403,7 @@ static int circular_buffer_read(circular_buffer_t *cb, uint8_t *data, size_t len
  * Helper Functions
  *-----------------------------------------------------------------------*/
 static const char *protocol_type_to_at_name(protocol_type_t type);
+static const char *protocol_type_to_ipd_name(protocol_type_t type);
 static bool queue_pop_front(struct k_msgq *queue, queue_elem_t *elem);
 static bool queue_push_front(struct k_msgq *queue, const queue_elem_t *elem);
 static void cleanup_server_queue_entries(protocol_type_t type, int link_id);
@@ -437,21 +440,21 @@ static void cleanup_client_conn(int link_id)
 #define NT_DEV_STA_ID 1
 #endif
 
-/* Get the Station interface (STA) */
+/* Get the Station interface (STA).
+ * Use the dedicated STA filter (net_if_get_wifi_sta) rather than
+ * net_if_get_first_wifi(): the latter returns the first WiFi iface by
+ * registration order, which is the SoftAP iface on boards that register AP
+ * before STA. In STA+AP concurrent mode that would resolve STA-scoped commands
+ * (CIPSTA / CIPDHCPV4C) to the wrong interface. */
 static struct net_if *get_sta_iface(void)
 {
-    return net_if_get_first_wifi();
+    return net_if_get_wifi_sta();
 }
 
 /* Get the SoftAP interface (SAP) */
 static struct net_if *get_ap_iface(void)
 {
     return net_if_get_wifi_sap();
-}
-
-static struct net_if *get_default_iface(void)
-{
-    return get_sta_iface();
 }
 
 static struct net_if *get_iface_by_qat_id(int id)
@@ -1005,7 +1008,7 @@ static void client_recv_work_handler(struct k_work *work)
         if (recv_len > 0) {
             if (conn->recv_mode == RECV_MODE_ACTIVE) {
                 /* Active mode: print data immediately */
-                const char *proto = (conn->type == PROTOCOL_TCP || conn->type == PROTOCOL_TCPv6) ? "TCP" : "UDP";
+                const char *proto = protocol_type_to_ipd_name(conn->type);
 
                 if (is_passthrough_mode) {
                     int offset = snprintf(s_recv_response, sizeof(s_recv_response),
@@ -1026,7 +1029,7 @@ static void client_recv_work_handler(struct k_work *work)
 
                     if (ipd_message_print_flag) {
                         char response[64];
-                        const char *proto = (conn->type == PROTOCOL_TCP || conn->type == PROTOCOL_TCPv6) ? "TCP" : "UDP";
+                        const char *proto = protocol_type_to_ipd_name(conn->type);
                         snprintf(response, sizeof(response), "+IPD:C,%s,%d,%zd\r\n",
                                 proto, conn->id, recv_len);
                         QAT_Response_Str(QAT_RC_QUIET, response);
@@ -1039,6 +1042,14 @@ static void client_recv_work_handler(struct k_work *work)
             char response[64];
             snprintf(response, sizeof(response), "+IPS:CLOSED:%d", conn->id);
             QAT_Response_Str(QAT_RC_QUIET, response);
+
+            /* A remote FIN/RST is also the end of online-data mode.  Without
+             * this transition, subsequent UART bytes are still delivered to
+             * cipsend_data_callback instead of the AT command parser. */
+            if (cipsend_state.conns == g_client_conns &&
+                cipsend_state.link_id == conn->id) {
+                cipsend_exit_online_mode();
+            }
 
             zsock_close(conn->sock_fd);
             cleanup_client_conn(conn->id);
@@ -1362,7 +1373,34 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
         return -ENOTCONN;
     }
 
-    int sock_fd = cipsend_state.conns[cipsend_state.link_id].sock_fd;
+    connection_info_t *send_conn = &cipsend_state.conns[cipsend_state.link_id];
+    int sock_fd = send_conn->sock_fd;
+
+    /* A UDP server's socket is only bound to the local port and is never
+     * connected to a peer, so send() has no destination.  Rebuild the peer
+     * address learned on receive and use sendto() for these connections. */
+    bool udp_server_send = send_conn->is_server &&
+                           (send_conn->type == PROTOCOL_UDP || send_conn->type == PROTOCOL_UDPv6);
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+
+    if (udp_server_send) {
+        memset(&dest_addr, 0, sizeof(dest_addr));
+        if (send_conn->type == PROTOCOL_UDPv6) {
+            struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)&dest_addr;
+            d6->sin6_family = AF_INET6;
+            d6->sin6_port = htons(send_conn->remote_port);
+            zsock_inet_pton(AF_INET6, send_conn->remote_ip, &d6->sin6_addr);
+            dest_len = sizeof(struct sockaddr_in6);
+        } else {
+            struct sockaddr_in *d4 = (struct sockaddr_in *)&dest_addr;
+            d4->sin_family = AF_INET;
+            d4->sin_port = htons(send_conn->remote_port);
+            zsock_inet_pton(AF_INET, send_conn->remote_ip, &d4->sin_addr);
+            dest_len = sizeof(struct sockaddr_in);
+        }
+    }
+
     k_mutex_unlock(&conn_mutex);
 
     const uint8_t *payload = data;
@@ -1404,10 +1442,29 @@ static int cipsend_data_callback(const uint8_t *data, size_t len)
 
     /* Send all data, handling partial sends */
     size_t total = 0;
+    uint32_t send_start = k_uptime_get_32();
     while (total < send_len) {
-        ssize_t sent = zsock_send(sock_fd, payload + total, send_len - total, 0);
+        ssize_t sent;
+        if (udp_server_send) {
+            sent = zsock_sendto(sock_fd, payload + total, send_len - total, 0,
+                                (struct sockaddr *)&dest_addr, dest_len);
+        } else {
+            sent = zsock_send(sock_fd, payload + total, send_len - total, 0);
+        }
         if (sent < 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* A peer close can leave the socket unwritable for a while.
+                 * Do not keep the AT online-data callback alive forever: the
+                 * host TX ring will otherwise stop draining and the host
+                 * shell appears to be hung. */
+                if ((uint32_t)(k_uptime_get_32() - send_start) >= 3000U) {
+                    LOG_ERR("CIPSEND: send retry timeout, fd=%d", sock_fd);
+                    snprintf(response, sizeof(response), "+IPS:SEND FAILED:%d\r\n",
+                             cipsend_state.link_id);
+                    QAT_Response_Str(QAT_RC_ERROR, response);
+                    cipsend_exit_online_mode();
+                    return -ETIMEDOUT;
+                }
                 k_msleep(10);
                 continue;
             }
@@ -1548,6 +1605,32 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
     }
 
     int sock_fd = conn->sock_fd;
+
+    /* A UDP server's socket is only bound to the local port and is never
+     * connected to a peer, so send() has no destination.  Rebuild the peer
+     * address learned on receive and use sendto() for these connections. */
+    bool udp_server_send = conn->is_server &&
+                           (conn->type == PROTOCOL_UDP || conn->type == PROTOCOL_UDPv6);
+    struct sockaddr_storage dest_addr;
+    socklen_t dest_len = 0;
+
+    if (udp_server_send) {
+        memset(&dest_addr, 0, sizeof(dest_addr));
+        if (conn->type == PROTOCOL_UDPv6) {
+            struct sockaddr_in6 *d6 = (struct sockaddr_in6 *)&dest_addr;
+            d6->sin6_family = AF_INET6;
+            d6->sin6_port = htons(conn->remote_port);
+            zsock_inet_pton(AF_INET6, conn->remote_ip, &d6->sin6_addr);
+            dest_len = sizeof(struct sockaddr_in6);
+        } else {
+            struct sockaddr_in *d4 = (struct sockaddr_in *)&dest_addr;
+            d4->sin_family = AF_INET;
+            d4->sin_port = htons(conn->remote_port);
+            zsock_inet_pton(AF_INET, conn->remote_ip, &d4->sin_addr);
+            dest_len = sizeof(struct sockaddr_in);
+        }
+    }
+
     k_mutex_unlock(&conn_mutex);
 
     int actual_len = strlen(s_at_data_buf);
@@ -1567,7 +1650,13 @@ static cat_return_state cmd_cipsenddata_set(const struct cat_command *cmd,
     }
 
     while (total_sent < to_send) {
-        ssize_t sent = zsock_send(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0);
+        ssize_t sent;
+        if (udp_server_send) {
+            sent = zsock_sendto(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0,
+                                (struct sockaddr *)&dest_addr, dest_len);
+        } else {
+            sent = zsock_send(sock_fd, s_at_data_buf + total_sent, to_send - total_sent, 0);
+        }
         if (sent < 0) {
             snprintf(response, sizeof(response), "+IPS:SEND FAILED:%d", link_id);
             return QAT_Response_Str(QAT_RC_ERROR, response);
@@ -1928,8 +2017,17 @@ static void ping_work_handler(struct k_work *work)
     bool is_ipv6 = (ping_ctx.addr.sa_family == AF_INET6);
     ping_prepare_echo(&params, is_ipv6);
 
-    /* Send ping */
+    /* Update state before sending. Pinging a local interface address takes the
+     * loopback path, where net_icmp_send_echo_request() invokes the reply
+     * callback synchronously before it returns: the callback increments
+     * received, clears waiting_reply and may give done_sem, waking the blocked
+     * command thread. If sent/waiting_reply were updated after send() returns,
+     * that thread could preempt and read stale counters (e.g. summary "3,4")
+     * or the next iteration would report a spurious "Request timed out!".
+     * Roll back on send failure. */
     ping_ctx.sent_time = k_uptime_get_32();
+    ping_ctx.waiting_reply = true;
+    ping_ctx.sent++;
     ret = net_icmp_send_echo_request(&ping_ctx.icmp,
                                     ping_ctx.iface,
                                     &ping_ctx.addr,
@@ -1937,15 +2035,14 @@ static void ping_work_handler(struct k_work *work)
                                     &ping_ctx);
 
     if (ret < 0) {
+        ping_ctx.waiting_reply = false;
+        ping_ctx.sent--;
         snprintf(response, sizeof(response), "+CIPPING:ping send %.100s - error\r\n",
                 ping_ctx.host);
         QAT_Response_Str(QAT_RC_QUIET, response);
         k_sem_give(&ping_ctx.done_sem);
         return;
     }
-
-    ping_ctx.sent++;
-    ping_ctx.waiting_reply = true;
 
     /* Schedule reply timeout; last ping uses same timeout as others */
     if (ping_ctx.sequence < ping_ctx.count) {
@@ -2044,22 +2141,13 @@ static cat_return_state cmd_cipping_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: Failed to initialize ICMP\r\n");
     }
 
-    /* Select interface: prefer SAP, fall back to STA (matches FreeRTOS ref) */
-    ping_ctx.iface = get_ap_iface();
-    if (!ping_ctx.iface) {
-        ping_ctx.iface = get_sta_iface();
-    }
-    if (!ping_ctx.iface) {
-        net_icmp_cleanup_ctx(&ping_ctx.icmp);
-        ping_ctx.active = false;
-        return QAT_Response_Str(QAT_RC_ERROR, "+CIPPING: No network interface\r\n");
-    }
-
-    /* For IPv6, bind the destination to the chosen interface via scope_id
-     * so link-local / multi-interface routing picks the right netif. */
-    if (ping_ctx.addr.sa_family == AF_INET6) {
-        ping_ctx.addr6.sin6_scope_id = net_if_get_by_iface(ping_ctx.iface);
-    }
+    /* Leave iface NULL: net_icmp_send_echo_request() then selects the egress
+     * interface from the destination address (net_if_ipv4/ipv6_select_src_iface),
+     * matching Zephyr's native `net ping`. Forcing a fixed iface here would
+     * bypass routing and break STA+AP concurrent mode (e.g. pinging an STA-side
+     * target while the forced iface is SoftAP). For IPv6 the scope_id is left 0
+     * so the kernel resolves the netif from the destination as well. */
+    ping_ctx.iface = NULL;
 
     /* Start ping work */
     k_work_init_delayable(&ping_ctx.work, ping_work_handler);
@@ -2249,6 +2337,25 @@ static const char *protocol_type_to_at_name(protocol_type_t type)
     case PROTOCOL_UDP:
     case PROTOCOL_UDPv6:
         return "UDP";
+    default:
+        return NULL;
+    }
+}
+
+/* Preserve the IP version in +IPD notifications.  Keep this separate from
+ * protocol_type_to_at_name(), whose TCP/UDP-only output is part of the
+ * existing CIPRECVTYPE/CIPRECVDATA command interface. */
+static const char *protocol_type_to_ipd_name(protocol_type_t type)
+{
+    switch (type) {
+    case PROTOCOL_TCP:
+        return "TCP";
+    case PROTOCOL_TCPv6:
+        return "TCPv6";
+    case PROTOCOL_UDP:
+        return "UDP";
+    case PROTOCOL_UDPv6:
+        return "UDPv6";
     default:
         return NULL;
     }
@@ -2772,17 +2879,20 @@ static void udp_server_work_handler(struct k_work *work)
             }
 
             if (slot >= 0) {
+                const char *server_proto =
+                    (g_listen_udp_clients[slot].type == PROTOCOL_UDPv6) ? "UDPv6" : "UDP";
+
                 if (g_listen_udp_clients[slot].recv_mode == RECV_MODE_ACTIVE) {
                     /* Active mode */
                     if (is_passthrough_mode) {
                         int offset = snprintf(s_recv_response, sizeof(s_recv_response),
-                                            "+IPDHEX:S,UDP,%d,%zd,", slot, recv_len);
+                                            "+IPDHEX:S,%s,%d,%zd,", server_proto, slot, recv_len);
                         memcpy(s_recv_response + offset, s_recv_buf, recv_len);
                         QAT_Output(offset + recv_len, s_recv_response);
                     } else {
                         s_recv_buf[recv_len] = '\0';
-                        snprintf(s_recv_response, sizeof(s_recv_response), "+IPD:S,UDP,%d,%zd,%s",
-                                slot, recv_len, s_recv_buf);
+                        snprintf(s_recv_response, sizeof(s_recv_response), "+IPD:S,%s,%d,%zd,%s",
+                                server_proto, slot, recv_len, s_recv_buf);
                         QAT_Response_Str(QAT_RC_QUIET, s_recv_response);
                     }
                 } else {
@@ -2793,7 +2903,8 @@ static void udp_server_work_handler(struct k_work *work)
 
                         if (udp_server_ipd_message_print_flag) {
                             char response[64];
-                            snprintf(response, sizeof(response), "+IPD:S,UDP,%d,%zd\r\n", slot, recv_len);
+                            snprintf(response, sizeof(response), "+IPD:S,%s,%d,%zd\r\n",
+                                     server_proto, slot, recv_len);
                             QAT_Response_Str(QAT_RC_QUIET, response);
                             udp_server_ipd_message_print_flag = false;
                         }
@@ -2887,11 +2998,11 @@ static cat_return_state cmd_cipv6_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_ERROR, "+CIPV6:enable parameter can only be 0 or 1!\r\n");
     }
 
-    /* CIPV6 is a global IPv6 switch for AT usage. Apply to both default iface and SoftAP iface (if exists)
+    /* CIPV6 is a global IPv6 switch for AT usage. Apply to both STA iface and SoftAP iface (if exists)
      * to avoid STA/AP role switch issues.
      */
     struct net_if *ifaces[2] = {0};
-    ifaces[0] = get_default_iface();
+    ifaces[0] = get_sta_iface();
     ifaces[1] = get_ap_iface();
     if (ifaces[0] == ifaces[1]) {
         ifaces[1] = NULL;
@@ -3617,16 +3728,45 @@ static cat_return_state cmd_dnsc_query(const struct cat_command *cmd,
 {
     char buffer[256] = {0};
     int offset = 0;
+    int server_index = 0;
+    struct dns_resolve_context *ctx = dns_resolve_get_default();
 
     *data_size = 0;
 
-    /* Per AT guide: +DNSC:<index>,<ip> and index range is 0-1 */
-    for (int i = 0; i < DNSC_MAX_SERVERS; i++) {
-        if (dnsc_servers[i].valid) {
-            offset += snprintf(buffer + offset, sizeof(buffer) - offset,
-                               "+DNSC:%d,%s\r\n", i, dnsc_servers[i].addr);
-        }
+    if (!ctx) {
+        return QAT_Response_Str(QAT_RC_OK, NULL);
     }
+
+    /* Query the resolver's live server table instead of the AT command's
+     * manual-only shadow list. DHCP/RA supplied DNS servers are stored here
+     * by Zephyr and must also be visible through AT+DNSC?. */
+    k_mutex_lock(&ctx->lock, K_FOREVER);
+    for (int i = 0; i < DNS_RESOLVER_MAX_POLL && server_index < DNSC_MAX_SERVERS; i++) {
+        const struct dns_server *server = &ctx->servers[i];
+        char addr[INET6_ADDRSTRLEN];
+        const void *ip = NULL;
+        int family = server->dns_server.sa_family;
+
+        if (server->is_mdns || server->is_llmnr) {
+            continue;
+        }
+
+        if (family == AF_INET) {
+            ip = &((const struct sockaddr_in *)&server->dns_server)->sin_addr;
+        } else if (family == AF_INET6) {
+            ip = &((const struct sockaddr_in6 *)&server->dns_server)->sin6_addr;
+        } else {
+            continue;
+        }
+
+        if (!zsock_inet_ntop(family, ip, addr, sizeof(addr))) {
+            continue;
+        }
+
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset,
+                           "+DNSC:%d,%s\r\n", server_index++, addr);
+    }
+    k_mutex_unlock(&ctx->lock);
 
     return QAT_Response_Str(QAT_RC_OK, offset > 0 ? buffer : NULL);
 }
@@ -3637,14 +3777,25 @@ static cat_return_state cmd_dnsc_set(const struct cat_command *cmd,
                                      const size_t args_num)
 {
     char subcmd[32];
-    char param[DNSC_SERVER_LEN];
+    char param[DNSC_SERVER_LEN] = {0};
     char response[256];
+    int parsed;
 
-    if (sscanf((char *)data, "%31[^,],%63s", subcmd, param) < 1) {
+    parsed = sscanf((char *)data, "%31[^,],%63s", subcmd, param);
+    if (parsed < 1) {
         return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: Invalid parameters\r\n");
     }
 
     if (strcmp(subcmd, "addsvr") == 0) {
+        struct in_addr addr4;
+        struct in6_addr addr6;
+
+        if (parsed != 2 ||
+            (zsock_inet_pton(AF_INET, param, &addr4) != 1 &&
+             zsock_inet_pton(AF_INET6, param, &addr6) != 1)) {
+            return QAT_Response_Str(QAT_RC_ERROR, "+DNSC: Invalid IP address\r\n");
+        }
+
         /* Check duplicate */
         for (int i = 0; i < DNSC_MAX_SERVERS; i++) {
             if (dnsc_servers[i].valid && strcmp(dnsc_servers[i].addr, param) == 0) {
@@ -3809,7 +3960,7 @@ dnsc_reconfigure: {
 /*-------------------------------------------------------------------------
  * AT+SNTPC - SNTP Client
  *-----------------------------------------------------------------------*/
-#define SNTPC_MAX_SERVERS           2
+#define SNTPC_MAX_SERVERS           1
 #define SNTPC_SERVER_LEN            64
 #define SNTPC_RECV_TIMEOUT_MS       15000
 #define SNTPC_UPDATE_DELAY_MS       3600000
@@ -3935,7 +4086,7 @@ static cat_return_state cmd_sntpc_exec(const struct cat_command *cmd)
         "AT+SNTPC?: show status of SNTP\n\r"
         "AT+SNTPC=[start|stop]\n\r"
         "AT+SNTPC=setOpMode,<0(unicast)|1(broadcast)>\n\r"
-        "AT+SNTPC=setServer,<IP addr|name>,[id]\n\r");
+        "AT+SNTPC=setServer,<IP addr|name>\n\r");
 }
 
 static cat_return_state cmd_sntpc_query(const struct cat_command *cmd,
@@ -4041,7 +4192,7 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
         return QAT_Response_Str(QAT_RC_OK, NULL);
     }
 
-    /* AT+SNTPC=setServer,<IP addr|name>,[id] */
+    /* AT+SNTPC=setServer,<IP addr|name> */
     if (strncasecmp(subcmd, "setServer", 9) == 0) {
         char addr[SNTPC_SERVER_LEN];
         int id = 0;
@@ -4049,7 +4200,7 @@ static cat_return_state cmd_sntpc_set(const struct cat_command *cmd,
 
         if (parsed < 1) {
             return QAT_Response_Str(QAT_RC_ERROR,
-                "+SNTPC:AT+SNTPC=setServer,<IP addr|name>,[id]\r\n");
+                "+SNTPC:AT+SNTPC=setServer,<IP addr|name>\r\n");
         }
 
         if (strlen(addr) > 64) {
@@ -4148,7 +4299,7 @@ static cat_return_state cmd_qlogctl_set(const struct cat_command *cmd,
 
 /*-------------------------------------------------------------------------
  * Command List
- *-----------------------------------------------------------------------*/
+ *-------------------------------------------------------------------------*/
 static struct cat_command qat_tcpip_cmds[] = {
     /* Network Configuration */
     {
